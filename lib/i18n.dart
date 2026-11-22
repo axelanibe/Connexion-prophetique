@@ -20,6 +20,12 @@ const Map<String, String> _en = {
   'Outils': 'Tools',
   // Tiroir intelligent, 17 nov. 2026 : section « Pour vous ».
   'Pour vous': 'For you',
+  // Recherche du tiroir et de l'indicatif, 22 nov. 2026.
+  'Rechercher un espace…': 'Search a space…',
+  'Aucun espace trouvé pour cette recherche.': 'No space found for this search.',
+  'Rechercher un pays ou un indicatif': 'Search a country or dial code',
+  'Aucun pays trouvé.': 'No country found.',
+  'Masquer l’espace structure': 'Hide the organisation space',
   // Réorganisation du tiroir, 19 nov. 2026.
   'Paramètres': 'Settings',
   'Sécurité': 'Security',

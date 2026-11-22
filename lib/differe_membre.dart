@@ -719,7 +719,14 @@ class _MesResultatsScolairesPageState extends State<MesResultatsScolairesPage> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _erreur = '$e';
+        // 429, 22 nov. 2026 : le corps brut du serveur (« Rate
+        // limit exceeded, retry in N seconds ») ne s'affiche plus
+        // tel quel. Message en français, bouton Réessayer dessous.
+        if (e is ApiException && e.status == 429) {
+          _erreur = tr('Serveur occupé, nouvel essai dans un instant…');
+        } else {
+          _erreur = '$e';
+        }
       });
     }
   }
@@ -735,6 +742,11 @@ class _MesResultatsScolairesPageState extends State<MesResultatsScolairesPage> {
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.school_outlined, text: _erreur!),
+          const SizedBox(height: Cp.s2),
+          FilledButton(
+            onPressed: _load,
+            child: Text(tr('Réessayer')),
+          ),
         ])
       else if (_suivis.isEmpty)
         EmptyNote(icon: Icons.school_outlined, text: tr('Aucune moyenne enregistrée pour le moment.'))
@@ -807,7 +819,14 @@ class _MesResponsabilitesPageState extends State<MesResponsabilitesPage> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _erreur = '$e';
+        // 429, 22 nov. 2026 : le corps brut du serveur (« Rate
+        // limit exceeded, retry in N seconds ») ne s'affiche plus
+        // tel quel. Message en français, bouton Réessayer dessous.
+        if (e is ApiException && e.status == 429) {
+          _erreur = tr('Serveur occupé, nouvel essai dans un instant…');
+        } else {
+          _erreur = '$e';
+        }
       });
     }
   }
@@ -844,6 +863,11 @@ class _MesResponsabilitesPageState extends State<MesResponsabilitesPage> {
       else if (_erreur != null)
         Column(children: [
           EmptyNote(icon: Icons.badge_outlined, text: _erreur!),
+          const SizedBox(height: Cp.s2),
+          FilledButton(
+            onPressed: _load,
+            child: Text(tr('Réessayer')),
+          ),
         ])
       else if (_nominations.isEmpty)
         EmptyNote(icon: Icons.badge_outlined, text: tr('Aucune responsabilité pour le moment. Une nomination apparaît ici quand la structure vous confie une fonction.'))
@@ -952,7 +976,13 @@ class _MesEnfantsPageState extends State<MesEnfantsPage> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _erreur = '$e';
+        // 429, 22 nov. 2026 : même traitement que Mes
+        // responsabilités, pas de corps brut du serveur affiché.
+        if (e is ApiException && e.status == 429) {
+          _erreur = tr('Serveur occupé, nouvel essai dans un instant…');
+        } else {
+          _erreur = '$e';
+        }
       });
     }
   }
@@ -1124,6 +1154,11 @@ class _MesEnfantsPageState extends State<MesEnfantsPage> {
     } else if (_erreur != null) {
       children.addAll([
         EmptyNote(icon: Icons.people_outlined, text: _erreur!),
+        const SizedBox(height: Cp.s2),
+        FilledButton(
+          onPressed: _load,
+          child: Text(tr('Réessayer')),
+        ),
       ]);
     } else {
       if (_liens.isNotEmpty) {

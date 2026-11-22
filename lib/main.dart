@@ -273,6 +273,10 @@ Future<void> main() async {
     choixSons.charger(), // choix des sons, gardés sur l'appareil seulement
     configService.load(), // version minimale en cache, repli hors ligne
   ]);
+  // Rôle administrateur, 22 nov. 2026 : dérivé du jeton restauré,
+  // sans appel réseau, pour que l'entrée Espace structure soit
+  // visible dès l'ouverture, avant la première synchro réussie.
+  app.restaurerRoleDuJeton();
   // Session définitivement perdue, 21 nov. 2026 : renouvellement
   // en échec répété. On déconnecte comme d'habitude, puis on
   // renvoie vers l'écran de connexion existant, au lieu de
@@ -600,6 +604,11 @@ class AppState extends ChangeNotifier {
   // ces options ne doivent donc pas lui apparaître, pas seulement
   // lui être refusées au toucher.
   bool isAdminGeneral = false;
+  // Espace structure masqué, 22 nov. 2026 : « Masquer l'espace
+  // structure » cache seulement l'entrée du tiroir, pour cette
+  // session, sans couper le rôle. Non persisté : à la réouverture,
+  // l'entrée revient. La déconnexion le remet à faux aussi.
+  bool espaceStructureMasque = false;
   // Administrateur d'établissement : administrateur sans être général.
   // Il voit son périmètre en lecture, jamais celui des autres.
   bool get isAdminEtablissement => isAdmin && !isAdminGeneral;
@@ -1169,7 +1178,15 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
-  Future<void> syncFromServer() async {
+  /// Une synchro est due : jamais synchronisé, ou dernière synchro
+  /// de plus de 60 secondes. Même règle au changement d'onglet et
+  /// au retour sur l'onglet, 22 nov. 2026.
+  bool fautResynchroniser(DateTime? dernierSync) {
+    if (dernierSync == null) return true;
+    return DateTime.now().difference(dernierSync).inSeconds > 60;
+  }
+
+  Future<void> syncFromServer({bool lourd = true}) async {
     if (_syncing) return;
     _syncing = true;
     try {
@@ -1188,6 +1205,11 @@ class AppState extends ChangeNotifier {
         lastSyncAt = DateTime.now();
         return;
       }
+      // Rôle d'abord, 22 nov. 2026 : le profil serveur (et donc
+      // isAdmin) ne doit plus attendre la fin de la chaîne. Une
+      // 429 sur un contenu ne bloque plus le rôle. En échec, le
+      // rôle dérivé du jeton au démarrage reste en place.
+      await syncServerProfile();
       // Configuration pilotée par le serveur, avant les contenus :
       // un texte ou une section changé côté serveur s'applique sans
       // nouvelle APK. En cas d'échec, fetchConfig renvoie un objet
@@ -1208,12 +1230,19 @@ class AppState extends ChangeNotifier {
       // la liste complète avec id et établissement, les autres
       // passent par la route publique, qui renvoie désormais
       // aussi le nom d'établissement, sans id ni contact non public.
+      // Passe légère, 22 nov. 2026 : la liste admin vient avec la
+      // passe lourde ; la liste publique ne doit pas l'écraser
+      // entre deux, l'ancienne liste admin est gardée telle quelle.
       List<Map<String, dynamic>> bureau;
       if (isAdminGeneral) {
-        try {
-          bureau = await api.fetchBureauAdmin();
-        } catch (_) {
-          bureau = await api.fetchBureau();
+        if (lourd) {
+          try {
+            bureau = await api.fetchBureauAdmin();
+          } catch (_) {
+            bureau = await api.fetchBureau();
+          }
+        } else {
+          bureau = const [];
         }
       } else {
         bureau = await api.fetchBureau();
@@ -1221,27 +1250,34 @@ class AppState extends ChangeNotifier {
       // Annonces audio : contenu non critique, son échec ne doit
       // jamais faire échouer toute la synchronisation. Null veut
       // dire échec : l'ancienne liste est alors gardée telle quelle.
+      // Passe lourde seulement, 22 nov. 2026.
       List<Map<String, dynamic>>? annonces;
-      try {
-        annonces = await api.fetchAnnoncesAudio();
-      } catch (_) {
-        annonces = null;
+      if (lourd) {
+        try {
+          annonces = await api.fetchAnnoncesAudio();
+        } catch (_) {
+          annonces = null;
+        }
       }
       // Cartes vidéo : contenu non critique lui aussi, un
       // échec garde l'ancienne liste telle quelle.
+      // Passe lourde seulement, 22 nov. 2026.
       List<Map<String, dynamic>>? cartesVideo;
-      try {
-        cartesVideo = await api.fetchCartesVideo();
-      } catch (_) {
-        cartesVideo = null;
+      if (lourd) {
+        try {
+          cartesVideo = await api.fetchCartesVideo();
+        } catch (_) {
+          cartesVideo = null;
+        }
       }
       // Listes administrateur, 30 oct. 2026 : contenu non critique
       // lui aussi, un échec garde les anciennes listes telles
       // quelles, sans faire échouer la synchronisation.
+      // Passe lourde seulement, 22 nov. 2026.
       List<Map<String, dynamic>>? annoncesAdmin;
       List<Map<String, dynamic>>? cartesVideoAdmin;
       List<Map<String, dynamic>>? newsAdmin;
-      if (isAdminGeneral) {
+      if (lourd && isAdminGeneral) {
         try {
           annoncesAdmin = await api.fetchAnnoncesAudioAdmin();
         } catch (_) {
@@ -1260,25 +1296,36 @@ class AppState extends ChangeNotifier {
       }
       final etabNamesById = <String, String>{};
       if (etabs.isNotEmpty) {
+        // Activités gardées d'une synchro à l'autre, 22 nov. 2026 :
+        // la passe légère reconstruit les établissements sans
+        // recharger les détails ; sans cela, chaque passe légère
+        // viderait les activités jusqu'à la prochaine passe lourde.
+        final anciennesActivites = {for (final e in this.etabs) if (e.id.isNotEmpty) e.id: e.activities};
         this.etabs.clear();
         for (final e in etabs) {
           final id = (e['id'] ?? '').toString();
           final name = (e['nom'] ?? '').toString();
           etabNamesById[id] = name;
           final etab = Etab(name, id: id, imageUrl: (e['image_id'] ?? '').toString().isEmpty ? '' : '$kApiBaseUrl/fichiers/${e['image_id']}');
+          final anciennes = id.isEmpty ? null : anciennesActivites[id];
+          if (anciennes != null) etab.activities.addAll(anciennes);
           this.etabs.add(etab);
           // Activités : elles ne figurent que dans le détail de l'établissement.
-          try {
-            final detail = await api.fetchEtablissement(id);
-            final acts = detail['activites'];
-            if (acts is List) {
-              for (final a in acts) {
-                final titre = (a['titre'] ?? '').toString();
-                if (titre.isNotEmpty) etab.activities.add(ActivityItem(titre, serverId: (a['id'] ?? '').toString(), imageUrl: (a['image_id'] ?? '').toString().isEmpty ? '' : '$kApiBaseUrl/fichiers/${a['image_id']}'));
+          // Passe lourde seulement, 22 nov. 2026.
+          if (lourd) {
+            try {
+              final detail = await api.fetchEtablissement(id);
+              final acts = detail['activites'];
+              if (acts is List) {
+                etab.activities.clear();
+                for (final a in acts) {
+                  final titre = (a['titre'] ?? '').toString();
+                  if (titre.isNotEmpty) etab.activities.add(ActivityItem(titre, serverId: (a['id'] ?? '').toString(), imageUrl: (a['image_id'] ?? '').toString().isEmpty ? '' : '$kApiBaseUrl/fichiers/${a['image_id']}'));
+                }
               }
+            } catch (_) {
+              // Détail indisponible : les activités gardées restent affichées.
             }
-          } catch (_) {
-            // Détail indisponible : la liste des établissements reste affichée.
           }
         }
       } else {
@@ -1516,59 +1563,26 @@ class AppState extends ChangeNotifier {
         }
       }
       ensureKairosCamp();
-      await syncServerPayments();
-      // Paiement du camp en 6 fois, 31 oct. 2026 : la progression
-      // des versements est rafraîchie avec les camps, pour que la
-      // carte de progression et le pass débloqué suivent les
-      // validations de la structure.
-      await refreshInscriptionsProgress();
+      // Paiements et progression des versements : passe lourde,
+      // voir _syncLourd, pour que la passe légère reste courte.
       // Cloche, 29 oct. 2026 : compteur actualisé à chaque
       // synchronisation, donc aussi toutes les 60 secondes par la
       // minuterie de la coquille, et à chaque changement d'onglet.
       try {
         await refreshNotifications();
       } catch (_) {}
-      if (isAdminGeneral) {
-        try {
-          final pending = await api.fetchAdminPayments(statut: 'en_attente');
-          final count = pending.length;
-          if (pendingPaymentsKnown && count > pendingPaymentsCount) {
-            try {
-              await DailyVerseNotifications.instance.showPayment(count);
-            } catch (_) {}
-          }
-          pendingPaymentsCount = count;
-          pendingPaymentsKnown = true;
-        } catch (_) {}
-      }
-      // Élections, carte 76, 7 nov. 2026 : contenu non critique,
-      // comme les annonces audio. Un échec garde l'ancienne valeur,
-      // sans faire échouer la synchronisation. Un succès avec
-      // election null efface la tuile : hors période, aucune trace.
-      // Visiteurs et membres déconnectés : pas d'appel, le serveur
-      // exige un jeton, la tuile reste cachée.
-      if (api.isConnected) {
-        try {
-          final actuelle = await api.fetchElectionActuelle();
-          electionOuverte = actuelle['election'] as Map<String, dynamic>?;
-        } catch (_) {}
-      }
+      // Paiements en attente et élection : passe lourde, voir
+      // _syncLourd, pour que la passe légère reste courte.
       serverStatus = 'serveur';
       notifyListeners();
-      // Profil serveur, si un jeton est conservé sur l'appareil.
-      await syncServerProfile();
-      // Favoris et surlignages Bible, 31 oct. 2026, lot 1 chantier 5 sur 6 :
-      // synchronisation silencieuse pour le membre connecté seulement,
-      // un échec ne fait jamais échouer la synchronisation publique.
-      if (api.isConnected) {
-        try {
-          await BibleSync.instance.syncIfNeeded();
-        } catch (_) {}
-      }
       // Listes persistées, 21 nov. 2026 : actualités, camps,
       // cultes et établissements survivent à la fermeture, pour
       // qu'une synchro en échec n'affiche pas un accueil vide.
       await _save();
+      // Passe lourde, 22 nov. 2026 : paiements, progression,
+      // paiements en attente, élection et BibleSync, toutes les
+      // 5 minutes ou à la demande, jamais toutes les 60 secondes.
+      if (lourd) await _syncLourd();
     } catch (e) {
       // Un contenu en échec ne doit plus faire disparaître les
       // paiements : tentative de restauration, silencieuse si le
@@ -1602,6 +1616,70 @@ class AppState extends ChangeNotifier {
     if (api.isConnected) {
       unawaited(BugReports.instance.flushPending());
     }
+  }
+
+  /// Rôle lu du jeton restauré, 22 nov. 2026 : l'entrée Espace
+  /// structure et les boutons admin dépendent de isAdmin, qui
+  /// n'était posé qu'après /moi en fin de synchro. Au démarrage,
+  /// on le dérive du jeton conservé, sans appel réseau, pour que
+  /// l'espace structure soit visible avant même que la synchro
+  /// réussisse. La synchro reste l'autorité : syncServerProfile
+  /// repose le rôle depuis /moi, et la déconnexion l'efface.
+  void restaurerRoleDuJeton() {
+    final role = api.role;
+    isAdmin = role == 'admin_general' || role == 'admin_etablissement';
+    isAdminGeneral = role == 'admin_general';
+    notifyListeners();
+  }
+
+  /// Passe lourde de la synchronisation, 22 nov. 2026 : paiements,
+  /// progression des versements, paiements en attente, élection et
+  /// BibleSync. Toutes les 5 minutes ou à la demande, jamais
+  /// toutes les 60 secondes : la passe légère suffit entre deux.
+  /// Un échec ici n'efface pas les contenus de la passe légère,
+  /// déjà appliqués et persistés juste avant.
+  Future<void> _syncLourd() async {
+    await syncServerPayments();
+    // Paiement du camp en 6 fois, 31 oct. 2026 : la progression
+    // des versements est rafraîchie avec les camps, pour que la
+    // carte de progression et le pass débloqué suivent les
+    // validations de la structure.
+    await refreshInscriptionsProgress();
+    if (isAdminGeneral) {
+      try {
+        final pending = await api.fetchAdminPayments(statut: 'en_attente');
+        final count = pending.length;
+        if (pendingPaymentsKnown && count > pendingPaymentsCount) {
+          try {
+            await DailyVerseNotifications.instance.showPayment(count);
+          } catch (_) {}
+        }
+        pendingPaymentsCount = count;
+        pendingPaymentsKnown = true;
+      } catch (_) {}
+    }
+    // Élections, carte 76, 7 nov. 2026 : contenu non critique,
+    // un échec garde l'ancienne valeur, sans faire échouer la
+    // synchronisation. Un succès avec election null efface la
+    // tuile : hors période, aucune trace. Visiteurs et membres
+    // déconnectés : pas d'appel, le serveur exige un jeton, la
+    // tuile reste cachée.
+    if (api.isConnected) {
+      try {
+        final actuelle = await api.fetchElectionActuelle();
+        electionOuverte = actuelle['election'] as Map<String, dynamic>?;
+      } catch (_) {}
+    }
+    // Favoris et surlignages Bible, 31 oct. 2026, lot 1 chantier 5 sur 6 :
+    // synchronisation silencieuse pour le membre connecté seulement,
+    // un échec ne fait jamais échouer la synchronisation publique.
+    if (api.isConnected) {
+      try {
+        await BibleSync.instance.syncIfNeeded();
+      } catch (_) {}
+    }
+    notifyListeners();
+    await _save();
   }
 
   /// Profil venu du serveur : matricule, nom, établissement, validité
@@ -2369,6 +2447,7 @@ class AppState extends ChangeNotifier {
     member = null;
     isAdmin = false;
     isAdminGeneral = false;
+    espaceStructureMasque = false;
     unawaited(bgPlayer.stop());
     currentTeaching = null;
     stopAnnonceTracking();
@@ -5834,6 +5913,35 @@ bool navigationSansPilule(bool desktop) => desktop;
 bool navigationBarreHautAppShell(bool desktop, int idx, bool membreConnecte) =>
     desktop && idx == 0 && !membreConnecte;
 
+/// Délai de réessai d'une 429, en secondes, 22 nov. 2026 : le
+/// serveur dit « Rate limit exceeded, retry in N seconds ».
+/// Plafonné à 65 secondes comme le renouvellement, repli 30
+/// secondes si le délai est illisible.
+int delaiReessai429(String message) {
+  final m = RegExp(r'retry in (\d+)').firstMatch(message);
+  final secondes = m == null ? 30 : int.tryParse(m.group(1)!) ?? 30;
+  return secondes.clamp(1, 65);
+}
+
+/// Pause du sondage des appels entrants après une 429, 22 nov.
+/// 2026 : le sondage ne doit pas alimenter la tempête. La pause
+/// expire d'elle-même, le sondage reprend ensuite à 3 secondes.
+class PauseSondage {
+  DateTime? _jusqua;
+
+  void mettreEnPause(int secondes) {
+    _jusqua = DateTime.now().add(Duration(seconds: secondes));
+  }
+
+  bool get enPause {
+    final j = _jusqua;
+    if (j == null) return false;
+    if (DateTime.now().isBefore(j)) return true;
+    _jusqua = null;
+    return false;
+  }
+}
+
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -5841,11 +5949,12 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   int _index = 0;
   int _seenHomeRequest = 0;
   int _seenTabRequest = -1;
   Timer? _syncTimer;
+  Timer? _syncTimerLourd;
   // Visite guidée interactive, carte 90, 7 nov. 2026 : l'encadré
   // en bas de l'écran, au-dessus de la barre du bas, sur l'onglet
   // réel de chaque étape. Une seule fois, à la première connexion,
@@ -5907,7 +6016,16 @@ class _AppShellState extends State<AppShell> {
       });
       BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Structure', 'Témoignages'][target];
     });
+    // Retour sur l'onglet, 22 nov. 2026 : l'observateur est posé
+    // ici, retiré dans dispose.
+    WidgetsBinding.instance.addObserver(this);
+    // Passe légère toutes les 60 secondes, 22 nov. 2026 : la
+    // passe lourde ne tourne que toutes les 5 minutes, voir
+    // _syncTimerLourd, ou à la demande.
     _syncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted && api.isConnected) unawaited(app.syncFromServer(lourd: false));
+    });
+    _syncTimerLourd = Timer.periodic(const Duration(minutes: 5), (_) {
       if (mounted && api.isConnected) unawaited(app.syncFromServer());
     });
   }
@@ -6054,14 +6172,30 @@ class _AppShellState extends State<AppShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     pendingNotifDestination.removeListener(_appliquerDestinationNotification);
     demandeVisiteGuidee.removeListener(_revoirVisite);
     _syncTimer?.cancel();
+    _syncTimerLourd?.cancel();
     _masquagePilule.dispose();
     for (final c in _tabScroll) {
       c.dispose();
     }
     super.dispose();
+  }
+
+  // Retour sur l'onglet, 22 nov. 2026 : sur le web, revenir sur
+  // l'onglet relance la synchro si la dernière a plus de 60
+  // secondes, même garde qu'au changement d'onglet. Sur téléphone,
+  // le retour depuis l'arrière-plan fait la même chose.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
+    if (state == AppLifecycleState.resumed) {
+      if (api.isConnected && app.fautResynchroniser(app.lastSyncAt)) {
+        unawaited(app.syncFromServer());
+      }
+    }
   }
 
   void _goTo(int i) {
@@ -6105,7 +6239,7 @@ class _AppShellState extends State<AppShell> {
     // Écran courant pour les rapports de bug, 29 oct. 2026.
     BugReports.currentScreen = const ['Accueil', 'Bible', 'Librairie', 'Structure', 'Témoignages'][i.clamp(0, 4)];
     final last = app.lastSyncAt;
-    if (api.isConnected && (last == null || DateTime.now().difference(last).inSeconds > 60)) {
+    if (api.isConnected && app.fautResynchroniser(last)) {
       unawaited(app.syncFromServer());
     }
   }
@@ -6307,7 +6441,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   int _scope = 0;
   late List<QuizQ> _game;
   String _gameLang = '';
@@ -6369,10 +6503,13 @@ class _HomePageState extends State<HomePage> {
   DateTime? _dernierAppelEntrantLe;
   Timer? _minuteurAppelsEntrants;
   Timer? _minuteurPresence;
+  // Pause du sondage des appels après une 429, 22 nov. 2026.
+  final _pauseSondage = PauseSondage();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _gameLang = app.lang;
     _game = app.drawQuiz(5, _gameLang);
     _loadVerse();
@@ -6394,15 +6531,10 @@ class _HomePageState extends State<HomePage> {
         PushNotifications.instance.onAppelEntrant.listen(
       (data) => _ouvrirAppelEntrant(data),
     );
-    // Appels entrants, 20 nov. 2026 : sondage global toutes les
-    // 3 secondes, même hors Messagerie, pour des appels instantanés
-    // comme sur WhatsApp. FCM reste la voie de réveil quand
-    // l'application est fermée ; ce sondage couvre l'application
-    // ouverte. Même rythme que dans la conversation.
-    _minuteurAppelsEntrants = Timer.periodic(
-      const Duration(seconds: 3),
-      (_) => _verifierAppelsEntrants(),
-    );
+    // Sondage des appels entrants, 22 nov. 2026 : _demarrerSondageAppels
+    // le relance à 3 secondes, ou à 10 secondes quand l'onglet web
+    // est masqué, voir didChangeAppLifecycleState.
+    _demarrerSondageAppels();
     // Présence, 20 nov. 2026 : battement toutes les 30 secondes
     // tant que l'application est ouverte, pour que les autres
     // voient « En ligne » dans la conversation.
@@ -6473,14 +6605,45 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// Sondage global des appels entrants : un appel en sonnerie où
-  /// je suis l'appelé ouvre l'écran d'appel entrant, comme une
-  /// notification FCM. La garde anti double ouverture de
-  /// _ouvrirAppelEntrant évite les doublons avec FCM et avec le
-  /// sondage de la conversation. Silencieux : le prochain sondage
-  /// réessaiera.
+  /// Sondage global des appels entrants, 20 nov. 2026 : un appel
+  /// en sonnerie où je suis l'appelé ouvre l'écran d'appel
+  /// entrant, comme une notification FCM. La garde anti double
+  /// ouverture de _ouvrirAppelEntrant évite les doublons avec FCM
+  /// et avec le sondage de la conversation. Toutes les 3 secondes,
+  /// même hors Messagerie, pour des appels instantanés comme sur
+  /// WhatsApp. FCM reste la voie de réveil quand l'application est
+  /// fermée ; ce sondage couvre l'application ouverte. Même rythme
+  /// que dans la conversation.
+  void _demarrerSondageAppels({int secondes = 3}) {
+    _minuteurAppelsEntrants?.cancel();
+    _minuteurAppelsEntrants = Timer.periodic(
+      Duration(seconds: secondes),
+      (_) => _verifierAppelsEntrants(),
+    );
+  }
+
+  /// Onglet masqué ou retour, 22 nov. 2026 : sur le web, quand
+  /// l'onglet est masqué, le sondage passe à 10 secondes, sans
+  /// jamais s'arrêter, le web n'a ni FCM ni CallKit, le sondage
+  /// est la seule voie d'appel entrant. Au retour, il repasse
+  /// à 3 secondes.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
+    if (state == AppLifecycleState.hidden && kIsWeb) {
+      _demarrerSondageAppels(secondes: 10);
+    } else if (state == AppLifecycleState.resumed) {
+      _demarrerSondageAppels();
+    }
+  }
+
+  /// Un tour de sondage : un appel en sonnerie ouvre l'écran
+  /// d'appel entrant. Silencieux : le prochain tour réessaiera.
   Future<void> _verifierAppelsEntrants() async {
     if (!mounted || api.membreId == null) return;
+    // Recul sur 429, 22 nov. 2026 : pendant la pause, on saute
+    // les tours sans appeler le serveur, puis on reprend à 3 s.
+    if (_pauseSondage.enPause) return;
     try {
       final entrants = await api.fetchAppelsEntrants();
       if (!mounted || entrants.isEmpty) return;
@@ -6492,6 +6655,11 @@ class _HomePageState extends State<HomePage> {
         'conversation_id':
             (premier['conversation_id'] ?? '').toString(),
       });
+    } on ApiException catch (e) {
+      // 429 : pause de la durée Retry-After, plafonnée à 65 s.
+      if (e.status == 429) {
+        _pauseSondage.mettreEnPause(delaiReessai429(e.message));
+      }
     } catch (_) {}
   }
 
@@ -6544,6 +6712,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pushTapSub?.cancel();
     _pushForegroundSub?.cancel();
     _appelEntrantSub?.cancel();
@@ -8373,6 +8542,19 @@ class _ProfilePageState extends State<ProfilePage> {
     if (chosen != null) setState(() => _fonctionChoisie = chosen);
   }
 
+  /// Choix d'un indicatif avec recherche, 22 nov. 2026 : 60
+  /// entrées, la feuille de recherche remplace le menu déroulant
+  /// nu, même patron que _pickFonction.
+  Future<void> _pickIndicatif() async {
+    final choisi = await choisirIndicatif(context, _codesIndicatif, _indicatifIndex);
+    if (choisi != null) {
+      setState(() {
+        _indicatifIndex = choisi;
+        _dialCode = _codesIndicatif[choisi].$1;
+      });
+    }
+  }
+
   Future<void> _submit() async {
     final password = _password.text;
     if (password.length < 8) {
@@ -8846,21 +9028,21 @@ class _ProfilePageState extends State<ProfilePage> {
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           SizedBox(
             width: 132,
-            // Carte 87 : la valeur du menu est l'index de
-            // l'entrée, jamais l'indicatif, car le Canada et les
-            // États-Unis partagent +1. Choisir Canada donne +1,
-            // choisir États-Unis donne +1 aussi, sans doublon.
-            child: DropdownButtonFormField<int>(
-              value: _indicatifIndex,
-              selectedItemBuilder: (context) => [for (final c in _codesIndicatif) Text(c.$1, overflow: TextOverflow.ellipsis)],
-              items: [for (var i = 0; i < _codesIndicatif.length; i++) DropdownMenuItem(value: i, child: Text('${_codesIndicatif[i].$1} ${_codesIndicatif[i].$2}', overflow: TextOverflow.ellipsis))],
-              onChanged: (v) {
-                if (v != null) setState(() {
-                  _indicatifIndex = v;
-                  _dialCode = _codesIndicatif[v].$1;
-                });
-              },
-              decoration: _dec(tr('Indicatif')),
+            // Indicatif avec recherche, 22 nov. 2026 : 60 entrées,
+            // la feuille de recherche remplace le menu déroulant
+            // nu, même patron que _pickFonction. La valeur gardée
+            // reste l'index de l'entrée, jamais l'indicatif, car
+            // le Canada et les États-Unis partagent +1 (carte 87).
+            child: InkWell(
+              onTap: _pickIndicatif,
+              borderRadius: BorderRadius.circular(14),
+              child: InputDecorator(
+                decoration: _dec(tr('Indicatif')),
+                child: Row(children: [
+                  Expanded(child: Text(_dialCode, overflow: TextOverflow.ellipsis)),
+                  const Icon(Icons.keyboard_arrow_down_outlined, size: 20, color: Cp.navy),
+                ]),
+              ),
             ),
           ),
           const SizedBox(width: Cp.s1),
@@ -10849,6 +11031,10 @@ class _MenuLateralState extends State<MenuLateral> {
   Map<String, int> _comptes = {};
   Map<String, int> _derniers = {};
   Set<String> _vues = {};
+  // Recherche d'un espace, 22 nov. 2026 : texte saisi et
+  // contrôleur, pour vider le champ avec la croix.
+  String _recherche = '';
+  final _rechercheCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -10884,6 +11070,12 @@ class _MenuLateralState extends State<MenuLateral> {
     // Compteurs de signalements, 19 nov. 2026 : nombres de la
     // section Sécurité, chargés à l'ouverture du tiroir.
     if (app.member != null) unawaited(AideCompteurs.instance.charger());
+  }
+
+  @override
+  void dispose() {
+    _rechercheCtrl.dispose();
+    super.dispose();
   }
 
   // « Pour vous » : d'abord ce qui demande l'attention, puis les
@@ -11026,6 +11218,14 @@ class _MenuLateralState extends State<MenuLateral> {
     final securite = app.member != null ? _entreesSecurite(context) : <_EntreeTiroir>[];
     final outils = _entreesOutils(context);
     final toutes = [...monEspace, ...structure, ...securite, ...outils];
+    // Recherche, 22 nov. 2026 : filtre local sur toutes les
+    // entrées, titre et sous-titre, sans accents. Les conditions
+    // de visibilité sont déjà appliquées dans toutes : une entrée
+    // admin n'y figure que si app.isAdmin.
+    final rechercheActive = _recherche.trim().isNotEmpty;
+    final resultats = rechercheActive
+        ? toutes.where((e) => entreeTiroirCorrespond(e.titre, e.sousTitre, _recherche)).toList()
+        : <_EntreeTiroir>[];
     final pourVous = _pourVous(toutes);
     // Tranche accueil, 17 nov. 2026 : une entrée déjà dans
     // « Pour vous » n'apparaît pas une deuxième fois dans sa
@@ -11043,6 +11243,39 @@ class _MenuLateralState extends State<MenuLateral> {
           children: [
             _enTeteTiroir(context),
             const Divider(height: 1, color: Colors.white24),
+            // Recherche d'un espace, 22 nov. 2026 : champ fixe en
+            // haut du tiroir, toujours visible, filtre local sur
+            // les entrées, sans appel serveur.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: SizedBox(
+                height: 48,
+                child: TextField(
+                  controller: _rechercheCtrl,
+                  onChanged: (v) => setState(() => _recherche = v),
+                  style: const TextStyle(color: Colors.white),
+                  textAlignVertical: TextAlignVertical.center,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.search_outlined, color: Cp.gold),
+                    hintText: tr('Rechercher un espace…'),
+                    hintStyle: const TextStyle(color: Colors.white54),
+                    suffixIcon: _recherche.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.clear_outlined, color: Colors.white70),
+                            onPressed: () {
+                              _rechercheCtrl.clear();
+                              setState(() => _recherche = '');
+                            },
+                          ),
+                    filled: true,
+                    fillColor: Colors.white.withValues(alpha: 0.08),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                ),
+              ),
+            ),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 16),
@@ -11060,25 +11293,38 @@ class _MenuLateralState extends State<MenuLateral> {
                   ..._entreesNavigation().map(
                     (e) => _entreeNavigation(context, e),
                   ),
-                  if (pourVous.isNotEmpty) ...[
-                    _groupe(tr('Pour vous')),
-                    ...pourVous.map((e) => _entree(context, e)),
-                  ],
-                  if (monEspaceAffiche.isNotEmpty) ...[
-                    _groupe(tr('Mon espace')),
-                    ...monEspaceAffiche.map((e) => _entree(context, e)),
-                  ],
-                  if (structureAffichee.isNotEmpty) ...[
-                    _groupe(tr('La structure')),
-                    ...structureAffichee.map((e) => _entree(context, e)),
-                  ],
-                  if (securiteAffichee.isNotEmpty) ...[
-                    _groupe(tr('Sécurité')),
-                    ...securiteAffichee.map((e) => _entree(context, e)),
-                  ],
-                  if (outilsAffiches.isNotEmpty) ...[
-                    _groupe(tr('Outils')),
-                    ...outilsAffiches.map((e) => _entree(context, e)),
+                  // Recherche active, 22 nov. 2026 : « Pour vous »
+                  // et les titres de groupe sont masqués, une seule
+                  // liste de résultats, mêmes tuiles qu'avant.
+                  if (rechercheActive) ...[
+                    if (resultats.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+                        child: Text(tr('Aucun espace trouvé pour cette recherche.'), style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                      )
+                    else
+                      ...resultats.map((e) => _entree(context, e)),
+                  ] else ...[
+                    if (pourVous.isNotEmpty) ...[
+                      _groupe(tr('Pour vous')),
+                      ...pourVous.map((e) => _entree(context, e)),
+                    ],
+                    if (monEspaceAffiche.isNotEmpty) ...[
+                      _groupe(tr('Mon espace')),
+                      ...monEspaceAffiche.map((e) => _entree(context, e)),
+                    ],
+                    if (structureAffichee.isNotEmpty) ...[
+                      _groupe(tr('La structure')),
+                      ...structureAffichee.map((e) => _entree(context, e)),
+                    ],
+                    if (securiteAffichee.isNotEmpty) ...[
+                      _groupe(tr('Sécurité')),
+                      ...securiteAffichee.map((e) => _entree(context, e)),
+                    ],
+                    if (outilsAffiches.isNotEmpty) ...[
+                      _groupe(tr('Outils')),
+                      ...outilsAffiches.map((e) => _entree(context, e)),
+                    ],
                   ],
                 ],
               ),
@@ -11274,7 +11520,7 @@ class _MenuLateralState extends State<MenuLateral> {
       if (app.member != null)
         _EntreeTiroir(id: 'cultes-direct', icone: Icons.live_tv_outlined, titre: tr('Culte en direct'), sousTitre: tr('Direct et replays chapitrés.'), ouvrir: () => go(c, CultesDirectPage(estBureau: app.isAdmin)), badge: _pastilleNouveau('cultes-direct')),
       _EntreeTiroir(id: 'tremplin', icone: Icons.assignment_outlined, titre: tr('Tremplin professionnel'), sousTitre: tr('Offres d’emploi, stages et formations, selon votre pays.'), ouvrir: () => goEmploi(c, () => emploi.OffresEmploiPage())),
-      if (app.isAdmin)
+      if (app.isAdmin && !app.espaceStructureMasque)
         _EntreeTiroir(
           id: 'espace-structure',
           icone: Icons.shield_outlined,
@@ -16679,6 +16925,15 @@ String sansAccents(String v) {
   const repl = {'à': 'a', 'â': 'a', 'ä': 'a', 'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e', 'î': 'i', 'ï': 'i', 'ô': 'o', 'ö': 'o', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ç': 'c', 'ÿ': 'y'};
   repl.forEach((k, r) => out = out.replaceAll(k, r));
   return out;
+}
+
+/// Une entrée du tiroir correspond à la recherche du tiroir,
+/// 22 nov. 2026 : titre ou sous-titre, sans accents, insensible
+/// à la casse. Recherche vide : tout correspond.
+bool entreeTiroirCorrespond(String titre, String sousTitre, String query) {
+  final q = sansAccents(query.trim());
+  if (q.isEmpty) return true;
+  return sansAccents('$titre $sousTitre').contains(q);
 }
 
 // Pastilles de filtre : fond bleu nuit et texte blanc

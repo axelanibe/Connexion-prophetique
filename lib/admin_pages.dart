@@ -4508,16 +4508,18 @@ class _AdminPageState extends State<AdminPage> {
       // Carte 57 : une seule colonne, les deux volets de la
       // tranche 3 carte 17 sont retirés, Piloter regroupe
       // déjà le tableau de bord.
+      // Masquer l'espace structure, 22 nov. 2026 : cache seulement
+      // l'entrée du tiroir, pour cette session, sans couper le
+      // rôle. Non persisté : à la réouverture, l'entrée revient.
       Widget quitter() => SizedBox(
             height: 52,
             child: OutlinedButton(
               onPressed: () {
-                app.isAdmin = false;
-                app.isAdminGeneral = false;
+                app.espaceStructureMasque = true;
                 app.changed();
                 Navigator.of(c).pop();
               },
-              child: Text(tr('Quitter l’espace structure')),
+              child: Text(tr('Masquer l’espace structure')),
             ),
           );
       if (desktop && app.member != null && visibles.isNotEmpty) {
@@ -4719,11 +4721,10 @@ class _AdminPageState extends State<AdminPage> {
                     Padding(
                       padding: const EdgeInsets.all(Cp.s2),
                       child: IconButton(
-                        tooltip: tr('Quitter l’espace structure'),
+                        tooltip: tr('Masquer l’espace structure'),
                         icon: const Icon(Icons.logout_outlined, color: Cp.navy),
                         onPressed: () {
-                          app.isAdmin = false;
-                          app.isAdminGeneral = false;
+                          app.espaceStructureMasque = true;
                           app.changed();
                           Navigator.of(c).pop();
                         },

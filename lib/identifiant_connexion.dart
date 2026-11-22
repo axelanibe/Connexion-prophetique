@@ -127,6 +127,94 @@ Future<DetectionIndicatif> indicatifDetecteAppareilAvecSim() async {
   return indicatifDetecteAppareil();
 }
 
+/// Indices des indicatifs qui correspondent à la recherche,
+/// 22 nov. 2026 : sur le pays ou l'indicatif, sans accents,
+/// insensible à la casse. Recherche vide : tous les indices,
+/// dans l'ordre.
+List<int> filtrerIndicatifs(List<(String, String)> codes, String query) {
+  final q = _sansAccents(query.trim().toLowerCase());
+  if (q.isEmpty) return [for (var i = 0; i < codes.length; i++) i];
+  return [
+    for (var i = 0; i < codes.length; i++)
+      if (_sansAccents('${codes[i].$2} ${codes[i].$1}'.toLowerCase())
+          .contains(q))
+        i,
+  ];
+}
+
+String _sansAccents(String v) {
+  var out = v.toLowerCase();
+  const repl = {'à': 'a', 'â': 'a', 'ä': 'a', 'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e', 'î': 'i', 'ï': 'i', 'ô': 'o', 'ö': 'o', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ç': 'c', 'ÿ': 'y'};
+  repl.forEach((k, r) => out = out.replaceAll(k, r));
+  return out;
+}
+
+/// Feuille de choix d'un indicatif, 22 nov. 2026 : la liste des
+/// 60 indicatifs ne se défile plus, elle se recherche, comme la
+/// fonction à l'inscription (_pickFonction) et comme la capture
+/// e-justice.ci, champ en haut et liste filtrée en dessous.
+/// Renvoie l'index choisi, ou null si la feuille est fermée.
+Future<int?> choisirIndicatif(
+    BuildContext context, List<(String, String)> codes, int actuel) async {
+  var query = '';
+  return showModalBottomSheet<int>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: const Color(0xFFF4F6F9),
+    shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+    builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
+      final indices = filtrerIndicatifs(codes, query);
+      return SizedBox(
+        height: MediaQuery.of(ctx).size.height * 0.85,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+              16, 16, 16, MediaQuery.of(ctx).viewInsets.bottom + 16),
+          child: Column(children: [
+            Text(tr('Indicatif'),
+                style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF0F1C2E))),
+            const SizedBox(height: 8),
+            TextField(
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.search_outlined),
+                hintText: tr('Rechercher un pays ou un indicatif'),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              onChanged: (v) => setS(() => query = v),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: indices.isEmpty
+                  ? Center(child: Text(tr('Aucun pays trouvé.')))
+                  : ListView(children: [
+                      for (final i in indices)
+                        ListTile(
+                          title: Text('${codes[i].$1} ${codes[i].$2}',
+                              style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF0F1C2E),
+                                  letterSpacing: 0.2)),
+                          trailing: i == actuel
+                              ? const Icon(Icons.check,
+                                  color: Color(0xFFB47B17))
+                              : null,
+                          onTap: () => Navigator.pop(ctx, i),
+                        ),
+                    ]),
+            ),
+          ]),
+        ),
+      );
+    }),
+  );
+}
+
 /// Champ d'identifiant de connexion, un seul champ pour
 /// l'e-mail et le numéro, comme Facebook. Le contrôleur vient
 /// du parent, qui garde le texte et l'envoie ; le menu
@@ -220,26 +308,25 @@ class _ChampIdentifiantConnexionState extends State<ChampIdentifiantConnexion> {
         maintainState: true,
         child: SizedBox(
           width: 132,
-          child: DropdownButtonFormField<int>(
-            value: widget.indicatifIndex,
-            selectedItemBuilder: (context) => [
-              for (final c in widget.codes)
-                Text(c.$1, overflow: TextOverflow.ellipsis),
-            ],
-            items: [
-              for (var i = 0; i < widget.codes.length; i++)
-                DropdownMenuItem(
-                  value: i,
-                  child: Text(
-                    '${widget.codes[i].$1} ${widget.codes[i].$2}',
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-            ],
-            onChanged: (v) {
-              if (v != null) widget.onIndicatifChanged(v);
+          // Indicatif avec recherche, 22 nov. 2026 : 60 entrées,
+          // la feuille de recherche remplace le menu déroulant
+          // nu, même patron que la fonction à l'inscription.
+          child: InkWell(
+            onTap: () async {
+              final choisi = await choisirIndicatif(
+                  context, widget.codes, widget.indicatifIndex);
+              if (choisi != null) widget.onIndicatifChanged(choisi);
             },
-            decoration: widget.decoration(tr('Indicatif')),
+            borderRadius: BorderRadius.circular(14),
+            child: InputDecorator(
+              decoration: widget.decoration(tr('Indicatif')),
+              child: Row(children: [
+                Expanded(
+                    child: Text(widget.codes[widget.indicatifIndex].$1,
+                        overflow: TextOverflow.ellipsis)),
+                const Icon(Icons.keyboard_arrow_down_outlined, size: 20),
+              ]),
+            ),
           ),
         ),
       ),
