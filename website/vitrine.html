@@ -52,6 +52,7 @@ header{position:sticky;top:0;z-index:40;background:rgba(255,255,255,.96);border-
 .nav{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:14px 0;flex-wrap:wrap}
 .brand{font-family:'Cinzel',serif;font-weight:700;letter-spacing:.04em;color:var(--navy);font-size:1.05rem}
 .brand span{color:var(--gold)}
+header .brand span{color:var(--gold-dark)}
 footer .brand{color:#fff}
 .navlinks{display:flex;gap:22px;flex-wrap:wrap;font-weight:600;font-size:.92rem;color:var(--navy)}
 .navlinks a:hover{color:var(--gold-dark)}
@@ -68,6 +69,7 @@ section{padding:84px 0}
 .btn-gold{background:var(--gold);color:var(--navy)}
 .btn-outline{background:transparent;color:var(--gold);border-color:var(--gold)}
 .btn-soon{background:transparent;color:var(--gold);border-color:var(--gold);cursor:default}
+.paper .btn-soon{color:var(--gold-dark);border-color:var(--gold-dark)}
 .hero-actions{display:flex;gap:14px;flex-wrap:wrap}
 .verse{background:var(--paper);text-align:center}
 .verse blockquote{font-size:clamp(1.3rem,3vw,1.7rem);font-style:italic;color:var(--navy);line-height:1.5;max-width:820px;margin:0 auto}
@@ -164,6 +166,8 @@ footer{background:var(--navy);color:#cbd5e1;padding:60px 0 30px}
 .dots span{width:22px;height:14px;border-radius:999px;background:#475569}
 .dots span:first-child{width:36px;background:var(--gold)}
 </style>
+<!-- Mesure d'audience respectueuse de la vie privée, 22 nov. 2026 : Plausible, sans cookie, sans traceur. Le compte reste à créer par la structure, sans quoi rien n'est compté. -->
+<script defer data-domain="connexionprophetique.com" src="https://plausible.io/js/script.js"></script>
 </head>
 <body>
 <header>
@@ -243,7 +247,7 @@ footer{background:var(--navy);color:#cbd5e1;padding:60px 0 30px}
 <section id="activites">
 <div class="container">
 <div class="section-head">
-<span class="eyebrow" style="color:var(--gold)">Ce qui nous rassemble</span>
+<span class="eyebrow" style="color:var(--gold-dark)">Ce qui nous rassemble</span>
 <h2>Grandir, prier et servir ensemble</h2>
 <p class="lead">Des espaces pour nourrir sa foi, développer des liens fraternels et mettre ses talents au service des autres.</p>
 </div>
@@ -501,7 +505,7 @@ footer{background:var(--navy);color:#cbd5e1;padding:60px 0 30px}
 </div>
 <div class="form-box">
 <h3 style="font-size:1.5rem;color:var(--navy);margin-bottom:8px">Préparer un message</h3>
-<p class="form-note">Ce formulaire prépare votre message dans votre propre messagerie, vers support@connexionprophetique.com. Vous l’envoyez vous-même depuis votre messagerie.</p>
+<p class="form-note">Ce formulaire envoie votre message à la structure, qui vous répondra à l’adresse e-mail indiquée.</p>
 <form id="contactForm">
 <label for="fName">Nom complet</label>
 <input id="fName" name="name" type="text" autocomplete="name" required>
@@ -519,8 +523,10 @@ footer{background:var(--navy);color:#cbd5e1;padding:60px 0 30px}
 <label for="fMessage">Votre message</label>
 <textarea id="fMessage" name="message" rows="5" required></textarea>
 <label class="form-check"><input id="fNews" name="news" type="checkbox"> Je souhaite recevoir les actualités, annonces de camps et lettres d’édification de CONNEXION PROPHÉTIQUE.</label>
-<button class="btn btn-gold" type="submit" style="width:100%">Préparer mon message dans ma messagerie</button>
-<p id="formPrepared" style="display:none;color:var(--gold-dark);font-weight:700;margin-top:16px">Message préparé : votre messagerie s’ouvre avec le texte, à envoyer vous-même.</p>
+<input id="fSite" name="site" type="text" autocomplete="off" tabindex="-1" aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden">
+<button class="btn btn-gold" type="submit" style="width:100%">Envoyer mon message</button>
+<p id="formEnvoye" style="display:none;color:var(--gold-dark);font-weight:700;margin-top:16px">Message envoyé, merci. La structure vous répondra à l’adresse e-mail indiquée.</p>
+<p id="formErreur" style="display:none;color:#B42318;font-weight:700;margin-top:16px">L’envoi a échoué. Réessaie plus tard, ou écris directement à support@connexionprophetique.com.</p>
 </form>
 </div>
 </div>
@@ -539,7 +545,10 @@ footer{background:var(--navy);color:#cbd5e1;padding:60px 0 30px}
 <a href="#accueil">Application</a>
 <a href="#quiz">Quiz</a>
 <a href="#dons">Donner</a>
-<a href="https://www.connexionprophetique.com/">Confidentialité</a>
+<a href="privacy.html">Confidentialité</a>
+<a href="cgu.html">Conditions générales d’utilisation</a>
+<a href="cgv.html">Conditions générales de vente</a>
+<a href="mentions-legales.html">Mentions légales</a>
 </div>
 <div>
 <h3>Contact</h3>
@@ -568,19 +577,39 @@ update();
 setInterval(update, 1000);
 var form = document.getElementById('contactForm');
 if(form){
-form.addEventListener('submit', function(e){
+form.addEventListener('submit', async function(e){
 e.preventDefault();
+var bouton = form.querySelector('button[type="submit"]');
+var envoye = document.getElementById('formEnvoye');
+var erreur = document.getElementById('formErreur');
+if(envoye){ envoye.style.display = 'none'; }
+if(erreur){ erreur.style.display = 'none'; }
 var name = document.getElementById('fName').value.trim();
 var email = document.getElementById('fEmail').value.trim();
 var phone = document.getElementById('fPhone').value.trim();
 var subject = document.getElementById('fSubject').value;
 var message = document.getElementById('fMessage').value.trim();
-if(document.getElementById('fNews').checked){
-message = message + '\n\nJe souhaite recevoir les actualités, annonces de camps et lettres d\'édification de CONNEXION PROPHÉTIQUE.';
+var site = document.getElementById('fSite').value;
+var actus = document.getElementById('fNews').checked;
+if(message.length < 10){
+if(erreur){ erreur.textContent = 'Votre message est trop court, 10 caractères au minimum.'; erreur.style.display = 'block'; }
+return;
 }
-var body = 'Nom : ' + name + '\nE-mail : ' + email + '\nTéléphone : ' + (phone || 'Non renseigné') + '\n\n' + message;
-window.location.href = 'mailto:support@connexionprophetique.com?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
-document.getElementById('formPrepared').style.display = 'block';
+if(bouton){ bouton.disabled = true; }
+try{
+var reponse = await fetch('https://connexion-prophetique.onrender.com/contact', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ nom: name, email: email, telephone: phone, sujet: subject, message: message, actus: actus, site: site })
+});
+if(!reponse.ok){ throw new Error('envoi ' + reponse.status); }
+form.reset();
+if(envoye){ envoye.style.display = 'block'; }
+} catch(err){
+if(erreur){ erreur.textContent = 'L’envoi a échoué. Réessaie plus tard, ou écris directement à support@connexionprophetique.com.'; erreur.style.display = 'block'; }
+} finally {
+if(bouton){ bouton.disabled = false; }
+}
 });
 }
 
