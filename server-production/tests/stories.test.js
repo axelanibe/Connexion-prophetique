@@ -12,6 +12,9 @@
 // Lancer :  npm test   (depuis server-production)
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   DUREE_STORY_HEURES,
@@ -28,12 +31,15 @@ import {
   cleR2Valide,
   DELAI_ENVOI_R2_MS,
   DELAI_SUPPRESSION_R2_MS,
+  DELAI_LECTURE_R2_MS,
   dateExpirationStory,
   storyExpiree,
   validerPublication,
   validerEnregistrementStory,
   trouverDoublonRecent,
   urlSigneeR2,
+  lireObjetR2,
+  urlMediaStory,
   entetesSignesR2,
   formaterStoryPublique,
 } from '../src/stories.js';
@@ -241,4 +247,61 @@ test('formaterStoryPublique : seulement l’adresse signée, jamais la clé R2',
     cree_le: '2026-11-17T12:00:00.000Z',
     expire_le: '2026-11-18T12:00:00.000Z',
   });
+});
+
+// ── Lecture par l'API, carte 153 ─────────────────────────────────
+test('urlMediaStory : adresse API de lecture, jamais R2 direct', () => {
+  const id = '11111111-1111-1111-1111-111111111111';
+  assert.equal(
+    urlMediaStory('https://connexion-prophetique.onrender.com', id),
+    `https://connexion-prophetique.onrender.com/stories/${id}/media`,
+  );
+  assert.equal(
+    urlMediaStory('https://connexion-prophetique.onrender.com/', id),
+    `https://connexion-prophetique.onrender.com/stories/${id}/media`,
+  );
+  assert.ok(!urlMediaStory('https://connexion-prophetique.onrender.com', id).includes('r2.cloudflarestorage.com'));
+  assert.equal(urlMediaStory('', id), null);
+  assert.equal(urlMediaStory('https://connexion-prophetique.onrender.com', ''), null);
+  assert.equal(urlMediaStory(null, id), null);
+  assert.equal(DELAI_LECTURE_R2_MS, 30 * 1000);
+});
+
+test('lireObjetR2 : octets renvoyés quand R2 répond, erreur 502 sinon', async () => {
+  const dOrigine = globalThis.fetch;
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+  try {
+    let appelee = '';
+    globalThis.fetch = async (url) => {
+      appelee = String(url);
+      return new Response(png, { status: 200 });
+    };
+    const octets = await lireObjetR2(CONFIG, 'stories/abc.jpg');
+    assert.ok(Buffer.isBuffer(octets));
+    assert.deepEqual(octets, png);
+    assert.ok(appelee.includes('r2.cloudflarestorage.com'), 'la lecture passe par R2 côté serveur');
+    assert.ok(appelee.includes('stories/abc.jpg'));
+    globalThis.fetch = async () => new Response('Non trouvé', { status: 404 });
+    await assert.rejects(
+      () => lireObjetR2(CONFIG, 'stories/abc.jpg'),
+      (e) => e.statusCode === 502,
+    );
+    globalThis.fetch = async () => { throw new Error('réseau coupé'); };
+    await assert.rejects(
+      () => lireObjetR2(CONFIG, 'stories/abc.jpg'),
+      (e) => e.statusCode === 502,
+    );
+  } finally {
+    globalThis.fetch = dOrigine;
+  }
+});
+
+test('câblage, carte 153 : GET /stories renvoie l’adresse API, la route media existe', () => {
+  const dossier = path.dirname(fileURLToPath(import.meta.url));
+  const serveur = fs.readFileSync(path.join(dossier, '..', 'server.js'), 'utf8');
+  assert.ok(serveur.includes("app.get('/stories/:id/media'"), 'la route media existe');
+  assert.ok(serveur.includes('urlMediaStory(CFG.publicBaseUrl, ligne.id)'), 'la liste renvoie l’adresse API');
+  assert.ok(serveur.includes('urlMediaStory(CFG.publicBaseUrl, doublon.id)'), 'le doublon renvoie l’adresse API');
+  assert.ok(serveur.includes('urlMediaStory(CFG.publicBaseUrl, cree.id)'), 'la création renvoie l’adresse API');
+  assert.ok(serveur.includes('lireObjetR2(config, ligne.cle_r2)'), 'la route media lit R2 côté serveur');
 });
