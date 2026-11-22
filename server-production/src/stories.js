@@ -34,6 +34,13 @@ export const DUREE_URL_SIGNEE_SECONDES = 900;
 export const TAILLE_MAX_PHOTO_OCTETS = 5 * 1024 * 1024;
 export const TAILLE_MAX_VIDEO_OCTETS = 25 * 1024 * 1024;
 
+/// Délais des appels R2, réécriture 22 nov. 2026 : un envoi ou
+/// une suppression ne doit jamais bloquer une requête
+/// indéfiniment. Sans réponse dans ce délai, l'appel échoue et
+/// la requête répond quand même, sans laisser le membre en attente.
+export const DELAI_ENVOI_R2_MS = 60 * 1000;
+export const DELAI_SUPPRESSION_R2_MS = 15 * 1000;
+
 export const TYPES_STORY = Object.freeze(['photo', 'video']);
 
 export const MIMES_PHOTO = Object.freeze(['image/jpeg', 'image/png', 'image/webp']);
@@ -77,6 +84,14 @@ export function cleStory(type, mime) {
   return `stories/${crypto.randomUUID()}.${ext}`;
 }
 
+/// Clé R2 valable pour une story, réécriture 22 nov. 2026 : une
+/// chaîne non vide dans le dossier stories. Une ligne sans clé
+/// valable est écartée de la liste, jamais une erreur pour toute
+/// la liste.
+export function cleR2Valide(cle) {
+  return typeof cle === 'string' && cle.startsWith('stories/') && cle.length > 'stories/'.length;
+}
+
 /// Date d'expiration d'une story créée maintenant : 24 heures.
 export function dateExpirationStory(creeLe = new Date()) {
   return new Date(creeLe.getTime() + DUREE_STORY_HEURES * 60 * 60 * 1000);
@@ -98,6 +113,50 @@ export function validerPublication({ type, mime, tailleOctets }) {
   const max = type === 'photo' ? TAILLE_MAX_PHOTO_OCTETS : TAILLE_MAX_VIDEO_OCTETS;
   if (!Number.isInteger(tailleOctets) || tailleOctets <= 0 || tailleOctets > max) {
     return { statut: 413, message: 'Média trop volumineux.' };
+  }
+  return null;
+}
+
+/// Refus d'enregistrement, null quand le dossier est bon.
+/// Vérifie le dossier complet avant l'envoi R2 et l'INSERT,
+/// réécriture 22 nov. 2026, expert : champs obligatoires
+/// présents, types corrects, valeurs cohérentes. Une story
+/// invalide est refusée à la publication avec un message clair,
+/// jamais acceptée puis subie par tous les clients.
+export function validerEnregistrementStory({ type, cle, mime, tailleOctets, etablissementId, expireLe }) {
+  if (!TYPES_STORY.includes(type)) return { statut: 400, message: 'Type de story invalide.' };
+  if (!cleR2Valide(cle)) return { statut: 400, message: 'Clé de média invalide.' };
+  const mimes = type === 'photo' ? MIMES_PHOTO : MIMES_VIDEO;
+  if (!mimes.includes(mime)) return { statut: 415, message: 'Type de média non autorisé.' };
+  const max = type === 'photo' ? TAILLE_MAX_PHOTO_OCTETS : TAILLE_MAX_VIDEO_OCTETS;
+  if (!Number.isInteger(tailleOctets) || tailleOctets <= 0 || tailleOctets > max) {
+    return { statut: 413, message: 'Média trop volumineux.' };
+  }
+  if (etablissementId != null && typeof etablissementId !== 'string') {
+    return { statut: 400, message: 'Établissement invalide.' };
+  }
+  if (!(expireLe instanceof Date) || Number.isNaN(expireLe.getTime()) || expireLe.getTime() <= Date.now()) {
+    return { statut: 400, message: 'Expiration de story invalide.' };
+  }
+  return null;
+}
+
+/// Trouve un doublon récent, réécriture 22 nov. 2026 : une
+/// publication identique (même auteur, même type, même format,
+/// même taille) enregistrée il y a moins de 60 secondes est un
+/// double envoi, pas une nouvelle story. Renvoie la story
+/// existante, sinon null. Sans auteur, pas de dédoublonnage.
+export function trouverDoublonRecent(candidat, recents, { fenetreSecondes = 60, maintenant = new Date() } = {}) {
+  if (!candidat || candidat.auteurId == null) return null;
+  const limite = maintenant.getTime() - fenetreSecondes * 1000;
+  for (const ligne of recents) {
+    if (ligne.auteur_id !== candidat.auteurId) continue;
+    if (ligne.type !== candidat.type) continue;
+    if (ligne.type_mime !== candidat.mime) continue;
+    if (ligne.taille_octets !== candidat.tailleOctets) continue;
+    const cree = new Date(ligne.cree_le).getTime();
+    if (Number.isNaN(cree) || cree <= limite) continue;
+    return ligne;
   }
   return null;
 }
@@ -199,10 +258,12 @@ export function entetesSignesR2(config, methode, cle, { octets = Buffer.alloc(0)
 }
 
 /// Envoi d'un objet vers R2 (PUT signé). Lève une erreur quand
-/// R2 refuse, avec son statut, sans jamais exposer la clé.
+/// R2 refuse, avec son statut, sans jamais exposer la clé. Le
+/// délai borne l'attente : un R2 qui ne répond pas ne bloque
+/// jamais la publication indéfiniment.
 export async function envoyerObjetR2(config, cle, octets, typeMime) {
   const { url, headers } = entetesSignesR2(config, 'PUT', cle, { octets, typeMime });
-  const res = await fetch(url, { method: 'PUT', headers, body: octets });
+  const res = await fetch(url, { method: 'PUT', headers, body: octets, signal: AbortSignal.timeout(DELAI_ENVOI_R2_MS) });
   if (!res.ok) {
     const erreur = new Error(`Envoi R2 refusé (${res.status}).`);
     erreur.statusCode = res.status;
@@ -213,10 +274,11 @@ export async function envoyerObjetR2(config, cle, octets, typeMime) {
 /// Suppression d'un objet R2 (DELETE signé). Ne lève jamais
 /// d'erreur : en purge, un objet déjà absent ne doit pas
 /// bloquer la suppression de la ligne, sinon la trace resterait.
+/// Le délai borne l'attente, un R2 lent ne retient pas la purge.
 export async function supprimerObjetR2(config, cle) {
   try {
     const { url, headers } = entetesSignesR2(config, 'DELETE', cle);
-    await fetch(url, { method: 'DELETE', headers });
+    await fetch(url, { method: 'DELETE', headers, signal: AbortSignal.timeout(DELAI_SUPPRESSION_R2_MS) });
     return true;
   } catch {
     return false;
