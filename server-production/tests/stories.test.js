@@ -25,9 +25,14 @@ import {
   r2Actif,
   hoteR2,
   cleStory,
+  cleR2Valide,
+  DELAI_ENVOI_R2_MS,
+  DELAI_SUPPRESSION_R2_MS,
   dateExpirationStory,
   storyExpiree,
   validerPublication,
+  validerEnregistrementStory,
+  trouverDoublonRecent,
   urlSigneeR2,
   entetesSignesR2,
   formaterStoryPublique,
@@ -77,6 +82,25 @@ test('cleStory : dossier stories, extension du type réel, unique', () => {
   assert.notEqual(cleStory('photo', 'image/jpeg'), cleStory('photo', 'image/jpeg'));
 });
 
+// ── Clé R2 valable, réécriture 22 nov. 2026 ───────────────
+test('cleR2Valide : seulement une clé non vide dans stories/', () => {
+  assert.equal(cleR2Valide('stories/abc.jpg'), true);
+  assert.equal(cleR2Valide('stories/11111111-1111-1111-1111-111111111111.mp4'), true);
+  assert.equal(cleR2Valide('stories/'), false);
+  assert.equal(cleR2Valide(''), false);
+  assert.equal(cleR2Valide(null), false);
+  assert.equal(cleR2Valide(undefined), false);
+  assert.equal(cleR2Valide('autre/abc.jpg'), false);
+  assert.equal(cleR2Valide(123), false);
+});
+
+// ── Délais R2, réécriture 22 nov. 2026 ────────────────────
+test('délais R2 : bornés et positifs, envoi plus long que suppression', () => {
+  assert.ok(Number.isInteger(DELAI_ENVOI_R2_MS) && DELAI_ENVOI_R2_MS > 0);
+  assert.ok(Number.isInteger(DELAI_SUPPRESSION_R2_MS) && DELAI_SUPPRESSION_R2_MS > 0);
+  assert.ok(DELAI_ENVOI_R2_MS > DELAI_SUPPRESSION_R2_MS);
+});
+
 // ── Expiration ───────────────────────────────────────────────
 test('dateExpirationStory : 24 heures exactement après la création', () => {
   const cree = new Date('2026-11-17T12:00:00.000Z');
@@ -110,6 +134,50 @@ test('validerPublication : cas valides et refus', () => {
     validerPublication({ type: 'video', mime: 'video/mp4', tailleOctets: 0 }),
     { statut: 413, message: 'Média trop volumineux.' },
   );
+});
+
+// ── Validation d'enregistrement, réécriture 22 nov. 2026 ─
+test('validerEnregistrementStory : dossier bon, refus clairs sinon', () => {
+  const bon = {
+    type: 'photo',
+    cle: 'stories/abc.jpg',
+    mime: 'image/jpeg',
+    tailleOctets: 1000,
+    etablissementId: null,
+    expireLe: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  };
+  assert.equal(validerEnregistrementStory(bon), null);
+  assert.equal(validerEnregistrementStory({ ...bon, type: 'audio' }).statut, 400);
+  assert.equal(validerEnregistrementStory({ ...bon, cle: '' }).statut, 400);
+  assert.equal(validerEnregistrementStory({ ...bon, cle: 'autre/abc.jpg' }).statut, 400);
+  assert.equal(validerEnregistrementStory({ ...bon, mime: 'video/mp4' }).statut, 415);
+  assert.equal(validerEnregistrementStory({ ...bon, tailleOctets: 0 }).statut, 413);
+  assert.equal(validerEnregistrementStory({ ...bon, tailleOctets: 5 * 1024 * 1024 + 1 }).statut, 413);
+  assert.equal(validerEnregistrementStory({ ...bon, etablissementId: 123 }).statut, 400);
+  assert.equal(validerEnregistrementStory({ ...bon, expireLe: new Date(Date.now() - 1000) }).statut, 400);
+  assert.equal(validerEnregistrementStory({ ...bon, expireLe: 'demain' }).statut, 400);
+});
+
+// ── Dédoublonnage, réécriture 22 nov. 2026 ───────────────
+test('trouverDoublonRecent : même publication récente, sinon null', () => {
+  const maintenant = new Date('2026-11-22T12:00:00.000Z');
+  const candidat = { auteurId: 'auteur-1', type: 'photo', mime: 'image/jpeg', tailleOctets: 1000 };
+  const recente = {
+    id: '11111111-1111-1111-1111-111111111111',
+    auteur_id: 'auteur-1',
+    type: 'photo',
+    type_mime: 'image/jpeg',
+    taille_octets: 1000,
+    cree_le: new Date('2026-11-22T11:59:30.000Z'),
+  };
+  assert.equal(trouverDoublonRecent(candidat, [recente], { maintenant }), recente);
+  assert.equal(trouverDoublonRecent(candidat, [], { maintenant }), null);
+  assert.equal(trouverDoublonRecent({ ...candidat, auteurId: null }, [recente], { maintenant }), null);
+  assert.equal(trouverDoublonRecent({ ...candidat, auteurId: 'auteur-2' }, [recente], { maintenant }), null);
+  assert.equal(trouverDoublonRecent({ ...candidat, type: 'video' }, [recente], { maintenant }), null);
+  assert.equal(trouverDoublonRecent({ ...candidat, tailleOctets: 2000 }, [recente], { maintenant }), null);
+  const ancienne = { ...recente, cree_le: new Date('2026-11-22T11:58:00.000Z') };
+  assert.equal(trouverDoublonRecent(candidat, [ancienne], { maintenant }), null);
 });
 
 // ── Signature SigV4 ──────────────────────────────────────────
