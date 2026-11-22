@@ -116,6 +116,8 @@ import {
 import {
   NB_CRENEAUX,
   normaliserHeure,
+  normaliserJour,
+  jourPasse,
   validerEngagement,
   chaineComplete,
   compterCouverts,
@@ -7879,17 +7881,35 @@ app.delete('/temoignages/:id', { preHandler: membreG }, async (req) => {
 // créneau est pris ou quand le membre a déjà un créneau ce
 // jour-là. L'unicité en base protège aussi deux demandes en
 // même temps, le refus reste un 409.
-app.get('/chaine-priere', { preHandler: membreG }, async () => {
+// ───────────────────────── Chaîne de prière en direct ─────────────────────────
+// Refonte d'après la maquette, 21 nov. 2026 : la page navigue
+// d'un jour à l'autre, la réservation est ouverte aujourd'hui
+// et les jours à venir, les jours passés sont en lecture
+// seule. Le jour demandé arrive en ?jour=AAAA-MM-JJ sur la
+// lecture, en corps sur l'engagement et la libération, il vaut
+// le jour courant quand il est absent. La réponse donne aussi
+// aujourd_hui, le jour courant côté serveur, pour que
+// l'application sache quel jour est passé. Le déplacement d'un
+// créneau vers un autre le même jour se fait en une seule
+// opération, deplacer vrai, pour ne jamais perdre son créneau
+// entre la libération et la reprise.
+app.get('/chaine-priere', { preHandler: membreG }, async (req) => {
+  const demande = typeof req.query.jour === 'string' ? req.query.jour : null;
+  if (demande != null && normaliserJour(demande) == null) {
+    throw httpError(400, 'Jour invalide : un jour AAAA-MM-JJ.');
+  }
+  const jour = demande ?? (await q(`SELECT CURRENT_DATE::text AS jour`)).rows[0]?.jour;
   const lignes = (await q(
     `SELECT c.heure, c.membre_id, m.nom_complet
      FROM chaine_priere c
      LEFT JOIN membres m ON m.id = c.membre_id
-     WHERE c.jour = CURRENT_DATE
+     WHERE c.jour = $1::date
      ORDER BY c.heure ASC`,
+    [jour],
   )).rows;
-  const jour = (await q(`SELECT CURRENT_DATE::text AS jour`)).rows[0]?.jour ?? null;
+  const aujourdHui = (await q(`SELECT CURRENT_DATE::text AS jour`)).rows[0]?.jour ?? null;
   const creneaux = chaineComplete(lignes);
-  return { jour, creneaux, couverts: compterCouverts(creneaux), total: NB_CRENEAUX };
+  return { jour, aujourd_hui: aujourdHui, creneaux, couverts: compterCouverts(creneaux), total: NB_CRENEAUX };
 });
 
 app.post('/chaine-priere', { preHandler: membreG }, async (req, reply) => {
@@ -7897,27 +7917,40 @@ app.post('/chaine-priere', { preHandler: membreG }, async (req, reply) => {
   const refus = validerEngagement(req.body ?? {});
   if (refus) throw httpError(refus.statut, refus.message);
   const heure = normaliserHeure(req.body.heure);
-  const pris = (await q(
-    `SELECT membre_id FROM chaine_priere WHERE jour = CURRENT_DATE AND heure = $1`,
-    [heure],
-  )).rows[0];
-  if (pris) throw httpError(409, 'Ce créneau est déjà pris.');
-  const mien = (await q(
-    `SELECT heure FROM chaine_priere WHERE jour = CURRENT_DATE AND membre_id = $1`,
-    [req.user.mid],
-  )).rows[0];
-  if (mien) throw httpError(409, 'Tu as déjà un créneau aujourd’hui.');
-  let cree;
-  try {
-    cree = (await q(
-      `INSERT INTO chaine_priere (membre_id, jour, heure) VALUES ($1, CURRENT_DATE, $2)
-       RETURNING id, membre_id, heure, jour, cree_le`,
-      [req.user.mid, heure],
+  const demande = typeof req.body.jour === 'string' ? req.body.jour : null;
+  const jour = demande ?? (await q(`SELECT CURRENT_DATE::text AS jour`)).rows[0]?.jour;
+  const aujourdHui = (await q(`SELECT CURRENT_DATE::text AS jour`)).rows[0]?.jour ?? null;
+  if (jourPasse(jour, aujourdHui)) throw httpError(400, 'On ne peut pas réserver un jour passé.');
+  const deplacer = req.body.deplacer === true;
+  const cree = await tx(async (c) => {
+    const pris = (await c.query(
+      `SELECT membre_id FROM chaine_priere WHERE jour = $1::date AND heure = $2`,
+      [jour, heure],
     )).rows[0];
-  } catch (e) {
-    if (e?.code === '23505') throw httpError(409, 'Ce créneau est déjà pris.');
-    throw e;
-  }
+    if (pris) throw httpError(409, 'Ce créneau est déjà pris.');
+    if (deplacer) {
+      await c.query(
+        `DELETE FROM chaine_priere WHERE jour = $1::date AND membre_id = $2`,
+        [jour, req.user.mid],
+      );
+    } else {
+      const mien = (await c.query(
+        `SELECT heure FROM chaine_priere WHERE jour = $1::date AND membre_id = $2`,
+        [jour, req.user.mid],
+      )).rows[0];
+      if (mien) throw httpError(409, 'Tu as déjà un créneau ce jour-là.');
+    }
+    try {
+      return (await c.query(
+        `INSERT INTO chaine_priere (membre_id, jour, heure) VALUES ($1, $2::date, $3)
+         RETURNING id, membre_id, heure, jour, cree_le`,
+        [req.user.mid, jour, heure],
+      )).rows[0];
+    } catch (e) {
+      if (e?.code === '23505') throw httpError(409, 'Ce créneau est déjà pris.');
+      throw e;
+    }
+  });
   const nom = (await q(`SELECT nom_complet FROM membres WHERE id = $1`, [req.user.mid])).rows[0];
   return reply.code(201).send({
     jour: cree.jour instanceof Date ? cree.jour.toISOString().slice(0, 10) : String(cree.jour).slice(0, 10),
@@ -7927,12 +7960,19 @@ app.post('/chaine-priere', { preHandler: membreG }, async (req, reply) => {
 
 app.delete('/chaine-priere', { preHandler: membreG }, async (req) => {
   if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour libérer un créneau.');
+  const demande = typeof req.body?.jour === 'string' ? req.body.jour : null;
+  if (demande != null && normaliserJour(demande) == null) {
+    throw httpError(400, 'Jour invalide : un jour AAAA-MM-JJ.');
+  }
+  const jour = demande ?? (await q(`SELECT CURRENT_DATE::text AS jour`)).rows[0]?.jour;
+  const aujourdHui = (await q(`SELECT CURRENT_DATE::text AS jour`)).rows[0]?.jour ?? null;
+  if (jourPasse(jour, aujourdHui)) throw httpError(400, 'On ne peut pas libérer un jour passé.');
   const supprime = (await q(
-    `DELETE FROM chaine_priere WHERE jour = CURRENT_DATE AND membre_id = $1 RETURNING heure`,
-    [req.user.mid],
+    `DELETE FROM chaine_priere WHERE jour = $1::date AND membre_id = $2 RETURNING heure`,
+    [jour, req.user.mid],
   )).rows[0];
-  if (!supprime) throw httpError(404, 'Tu n’as pas de créneau aujourd’hui.');
-  return { ok: true, heure: supprime.heure };
+  if (!supprime) throw httpError(404, 'Tu n’as pas de créneau ce jour-là.');
+  return { ok: true, heure: supprime.heure, jour };
 });
 
 // ───────────────────────── Défis de prière 7 jours ─────────────────────────
