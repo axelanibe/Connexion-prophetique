@@ -14,6 +14,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'auth_session.dart';
 import 'stockage_auth.dart';
 
 const String kApiBaseUrl = 'https://connexion-prophetique.onrender.com';
@@ -26,7 +27,21 @@ class ApiException implements Exception {
 }
 
 class ApiClient {
-  ApiClient({http.Client? client}) : _client = client ?? http.Client();
+  ApiClient({http.Client? client}) : _client = client ?? http.Client() {
+    _authSession = AuthSession(
+      refreshCall: _appelRafraichir,
+      readRefresh: () async => _refreshToken,
+      saveTokens: (pair) async {
+        await saveToken(pair.access);
+        await _saveRefresh(pair.refresh);
+      },
+      clearTokens: () async {
+        await saveToken(null);
+        await _saveRefresh(null);
+      },
+      onSessionLost: () => onSessionExpiree?.call(),
+    );
+  }
 
   final http.Client _client;
   String? _accessToken;
@@ -37,24 +52,26 @@ class ApiClient {
   // reconnexion. Le mot de passe lui-même n'est jamais stocké.
   bool _persistTokens = true;
 
-  // Renouvellement de session, 21 nov. 2026 : file unique, délai
-  // après échec, déconnexion après 3 échecs. Sans file unique,
-  // chaque requête en 401 postait son propre renouvellement, et
-  // le jeton à usage unique tournait à chaque fois : les
-  // renouvellements suivants échouaient, puis la limite de 10 par
-  // minute bloquait tout le monde derrière la même adresse IP.
-  Future<bool>? _refreshEnCours;
-  DateTime? _dernierEchecRefresh;
-  int _echecsRefreshConsecutifs = 0;
-  // Délai minimal entre deux tentatives après un échec. Champ
-  // modifiable en test, pour ne pas attendre 30 secondes.
-  Duration delaiApresEchecRefresh = const Duration(seconds: 30);
-  static const _maxEchecsRefresh = 3;
+  // Renouvellement de session, 21 nov. 2026 : un seul
+  // renouvellement à la fois, tentatives limitées avec délai et
+  // gigue, respect de Retry-After, déconnexion propre seulement
+  // sur 401/403 définitif. Sans file unique, chaque requête en
+  // 401 postait son propre renouvellement, et le jeton à usage
+  // unique tournait à chaque fois : les renouvellements suivants
+  // échouaient, puis la limite de 10 par minute bloquait tout le
+  // monde derrière la même adresse IP. Voir lib/auth_session.dart.
+  late final AuthSession _authSession;
 
-  /// Appelée quand la session est définitivement perdue, 3 échecs
-  /// consécutifs de renouvellement : l'application efface les
-  /// jetons et renvoie vers l'écran de connexion existant, au lieu
-  /// de laisser des pages vides. Branchée dans main().
+  /// Délais entre tentatives du renouvellement, modifiables en
+  /// test pour ne pas attendre. Transmis à la session
+  /// d'authentification.
+  List<Duration> get delaisRenouvellement => _authSession.delais;
+  set delaisRenouvellement(List<Duration> v) => _authSession.delais = v;
+
+  /// Appelée quand la session est définitivement perdue, 401 ou
+  /// 403 du renouvellement : l'application efface les jetons et
+  /// renvoie vers l'écran de connexion existant, au lieu de
+  /// laisser des pages vides. Branchée dans main().
   void Function()? onSessionExpiree;
 
   Future<void> restoreToken() async {
@@ -93,10 +110,6 @@ class ApiClient {
     if (token == null) {
       await StockageAuth.effacer('api_refresh_token');
     } else {
-      // Nouveau jeton, donc nouvelle session : les échecs de
-      // renouvellement de l'ancienne ne comptent plus.
-      _echecsRefreshConsecutifs = 0;
-      _dernierEchecRefresh = null;
       if (persist ?? _persistTokens) {
         await StockageAuth.ecrire('api_refresh_token', token);
       }
@@ -176,9 +189,11 @@ class ApiClient {
     }
   }
 
-  Map<String, String> get _headers => {
+  Map<String, String> get _headers => _headersWith(_accessToken);
+
+  Map<String, String> _headersWith(String? access) => {
         'Content-Type': 'application/json',
-        if (_accessToken != null) 'Authorization': 'Bearer $_accessToken',
+        if (access != null) 'Authorization': 'Bearer $access',
       };
 
   ApiException _error(int status, String body) {
@@ -193,13 +208,24 @@ class ApiClient {
   Future<http.Response> _sendWithRefresh(
     Future<http.Response> Function(Map<String, String> headers) send,
   ) async {
-    var res = await send(_headers);
-    if (res.statusCode == 401 && _refreshToken != null) {
-      if (await refreshAccess()) {
-        res = await send(_headers);
-      }
+    // Sans jeton de rafraîchissement, pas de renouvellement : on
+    // envoie une fois et le 401 remonte tel quel, comme avant.
+    if (_refreshToken == null) return send(_headers);
+    try {
+      return await withAuth<http.Response>(
+        _authSession,
+        (access) async {
+          final res = await send(_headersWith(access));
+          if (res.statusCode == 401) throw UnauthorizedException(res);
+          return res;
+        },
+        () => _accessToken,
+      );
+    } on UnauthorizedException catch (e) {
+      // Le second essai est aussi en 401 : l'appelant reçoit
+      // l'erreur standard, comme avant.
+      throw _error(401, e.response.body);
     }
-    return res;
   }
 
   Future<dynamic> _get(String path) async {
@@ -517,58 +543,53 @@ class ApiClient {
     return data;
   }
 
+  /// Renouvellement de session, 21 nov. 2026 : un seul
+  /// renouvellement à la fois, tentatives limitées avec délai et
+  /// gigue, respect de Retry-After, déconnexion propre seulement
+  /// sur 401/403 définitif. Voir lib/auth_session.dart.
   Future<bool> refreshAccess() async {
-    final enCours = _refreshEnCours;
-    if (enCours != null) return enCours;
-    final dernierEchec = _dernierEchecRefresh;
-    if (dernierEchec != null &&
-        DateTime.now().difference(dernierEchec) < delaiApresEchecRefresh) {
-      return false;
-    }
-    final futur = _renouveler();
-    _refreshEnCours = futur;
-    try {
-      return await futur;
-    } finally {
-      if (identical(_refreshEnCours, futur)) _refreshEnCours = null;
-    }
+    final frais = await _authSession.refresh();
+    return frais != null;
   }
 
-  /// Un seul renouvellement réel : les appels en 401 arrivés
-  /// pendant qu'il court attendent son résultat, sans poster à
-  /// nouveau. Un 429 compte comme un échec, avec délai.
-  Future<bool> _renouveler() async {
-    final refresh = _refreshToken;
-    if (refresh == null || refresh.length != 64) return false;
+  /// Un appel de renouvellement : 401/403 définitif, 429/5xx/
+  /// réseau transitoire avec Retry-After quand le serveur l'envoie.
+  Future<TokenPair> _appelRafraichir(String refresh) async {
+    http.Response res;
     try {
-      final res = await _client
+      res = await _client
           .post(Uri.parse('$kApiBaseUrl/auth/rafraichir'),
               headers: {'Content-Type': 'application/json'},
               body: jsonEncode({'refresh': refresh}))
           .timeout(const Duration(seconds: 30));
-      if (res.statusCode < 200 || res.statusCode >= 300) {
-        await _noterEchecRefresh();
-        return false;
-      }
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
-      if (data['access'] is String) await saveToken(data['access'] as String);
-      if (data['refresh'] is String) await _saveRefresh(data['refresh'] as String);
-      return true;
-    } catch (_) {
-      await _noterEchecRefresh();
-      return false;
+    } catch (e) {
+      throw RefreshTransient(e);
     }
+    if (res.statusCode == 401 || res.statusCode == 403) {
+      throw RefreshRejected();
+    }
+    if (res.statusCode == 429) {
+      throw RefreshTransient(null, _retryAfter(res));
+    }
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw RefreshTransient(null);
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    final access = data['access'];
+    final nouveauRefresh = data['refresh'];
+    if (access is! String || nouveauRefresh is! String) {
+      throw RefreshTransient(null);
+    }
+    return (access: access, refresh: nouveauRefresh);
   }
 
-  Future<void> _noterEchecRefresh() async {
-    _echecsRefreshConsecutifs++;
-    _dernierEchecRefresh = DateTime.now();
-    if (_echecsRefreshConsecutifs >= _maxEchecsRefresh) {
-      _echecsRefreshConsecutifs = 0;
-      await saveToken(null);
-      await _saveRefresh(null);
-      onSessionExpiree?.call();
-    }
+  /// Retry-After du serveur (429), en secondes, null si absent.
+  Duration? _retryAfter(http.Response res) {
+    final raw = res.headers['retry-after'];
+    if (raw == null) return null;
+    final secondes = int.tryParse(raw.trim());
+    if (secondes == null || secondes < 0) return null;
+    return Duration(seconds: secondes);
   }
 
   /// Photo de profil du membre, 28 oct. 2026 : la photo est
@@ -781,6 +802,229 @@ class ApiClient {
   /// sinon.
   Future<Map<String, dynamic>> libererCreneauPriere({String? jour}) =>
       _delete('/chaine-priere', jour == null ? null : {'jour': jour});
+
+  /// Programme du camp et cellules, 21 nov. 2026.
+  /// Le programme est visible par le campeur inscrit et par
+  /// son parent validé, jamais par tous les membres.
+  Future<Map<String, dynamic>> fetchChronogramme(String evenementId) async {
+    final data = await _get('/evenements/$evenementId/chronogramme');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Ajouter une entrée au programme, jour par jour : jour
+  /// AAAA-MM-JJ, heures HH:MM, titre, lieu et type facultatifs.
+  Future<Map<String, dynamic>> creerEntreeChronogramme(
+    String evenementId, {
+    required String jour,
+    required String heureDebut,
+    required String heureFin,
+    required String titre,
+    String? lieu,
+    String? type,
+  }) =>
+      _post('/admin/evenements/$evenementId/chronogramme', {
+        'jour': jour,
+        'heure_debut': heureDebut,
+        'heure_fin': heureFin,
+        'titre': titre,
+        if (lieu != null && lieu.isNotEmpty) 'lieu': lieu,
+        if (type != null && type.isNotEmpty) 'type': type,
+      });
+
+  /// Modifier une entrée du programme d'un camp.
+  Future<Map<String, dynamic>> modifierEntreeChronogramme(
+    String evenementId,
+    String entreeId, {
+    required String jour,
+    required String heureDebut,
+    required String heureFin,
+    required String titre,
+    String? lieu,
+    String? type,
+  }) =>
+      _put('/admin/evenements/$evenementId/chronogramme/$entreeId', {
+        'jour': jour,
+        'heure_debut': heureDebut,
+        'heure_fin': heureFin,
+        'titre': titre,
+        if (lieu != null && lieu.isNotEmpty) 'lieu': lieu,
+        if (type != null && type.isNotEmpty) 'type': type,
+      });
+
+  /// Supprimer une entrée du programme d'un camp.
+  Future<Map<String, dynamic>> supprimerEntreeChronogramme(String evenementId, String entreeId) =>
+      _delete('/admin/evenements/$evenementId/chronogramme/$entreeId');
+
+  /// Appliquer le modèle du Word à la semaine d'un camp : le
+  /// dimanche donné, AAAA-MM-JJ, devient le dimanche du modèle.
+  /// Les créneaux déjà saisis sont gardés, jamais écrasés.
+  Future<Map<String, dynamic>> appliquerModeleChronogramme(String evenementId, String dimanche) =>
+      _post('/admin/evenements/$evenementId/chronogramme/modele', {'dimanche': dimanche});
+
+  /// Cellules d'un établissement pour une semaine, lundi
+  /// AAAA-MM-JJ, semaine courante sinon. Chaque cellule porte
+  /// son occurrence de la semaine et ses assignations.
+  Future<Map<String, dynamic>> fetchCellules(String etablissementId, {String? semaine}) async {
+    final data = await _get('/etablissements/$etablissementId/cellules${semaine == null ? '' : '?semaine=$semaine'}');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Créer une cellule : nom, jour de semaine 0 dimanche à 6
+  /// samedi, heure HH:MM, lieu facultatif.
+  Future<Map<String, dynamic>> creerCellule(
+    String etablissementId, {
+    required String nom,
+    required int jourSemaine,
+    required String heure,
+    String? lieu,
+  }) =>
+      _post('/admin/etablissements/$etablissementId/cellules', {
+        'nom': nom,
+        'jour_semaine': jourSemaine,
+        'heure': heure,
+        if (lieu != null && lieu.isNotEmpty) 'lieu': lieu,
+      });
+
+  /// Modifier une cellule, jour, heure, lieu et nom.
+  Future<Map<String, dynamic>> modifierCellule(
+    String celluleId, {
+    required String nom,
+    required int jourSemaine,
+    required String heure,
+    String? lieu,
+  }) =>
+      _put('/admin/cellules/$celluleId', {
+        'nom': nom,
+        'jour_semaine': jourSemaine,
+        'heure': heure,
+        if (lieu != null && lieu.isNotEmpty) 'lieu': lieu,
+      });
+
+  /// Supprimer une cellule et ses assignations.
+  Future<Map<String, dynamic>> supprimerCellule(String celluleId) => _delete('/admin/cellules/$celluleId');
+
+  /// Assigner une personne à une cellule, avec un rôle :
+  /// Dirigeant, Louange, Prédication, Accueil, Intercession.
+  Future<Map<String, dynamic>> assignerCellule(String celluleId, String membreId, String role) =>
+      _post('/admin/cellules/$celluleId/assignations', {'membre_id': membreId, 'role': role});
+
+  /// Retirer une personne assignée à une cellule.
+  Future<Map<String, dynamic>> retirerAssignationCellule(String celluleId, String membreId) =>
+      _delete('/admin/cellules/$celluleId/assignations/$membreId');
+
+  /// Modifier une semaine d'une cellule : annulation, autre
+  /// heure, autre lieu, note. La semaine est le lundi.
+  Future<Map<String, dynamic>> definirExceptionCellule(
+    String celluleId, {
+    required String semaine,
+    bool annulee = false,
+    String? heure,
+    String? lieu,
+    String? note,
+  }) =>
+      _post('/admin/cellules/$celluleId/exceptions', {
+        'semaine': semaine,
+        'annulee': annulee,
+        if (heure != null && heure.isNotEmpty) 'heure': heure,
+        if (lieu != null && lieu.isNotEmpty) 'lieu': lieu,
+        if (note != null && note.isNotEmpty) 'note': note,
+      });
+
+  /// Présence au culte, tranches 2 à 5, 21 nov. 2026.
+  /// Temps forts du camp : moments publiés par la structure
+  /// sur la page du camp, visibles par tous les membres.
+  Future<Map<String, dynamic>> fetchTempsForts(String evenementId) async {
+    final data = await _get('/evenements/$evenementId/temps-forts');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Publier un temps fort : titre, texte facultatif, photo
+  /// facultative par son identifiant de fichier.
+  Future<Map<String, dynamic>> creerTempsFort(
+    String evenementId, {
+    required String titre,
+    String? texte,
+    String? imageId,
+  }) =>
+      _post('/admin/evenements/$evenementId/temps-forts', {
+        'titre': titre,
+        if (texte != null && texte.isNotEmpty) 'texte': texte,
+        if (imageId != null && imageId.isNotEmpty) 'image_id': imageId,
+      });
+
+  /// Modifier un temps fort, titre, texte et photo.
+  Future<Map<String, dynamic>> modifierTempsFort(
+    String evenementId,
+    String tempsFortId, {
+    required String titre,
+    String? texte,
+    String? imageId,
+  }) =>
+      _put('/admin/evenements/$evenementId/temps-forts/$tempsFortId', {
+        'titre': titre,
+        if (texte != null && texte.isNotEmpty) 'texte': texte,
+        if (imageId != null && imageId.isNotEmpty) 'image_id': imageId,
+      });
+
+  /// Supprimer un temps fort.
+  Future<Map<String, dynamic>> supprimerTempsFort(String evenementId, String tempsFortId) =>
+      _delete('/admin/evenements/$evenementId/temps-forts/$tempsFortId');
+
+  /// Compte de J'aime d'une cible, avec mon J'aime ou non.
+  Future<Map<String, dynamic>> fetchCompteAime(String cibleType, String cibleId) async {
+    final data = await _get('/aimes?cible_type=${Uri.encodeComponent(cibleType)}&cible_id=${Uri.encodeComponent(cibleId)}');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Comptes de J'aime de plusieurs cibles d'un coup, un seul
+  /// appel pour une liste de cartes.
+  Future<Map<String, dynamic>> fetchComptesAimes(String cibleType, List<String> cibleIds) async {
+    if (cibleIds.isEmpty) return const {'comptes': []};
+    final data = await _get('/aimes/comptes?cible_type=${Uri.encodeComponent(cibleType)}&cible_ids=${cibleIds.map(Uri.encodeComponent).join(',')}');
+    if (data is Map<String, dynamic>) return data;
+    return const {'comptes': []};
+  }
+
+  /// Aimer une cible, temps fort ou témoignage. Idempotent :
+  /// un deuxième J'aime renvoie le compte, sans doublon.
+  Future<Map<String, dynamic>> aimer(String cibleType, String cibleId) async {
+    final data = await _post('/aimes', {'cible_type': cibleType, 'cible_id': cibleId});
+    return (data['aime'] as Map<String, dynamic>?) ?? const {};
+  }
+
+  /// Retirer son J'aime d'une cible.
+  Future<Map<String, dynamic>> retirerAime(String cibleType, String cibleId) async {
+    final data = await _delete('/aimes/${Uri.encodeComponent(cibleType)}/${Uri.encodeComponent(cibleId)}');
+    return (data['aime'] as Map<String, dynamic>?) ?? const {};
+  }
+
+  /// Commentaires d'une cible, visibles par tous, avec mon
+  /// droit de modération quand je suis de la structure.
+  Future<Map<String, dynamic>> fetchCommentaires(String cibleType, String cibleId) async {
+    final data = await _get('/commentaires?cible_type=${Uri.encodeComponent(cibleType)}&cible_id=${Uri.encodeComponent(cibleId)}');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Poster un commentaire, 1 à 1000 caractères.
+  Future<Map<String, dynamic>> posterCommentaire(String cibleType, String cibleId, String texte) =>
+      _post('/commentaires', {'cible_type': cibleType, 'cible_id': cibleId, 'texte': texte});
+
+  /// Supprimer un commentaire, le sien ou, pour la structure,
+  /// n'importe lequel.
+  Future<Map<String, dynamic>> supprimerCommentaire(String commentaireId) => _delete('/commentaires/$commentaireId');
+
+  /// Mon mur : les dernières activités de la structure,
+  /// enseignements, actualités et annonces, camps, témoignages.
+  Future<Map<String, dynamic>> fetchMonMur() async {
+    final data = await _get('/mon-mur');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
 
   /// Défis de prière 7 jours, 21 nov. 2026, tranches 1 à 3 de
   /// l'audit du 17 nov. : liste des défis avec ma participation

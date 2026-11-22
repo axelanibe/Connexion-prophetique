@@ -26,6 +26,7 @@ import 'package:flutter/rendering.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'api.dart';
 import 'gallery_save.dart';
 import 'home_web.dart';
 import 'i18n.dart';
@@ -142,17 +143,25 @@ class VerseShareImage extends StatelessWidget {
 // Aperçu du verset en image, avec partage et téléchargement.
 // Le contexte doit rester celui de l'écran qui appelle, pour que
 // la feuille de partage et les messages s'affichent au bon endroit.
-Future<void> showVerseShareDialog(BuildContext context, HomeVerse verse, {String filename = _verseShareFilename}) {
+// Verset en storie, 21 nov. 2026, tranche 5 : avec un client, le
+// dialogue propose aussi de publier la carte du verset comme une
+// storie, par POST /stories, même image que le partage, jamais un
+// texte réécrit.
+Future<void> showVerseShareDialog(BuildContext context, HomeVerse verse, {String filename = _verseShareFilename, ApiClient? client}) {
   return showDialog<void>(
     context: context,
-    builder: (context) => _VerseShareDialog(verse: verse, filename: filename),
+    builder: (context) => _VerseShareDialog(verse: verse, filename: filename, client: client),
   );
 }
 
 class _VerseShareDialog extends StatefulWidget {
-  const _VerseShareDialog({required this.verse, required this.filename});
+  const _VerseShareDialog({required this.verse, required this.filename, this.client});
   final HomeVerse verse;
   final String filename;
+
+  /// Client pour la publication en storie, sans lui le bouton
+  /// n'apparaît pas.
+  final ApiClient? client;
 
   @override
   State<_VerseShareDialog> createState() => _VerseShareDialogState();
@@ -265,6 +274,34 @@ class _VerseShareDialogState extends State<_VerseShareDialog> {
     }
   }
 
+  // Verset en storie, 21 nov. 2026, tranche 5 : la même carte
+  // du verset, capturée ici, part comme une story photo, par
+  // POST /stories. Le dialogue se ferme sur le succès, le
+  // message du serveur s'affiche en cas d'échec, par exemple
+  // quand les stories sont désactivées.
+  Future<void> _publierEnStorie() async {
+    final client = widget.client;
+    if (_busy || client == null) return;
+    setState(() => _busy = true);
+    try {
+      final png = await _capture();
+      if (png == null || png.isEmpty) {
+        if (mounted) _message(tr('Impossible de créer l’image du verset.'));
+        return;
+      }
+      await client.publierStory(bytes: png, filename: 'verset-story.png', type: 'photo');
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      _message(tr('Verset publié en storie.'));
+    } catch (e) {
+      if (!mounted) return;
+      final texte = '$e'.replaceFirst('Exception: ', '');
+      _message(texte.isEmpty ? tr('Impossible de publier le verset en storie.') : texte);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final showShare = !kIsWeb && !isWindowsDesktop;
@@ -301,6 +338,12 @@ class _VerseShareDialogState extends State<_VerseShareDialog> {
             onPressed: _busy ? null : _share,
             icon: const Icon(Icons.share_outlined, size: 19),
             label: Text(tr('Partager')),
+          ),
+        if (widget.client != null)
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _publierEnStorie,
+            icon: const Icon(Icons.auto_stories_outlined, size: 19),
+            label: Text(tr('En storie')),
           ),
         FilledButton.icon(
           onPressed: _busy ? null : _shareWhatsApp,

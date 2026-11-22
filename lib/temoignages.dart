@@ -29,6 +29,7 @@ import 'creation_story.dart';
 import 'i18n.dart';
 import 'magnetophone.dart';
 import 'main.dart';
+import 'presence_culte.dart';
 import 'tiroir_intelligent.dart';
 
 // Palette de l'application, mêmes valeurs que HomeWeb.
@@ -138,6 +139,10 @@ class _TemoignagesPageState extends State<TemoignagesPage> {
   List<Temoignage> _moderation = [];
   bool _actionEnCours = false;
 
+  /// Comptes de J'aime du fil public, en lot, un seul appel
+  /// pour toute la page.
+  Map<String, Map<String, dynamic>> _comptes = {};
+
   @override
   void initState() {
     super.initState();
@@ -152,14 +157,15 @@ class _TemoignagesPageState extends State<TemoignagesPage> {
     try {
       final data = await widget.client.fetchTemoignages();
       if (!mounted) return;
+      final fil = ((data['temoignages'] as List?) ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(Temoignage.fromJson)
+          .toList();
       setState(() {
         _charge = true;
         _erreur = false;
         _r2 = data['r2'] == true;
-        _fil = ((data['temoignages'] as List?) ?? [])
-            .whereType<Map<String, dynamic>>()
-            .map(Temoignage.fromJson)
-            .toList();
+        _fil = fil;
         _miens = ((data['mes_temoignages'] as List?) ?? [])
             .whereType<Map<String, dynamic>>()
             .map(Temoignage.fromJson)
@@ -168,7 +174,21 @@ class _TemoignagesPageState extends State<TemoignagesPage> {
             .whereType<Map<String, dynamic>>()
             .map(Temoignage.fromJson)
             .toList();
+        _comptes = {};
       });
+      // J'aime et commentaires, 21 nov. 2026, tranche 3 : les
+      // comptes du fil public arrivent en lot, un seul appel.
+      if (fil.isNotEmpty) {
+        try {
+          final comptes = await widget.client.fetchComptesAimes('temoignage', fil.map((t) => t.id).toList());
+          if (!mounted) return;
+          final parId = <String, Map<String, dynamic>>{};
+          for (final c in ((comptes['comptes'] as List?) ?? []).whereType<Map<String, dynamic>>()) {
+            parId[(c['cible_id'] ?? '').toString()] = c;
+          }
+          setState(() => _comptes = parId);
+        } catch (_) {}
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -348,10 +368,24 @@ class _TemoignagesPageState extends State<TemoignagesPage> {
       );
     }
     for (final t in _fil) {
+      // J'aime et commentaires, 21 nov. 2026, tranche 3 : sous
+      // chaque carte du fil public seulement, jamais sous mes
+      // témoignages en attente ni sous la file de modération.
       enfants.add(_CarteTemoignage(
         temoignage: t,
         onTap: () => go(context, LecteurTemoignagePage(temoignage: t)),
       ));
+      enfants.add(
+        Padding(
+          padding: const EdgeInsets.only(left: 12, right: 12, bottom: 4),
+          child: AimesCommentaires(
+            cibleType: 'temoignage',
+            cibleId: t.id,
+            nombreInitial: (_comptes[t.id]?['nombre'] as num?)?.toInt(),
+            aAimeInitial: _comptes[t.id]?['a_aime'] == true,
+          ),
+        ),
+      );
       enfants.add(const SizedBox(height: Cp.s1));
     }
     return basic(tr('Témoignages'), enfants, tabIndex: 4, controller: widget.scrollController, onRefresh: _charger);

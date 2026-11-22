@@ -100,6 +100,7 @@ import 'push_notifications.dart';
 import 'home_web.dart';
 import 'temoignages.dart';
 import 'chaine_priere.dart';
+import 'camp_planning.dart';
 import 'defis_priere.dart';
 import 'carnet_promesses.dart';
 import 'demandes_priere.dart';
@@ -108,6 +109,7 @@ import 'cultes_direct.dart';
 import 'amens.dart';
 import 'entraide.dart';
 import 'parcours_bible.dart';
+import 'presence_culte.dart';
 import 'meditation_share.dart';
 import 'verse_share.dart';
 import 'visite_guidee.dart';
@@ -7038,8 +7040,10 @@ class _HomePageState extends State<HomePage> {
                 ),
         // Cartes de verset, 18 nov. 2026 : la carte carrée du
         // verset seul, même verset que la méditation, jamais
-        // réécrit, pour WhatsApp et Facebook.
-        onShareVerseCard: _verse == null ? null : () => showVerseShareDialog(c, _verse!),
+        // réécrit, pour WhatsApp et Facebook. Verset en storie,
+        // 21 nov. 2026, tranche 5 : le client passe au dialogue,
+        // qui propose aussi la publication en storie.
+        onShareVerseCard: _verse == null ? null : () => showVerseShareDialog(c, _verse!, client: api),
         // Carte 61, boutons de la méditation : ils ouvrent le
         // journal prérempli, carte 62. Révélation : onglet
         // Orientations, type Révélation, titre Suite à <référence>.
@@ -8644,6 +8648,16 @@ class _ProfilePageState extends State<ProfilePage> {
               ? tr('Plan de lecture biblique et progression')
               : '${badgesLectureGagnes(app.planAnnee.length).length} ${badgesLectureGagnes(app.planAnnee.length).length == 1 ? tr('badge de lecture') : tr('badges de lecture')} · ${app.planAnnee.length} / $nbJoursPlanAnnuel',
           onTap: () => go(context, const EpanouissementPage()),
+        ),
+        // Mon mur, 21 nov. 2026, tranche 4 : les dernières
+        // activités de la structure, enseignements, actualités
+        // et annonces, camps, témoignages, avec partage.
+        const SizedBox(height: Cp.s2),
+        _CarteLien(
+          icone: Icons.dynamic_feed_outlined,
+          titre: tr('Mon mur'),
+          sousTitre: tr('Enseignements, actualités, camps et témoignages'),
+          onTap: () => go(context, const MonMurPage()),
         ),
         const SizedBox(height: Cp.s2),
         SizedBox(
@@ -17487,6 +17501,27 @@ class _CampsPageState extends State<CampsPage> {
           ),
         ),
       ],
+      // Programme du camp, 21 nov. 2026 : visible par le campeur
+      // inscrit et par la structure, jamais par tous les membres.
+      if (camp.serverId.isNotEmpty && (reg != null || app.isAdminGeneral || app.isAdminEtablissement)) ...[
+        const SizedBox(height: Cp.s1),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(
+            onPressed: () => go(c, ChronogrammePage(camp: camp, peutModifier: app.isAdminGeneral || app.isAdminEtablissement)),
+            icon: const Icon(Icons.calendar_month_outlined),
+            label: Text(tr('Programme du camp')),
+          ),
+        ),
+      ],
+      // Temps forts du camp, 21 nov. 2026, tranche 2 : moments
+      // publiés par la structure, visibles par tous les membres,
+      // avec leurs J'aime et commentaires.
+      if (camp.serverId.isNotEmpty) ...[
+        const SizedBox(height: Cp.s1),
+        TempsFortsSection(camp: camp, peutModifier: app.isAdminGeneral || app.isAdminEtablissement),
+      ],
       if (_editingCampId == camp.id) ...[
         const SizedBox(height: Cp.s1),
         _CampEditPanel(
@@ -18895,6 +18930,20 @@ class _EtabDetailPageState extends State<EtabDetailPage> {
                 ),
             ]),
           ),
+        const SizedBox(height: Cp.s3),
+        // Cellules, 21 nov. 2026 : une cellule a un dirigeant, un
+        // jour et une heure fixes, des personnes assignées par
+        // rôle, répétition hebdomadaire automatique.
+        heading(c, tr('Cellules')),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: OutlinedButton.icon(
+            onPressed: () => go(c, CellulesPage(etablissementId: etab.id, etablissementNom: etab.name, peutModifier: peutAjouter)),
+            icon: const Icon(Icons.groups_outlined),
+            label: Text(tr('Cellules')),
+          ),
+        ),
         const SizedBox(height: Cp.s3),
         heading(c, tr('Programme à venir')),
         if (campAvenir != null)

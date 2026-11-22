@@ -13,6 +13,7 @@ import 'package:flutter/rendering.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'api.dart';
+import 'camp_planning.dart';
 import 'link_view.dart';
 import 'i18n.dart';
 import 'main.dart';
@@ -1173,6 +1174,44 @@ class _MesEnfantsPageState extends State<MesEnfantsPage> {
                         child: Row(children: [
                           Expanded(child: Text('${_enfantDateCourte((p['date'] ?? '').toString())} · ${(p['nom'] ?? '').toString()}', style: t.bodyMedium)),
                           _statutPresenceChip((p['statut'] ?? '').toString()),
+                        ]),
+                      ),
+                  const SizedBox(height: Cp.s1),
+                  // Programme du camp, 21 nov. 2026 : les camps où
+                  // l'enfant est inscrit, le parent ouvre leur
+                  // programme en lecture seule.
+                  Text(tr('Programme des camps'), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800, color: Cp.navy)),
+                  const SizedBox(height: 4),
+                  if (((e['camps_inscrits'] as List?) ?? []).isEmpty)
+                    Text(tr('Aucun camp pour cet enfant.'), style: t.bodyMedium)
+                  else
+                    for (final campInscrit in (e['camps_inscrits'] as List? ?? []).map((c) => c as Map<String, dynamic>))
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(children: [
+                          Expanded(child: Text((campInscrit['nom'] ?? '').toString(), style: t.bodyMedium)),
+                          TextButton.icon(
+                            onPressed: () {
+                              final debut = (campInscrit['date_debut'] ?? '').toString();
+                              final fin = (campInscrit['date_fin'] ?? '').toString();
+                              go(
+                                context,
+                                ChronogrammePage(
+                                  camp: Camp(
+                                    id: 0,
+                                    name: (campInscrit['nom'] ?? '').toString(),
+                                    serverId: (campInscrit['id'] ?? '').toString(),
+                                    dates: [debut, fin].where((d) => d.isNotEmpty).toSet().join(' - '),
+                                    dateDebut: parseCampDate(debut),
+                                    dateFin: parseCampDate(fin),
+                                  ),
+                                  peutModifier: false,
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.calendar_month_outlined, size: 18),
+                            label: Text(tr('Programme du camp')),
+                          ),
                         ]),
                       ),
                   const SizedBox(height: Cp.s1),
