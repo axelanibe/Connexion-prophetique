@@ -24,6 +24,7 @@ void main() {
     Future<void> Function(TokenPair pair)? saveTokens,
     Future<void> Function()? clearTokens,
     void Function()? onSessionLost,
+    Duration? delaiMaxTotal,
   }) {
     return AuthSession(
       refreshCall: refreshCall ?? (_) async => paire,
@@ -32,6 +33,7 @@ void main() {
       clearTokens: clearTokens ?? () async {},
       onSessionLost: onSessionLost ?? () {},
       delais: delaisTest,
+      delaiMaxTotal: delaiMaxTotal,
     );
   }
 
@@ -121,6 +123,23 @@ void main() {
     );
     expect(await s.refresh(), 'acces-nouveau');
     expect(appels, 1);
+  });
+
+  test('plafond total à zéro : abandon après 1 appel, sans déconnexion',
+      () async {
+    var appels = 0;
+    var perdu = false;
+    final s = session(
+      refreshCall: (_) async {
+        appels++;
+        throw RefreshTransient(null);
+      },
+      onSessionLost: () => perdu = true,
+      delaiMaxTotal: Duration.zero,
+    );
+    expect(await s.refresh(), isNull);
+    expect(appels, 1);
+    expect(perdu, isFalse);
   });
 
   test('withAuth : accès nul, renouvellement d\'abord', () async {
