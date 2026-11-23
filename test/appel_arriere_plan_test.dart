@@ -159,6 +159,41 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       expect(envoyes, ['a1']);
     });
+
+    test('mise en attente Telecom : média en pause, puis repris', () async {
+      demarrerAppel();
+      etatAppelGlobal.passerEnCours();
+      expect(etatAppelGlobal.enAttente, isFalse);
+      await etatAppelGlobal.mettreEnAttente(true);
+      expect(etatAppelGlobal.enAttente, isTrue);
+      expect(fauxService.muet, isTrue);
+      expect(fauxService.cameraActive, isFalse);
+      await etatAppelGlobal.mettreEnAttente(false);
+      expect(etatAppelGlobal.enAttente, isFalse);
+      expect(fauxService.muet, isFalse);
+      expect(fauxService.cameraActive, isTrue);
+    });
+
+    test('mise en attente : muet et caméra choisis sont retrouvés',
+        () async {
+      demarrerAppel();
+      etatAppelGlobal.passerEnCours();
+      etatAppelGlobal.mettreAJourAudio(muet: true, hautParleur: false);
+      etatAppelGlobal.mettreAJourCamera(false);
+      await etatAppelGlobal.mettreEnAttente(true);
+      expect(fauxService.muet, isTrue);
+      expect(fauxService.cameraActive, isFalse);
+      await etatAppelGlobal.mettreEnAttente(false);
+      expect(fauxService.muet, isTrue);
+      expect(fauxService.cameraActive, isFalse);
+    });
+
+    test('mise en attente sans appel en cours : rien ne se passe',
+        () async {
+      await etatAppelGlobal.mettreEnAttente(true);
+      expect(etatAppelGlobal.enAttente, isFalse);
+      expect(fauxService.muet, isFalse);
+    });
   });
 
   group('Bouton Réduire', () {
