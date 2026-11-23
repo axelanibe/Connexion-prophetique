@@ -90,6 +90,9 @@ class _FauxService implements ServiceAppelWebRtc {
   final List<bool> hautParleurAppels = [];
   bool libere = false;
 
+  /// Partage d'écran en cours, carte 158.
+  bool _ecranPartage = false;
+
   final RTCVideoRenderer _renduLocal = RTCVideoRenderer();
   final RTCVideoRenderer _renduDistant = RTCVideoRenderer();
 
@@ -164,6 +167,32 @@ class _FauxService implements ServiceAppelWebRtc {
 
   @override
   Future<void> basculerCamera() async {}
+
+  @override
+  Future<bool> ajouterPisteVideo() async => true;
+
+  @override
+  Future<Map<String, dynamic>?> ajouterVideo() async =>
+      {'sdp': 'offre-video-sdp', 'type': 'offer'};
+
+  @override
+  bool get ecranPartage => _ecranPartage;
+
+  @override
+  void quandPartageTermine(void Function() rappel) {
+    // Fin système non simulée : aucun test ne l'arrête de là.
+  }
+
+  @override
+  Future<bool> partagerEcran() async {
+    _ecranPartage = true;
+    return true;
+  }
+
+  @override
+  Future<void> arreterPartageEcran() async {
+    _ecranPartage = false;
+  }
 
   @override
   Future<void> liberer() async {
@@ -400,9 +429,91 @@ void main() {
       expect(service.fluxLocal, isNotNull);
       await service.liberer();
     });
+
+    test('ouvrirMicro plafonne la vidéo à 640 sur 480, 24 images par seconde',
+        () async {
+      // Carte 154 : sans limite, la caméra envoyait sa pleine
+      // résolution et l'image se cassait en blocs sur une
+      // connexion limitée.
+      final service = ServiceAppelWebRtcReel();
+      await service.ouvrirMicro(video: true);
+      expect(contraintesRecues, isNotNull);
+      expect(
+        contraintesRecues!['video'],
+        {
+          'facingMode': 'user',
+          'width': {'ideal': 640},
+          'height': {'ideal': 480},
+          'frameRate': {'ideal': 24},
+        },
+      );
+      expect(service.fluxLocal, isNotNull);
+      await service.liberer();
+    });
+  });
+
+  group('setHautParleur ne pose l’état qu’après le succès', () {
+    const canalWebRtc = MethodChannel('FlutterWebRTC.Method');
+    var echecHautParleur = false;
+
+    setUp(() {
+      echecHautParleur = false;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(canalWebRtc, (MethodCall call) async {
+        switch (call.method) {
+          case 'createVideoRenderer':
+            return {'textureId': 1};
+          case 'enableSpeakerphone':
+            if (echecHautParleur) {
+              throw PlatformException(code: 'audio');
+            }
+            return null;
+          default:
+            return null;
+        }
+      });
+    });
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(canalWebRtc, null);
+    });
+
+    test('échec Helper : l’état reste faux, succès : il devient vrai',
+        () async {
+      // Carte 157 : avant, l'état était posé avant l'appel
+      // plateforme, donc le bouton mentait quand la route ne
+      // changeait pas.
+      final service = ServiceAppelWebRtcReel();
+      echecHautParleur = true;
+      await expectLater(
+        service.setHautParleur(true),
+        throwsA(isA<PlatformException>()),
+      );
+      expect(service.hautParleur, isFalse);
+      echecHautParleur = false;
+      await service.setHautParleur(true);
+      expect(service.hautParleur, isTrue);
+      await service.liberer();
+    });
   });
 
   group('Écran entrant accepté via CallKit', () {
+    // Carte 155 : accepter demande le micro et la caméra avant
+    // d'ouvrir l'écran, le canal est moqué, accordé par défaut.
+    setUp(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        canalPermissions,
+        permissionsAccordees(),
+      );
+    });
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(canalPermissions, null);
+    });
+
     testWidgets('pas de WAV, accepte envoyé, écran en cours ouvert',
         (tester) async {
       final fauxApi = _FauxApi();

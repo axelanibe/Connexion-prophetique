@@ -10,6 +10,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -130,10 +131,23 @@ void main() {
   group('Appel manqué : ligne dans la conversation, bouton Rappeler', () {
     late ApiClient client;
     final requetes = <http.Request>[];
+    const canalPermissions =
+        MethodChannel('flutter.baseflow.com/permissions/methods');
 
     setUp(() {
       SharedPreferences.setMockInitialValues({});
       requetes.clear();
+      // Carte 155 : Rappeler demande le micro avant d'ouvrir
+      // l'écran d'appel, le canal est moqué, accordé.
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(canalPermissions,
+              (MethodCall call) async {
+        if (call.method == 'requestPermissions') {
+          final args = (call.arguments as List).cast<int>();
+          return {for (final v in args) v: 1};
+        }
+        return null;
+      });
       final messages = [
         {
           'id': 'm1',
@@ -188,6 +202,11 @@ void main() {
         return http.Response('[]', 200);
       });
       client = ApiClient(client: mock);
+    });
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(canalPermissions, null);
     });
 
     Future<void> ouvrirConversationManquee(WidgetTester tester) async {

@@ -91,7 +91,14 @@ class FauxServiceAppel implements ServiceAppelWebRtc {
   bool muet = false;
   bool hautParleur = false;
   bool cameraActive = true;
+  bool cameraBasculee = false;
   bool libere = false;
+
+  /// Piste vidéo ajoutée en cours d'appel audio, carte 156.
+  bool videoAjoutee = false;
+
+  /// Partage d'écran en cours, carte 158.
+  bool _ecranPartage = false;
 
   final RTCVideoRenderer _renduLocal = RTCVideoRenderer();
   final RTCVideoRenderer _renduDistant = RTCVideoRenderer();
@@ -164,7 +171,41 @@ class FauxServiceAppel implements ServiceAppelWebRtc {
   }
 
   @override
-  Future<void> basculerCamera() async {}
+  Future<void> basculerCamera() async {
+    cameraBasculee = true;
+  }
+
+  @override
+  Future<bool> ajouterPisteVideo() async {
+    videoAjoutee = true;
+    return true;
+  }
+
+  @override
+  Future<Map<String, dynamic>?> ajouterVideo() async {
+    final ok = await ajouterPisteVideo();
+    if (!ok) return null;
+    return {'sdp': 'offre-video-sdp', 'type': 'offer'};
+  }
+
+  @override
+  bool get ecranPartage => _ecranPartage;
+
+  @override
+  void quandPartageTermine(void Function() rappel) {
+    // Fin système non simulée : aucun test ne l'arrête de là.
+  }
+
+  @override
+  Future<bool> partagerEcran() async {
+    _ecranPartage = true;
+    return true;
+  }
+
+  @override
+  Future<void> arreterPartageEcran() async {
+    _ecranPartage = false;
+  }
 
   @override
   Future<void> liberer() async {
@@ -219,7 +260,8 @@ void main() {
         .setMockMethodCallHandler(canalPermissions, null);
   });
 
-  Future<void> _pomperAppeleeDecrochee(
+  Future<({FauxServiceAppel service, FauxApiAppels api})>
+      _pomperAppeleeDecrochee(
     WidgetTester tester, {
     String type = 'audio',
   }) async {
@@ -259,6 +301,7 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(find.text('Appel en cours… 00:00'), findsOneWidget);
+    return (service: fauxService, api: fauxApi);
   }
 
   testWidgets('grille WhatsApp : nom en Cinzel, cinq boutons, sans Partager',
@@ -286,15 +329,58 @@ void main() {
     expect(find.text('JEAN'), findsOneWidget);
   });
 
-  testWidgets('audio : Appel vidéo explique que la vidéo est indisponible',
+  testWidgets('audio : Appel vidéo bascule en vidéo, offre envoyée',
       (tester) async {
-    await _pomperAppeleeDecrochee(tester);
+    // Carte 156 : le bouton ne dit plus que la vidéo est
+    // indisponible, il bascule vraiment, une nouvelle offre part.
+    final pompe = await _pomperAppeleeDecrochee(tester);
+    expect(find.byIcon(Icons.switch_camera), findsNothing);
     await tester.tap(find.byIcon(Icons.videocam));
     await tester.pump();
+    await tester.pump();
+    expect(pompe.service.videoAjoutee, isTrue);
+    expect(pompe.api.signauxEnvoyes, contains('offre'));
     expect(
       find.text('La vidéo n’est pas disponible pendant un appel audio.'),
-      findsOneWidget,
+      findsNothing,
     );
+    // L'écran est passé en vidéo : le bouton de retournement
+    // de la fenêtre locale est visible.
+    expect(find.byIcon(Icons.switch_camera), findsOneWidget);
+  });
+
+  testWidgets('vidéo : Plus propose le partage d’écran, puis l’arrêt',
+      (tester) async {
+    // Carte 158 : le partage est sous Plus, il remplace la
+    // caméra, Arrêter le partage revient à la caméra. Le tap
+    // vise l'icône, pas le libellé sous le bouton.
+    final pompe = await _pomperAppeleeDecrochee(tester, type: 'video');
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Partager l’écran'), findsOneWidget);
+    await tester.tap(find.text('Partager l’écran'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(pompe.service.ecranPartage, isTrue);
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Arrêter le partage'), findsOneWidget);
+    await tester.tap(find.text('Arrêter le partage'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(pompe.service.ecranPartage, isFalse);
+  });
+
+  testWidgets('vidéo : le bouton de la fenêtre locale retourne la caméra',
+      (tester) async {
+    // Carte 159 : petit bouton sur la fenêtre vidéo locale, en
+    // plus de Plus puis Basculer.
+    final pompe = await _pomperAppeleeDecrochee(tester, type: 'video');
+    await tester.tap(find.byIcon(Icons.switch_camera));
+    await tester.pump();
+    expect(pompe.service.cameraBasculee, isTrue);
   });
 
   testWidgets('vidéo : Appel vidéo coupe et remet la caméra',

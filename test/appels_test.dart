@@ -105,6 +105,12 @@ class FauxServiceAppel implements ServiceAppelWebRtc {
   bool cameraBasculee = false;
   bool libere = false;
 
+  /// Piste vidéo ajoutée en cours d'appel audio, carte 156.
+  bool videoAjoutee = false;
+
+  /// Partage d'écran en cours, carte 158.
+  bool _ecranPartage = false;
+
   final RTCVideoRenderer _renduLocal = RTCVideoRenderer();
   final RTCVideoRenderer _renduDistant = RTCVideoRenderer();
 
@@ -137,8 +143,14 @@ class FauxServiceAppel implements ServiceAppelWebRtc {
   @override
   Future<void> ouvrirMicro({required bool video}) async {
     if (microRefuse) throw Exception('micro refuse');
+    final bloque = microBloque;
+    if (bloque != null) await bloque.future;
     microOuvert = true;
   }
+
+  /// Micro bloqué par le test, carte 155 : le minuteur de
+  /// sonnerie ne doit pas démarrer tant qu'il n'est pas ouvert.
+  Completer<void>? microBloque;
 
   @override
   Future<void> preparer({
@@ -189,6 +201,38 @@ class FauxServiceAppel implements ServiceAppelWebRtc {
   @override
   Future<void> basculerCamera() async {
     cameraBasculee = true;
+  }
+
+  @override
+  Future<bool> ajouterPisteVideo() async {
+    videoAjoutee = true;
+    return true;
+  }
+
+  @override
+  Future<Map<String, dynamic>?> ajouterVideo() async {
+    final ok = await ajouterPisteVideo();
+    if (!ok) return null;
+    return {'sdp': 'offre-video-sdp', 'type': 'offer'};
+  }
+
+  @override
+  bool get ecranPartage => _ecranPartage;
+
+  @override
+  void quandPartageTermine(void Function() rappel) {
+    // Fin système non simulée : aucun test ne l'arrête de là.
+  }
+
+  @override
+  Future<bool> partagerEcran() async {
+    _ecranPartage = true;
+    return true;
+  }
+
+  @override
+  Future<void> arreterPartageEcran() async {
+    _ecranPartage = false;
   }
 
   @override
@@ -377,6 +421,29 @@ void main() {
   });
 
   group('Écran d’appel entrant', () {
+    const canalPermissions =
+        MethodChannel('flutter.baseflow.com/permissions/methods');
+
+    // Carte 155 : accepter demande le micro et la caméra avant
+    // d'ouvrir l'écran, le canal est moqué comme dans le groupe
+    // en cours d'appel, accordé par défaut.
+    setUp(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(canalPermissions,
+              (MethodCall call) async {
+        if (call.method == 'requestPermissions') {
+          final args = (call.arguments as List).cast<int>();
+          return {for (final v in args) v: 1};
+        }
+        return null;
+      });
+    });
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(canalPermissions, null);
+    });
+
     testWidgets('affiche accepter et refuser, accepter envoie accepte',
         (tester) async {
       final fauxApi = FauxApiAppels();
@@ -888,6 +955,115 @@ void main() {
       fauxService.declencherFluxDistant();
       await tester.pump();
       expect(find.byType(RTCVideoView), findsOneWidget);
+    });
+
+    testWidgets('sonnerie : le minuteur ne démarre pas avant le micro',
+        (tester) async {
+      // Carte 155 : avant, le minuteur de 30 secondes démarrait
+      // à l'ouverture de l'écran, donc il pouvait expirer
+      // pendant que l'utilisateur répondait aux fenêtres
+      // système. Il ne démarre qu'une fois le micro ouvert.
+      final fauxApi = FauxApiAppels(
+        appel: _appelJson(appelantId: 'moi', appeleId: 'autre'),
+      );
+      final fauxService = FauxServiceAppel();
+      final microBloque = Completer<void>();
+      fauxService.microBloque = microBloque;
+      final fausseSignalisation = FausseSignalisation();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EcranAppelEnCours(
+            appelId: 'a1',
+            typeAppel: 'audio',
+            autreNom: 'Jean',
+            suisAppelant: true,
+            apiClient: fauxApi,
+            serviceAppel: fauxService,
+            signalisation: fausseSignalisation,
+            lecteurSonnerie: FauxLecteurSonnerie(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      // 30 secondes sans micro ouvert : l'écran sonne encore,
+      // le minuteur n'a pas démarré.
+      await tester.pump(const Duration(seconds: 30));
+      expect(find.byType(EcranAppelEnCours), findsOneWidget);
+      // Le micro s'ouvre, le minuteur démarre, 30 secondes plus
+      // tard l'appel se termine faute de réponse.
+      microBloque.complete();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 30));
+      await tester.pump(const Duration(seconds: 1));
+      expect(fauxApi.signauxEnvoyes, contains('annule'));
+      expect(find.byType(EcranAppelEnCours), findsNothing);
+    });
+
+    testWidgets('appelée : une offre vidéo bascule l’écran en vidéo',
+        (tester) async {
+      // Carte 156 : l'appelant bascule en vidéo pendant un appel
+      // audio, l'offre porte la vidéo, l'appelée ouvre sa caméra
+      // avant de répondre et son écran passe en vidéo.
+      final fauxApi = FauxApiAppels(
+        appel: _appelJson(appelantId: 'autre', appeleId: 'autre'),
+      );
+      final fauxService = FauxServiceAppel();
+      final fausseSignalisation = FausseSignalisation();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EcranAppelEnCours(
+            appelId: 'a1',
+            typeAppel: 'audio',
+            autreNom: 'Jean',
+            suisAppelant: false,
+            apiClient: fauxApi,
+            serviceAppel: fauxService,
+            signalisation: fausseSignalisation,
+            lecteurSonnerie: FauxLecteurSonnerie(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      fausseSignalisation.emettre(
+        SignalAppel(
+          id: 's1',
+          appelId: 'a1',
+          emetteurId: 'autre',
+          type: 'offre',
+          contenu: {'sdp': 'offre-sdp', 'type': 'offer'},
+          creeLe: DateTime.now(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Appel en cours… 00:00'), findsOneWidget);
+      expect(fauxService.videoAjoutee, isFalse);
+      fausseSignalisation.emettre(
+        SignalAppel(
+          id: 's2',
+          appelId: 'a1',
+          emetteurId: 'autre',
+          type: 'offre',
+          contenu: {
+            'sdp': 'v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96',
+            'type': 'offer',
+          },
+          creeLe: DateTime.now(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(fauxService.videoAjoutee, isTrue);
+      expect(fauxApi.signauxEnvoyes, contains('reponse'));
+      // L'écran est passé en vidéo : le bouton de retournement
+      // de la fenêtre locale est visible.
+      expect(find.byIcon(Icons.switch_camera), findsOneWidget);
     });
   });
 }
