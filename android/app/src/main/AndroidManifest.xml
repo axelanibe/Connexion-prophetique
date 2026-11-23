@@ -36,6 +36,13 @@
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+    <!-- Réveil en arrière-plan, carte 151, 22 nov. 2026 :
+         exemption d'optimisation de la batterie, pour que FCM
+         réveille l'application endormie et que le sondage
+         reprenne. Demandée via permission_handler, jamais
+         accordée silencieusement : l'utilisateur accepte dans
+         le dialogue système. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Réunions en ligne, 1er nov. 2026 : micro et caméra pour la
          visioconférence Jitsi intégrée. -->
     <uses-permission android:name="android.permission.CAMERA" />
