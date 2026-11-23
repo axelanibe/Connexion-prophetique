@@ -56,6 +56,7 @@ import { anniversaireReference, estAnniversaireAujourdhui, formaterDateIntegrati
 import { genererAttestationPdf, urlVerificationAttestation, etatAttestation, pageVerificationAttestationHtml } from './src/generer_attestation_pdf.js';
 import { DEFAULT_DESIGN_CONFIG, mergeDesignConfig, migPaletteDesign, validateDesignPatch } from './src/design.js';
 import { VERSION_CONFIG } from './src/config_version.js';
+import { etagPourContenu, etagCorrespond } from './src/etag.js';
 import { analyserBureauImport, mapperFonctionBureau, deciderLienBureau } from './src/bureau_import.js';
 import { analyserMembresImport } from './src/membres_import.js';
 import { fcmServiceAccount, fcmAccessToken, fcmSendOne, normaliserCategoriesPush } from './src/fcm.js';
@@ -1638,8 +1639,15 @@ app.put('/admin/config', { preHandler: adminG }, async (req, reply) => {
 // Les valeurs sont les constantes de src/config_version.js, sans
 // table ni interface admin pour cette v1. Route publique, sans
 // jeton : l'application la lit avant toute connexion, et hors ligne
-// elle garde sa dernière configuration en local.
-app.get('/api/config', async () => ({ ...VERSION_CONFIG }));
+// elle garde sa dernière configuration en local. ETag, carte 160,
+// 23 nov. 2026 : le contenu ne change qu'au déploiement, le client
+// renvoie l'ETag gardé et reçoit 304 quand rien n'a changé.
+app.get('/api/config', async (req, reply) => {
+  const config = { ...VERSION_CONFIG };
+  const etag = etagPourContenu(config);
+  if (etagCorrespond(req, etag)) return reply.code(304).send();
+  return reply.header('ETag', etag).header('Cache-Control', 'public, max-age=3600').send(config);
+});
 
 // ───────────────────────── Configuration design ────────────────
 // Carte 47, 6 nov. 2026 : config design parallèle à /config,
@@ -1723,28 +1731,24 @@ app.get('/etablissements/:id/nominations', { preHandler: membreG }, async (req) 
   return (await q(`SELECT n.id, n.portee, n.fonction_code, f.libelle AS fonction_libelle, n.debute_le, n.finit_le, m.nom_complet, CASE WHEN n.debute_le > now() THEN 'a_venir' ELSE 'active' END AS statut FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code JOIN membres m ON m.id = n.membre_id WHERE n.etablissement_id = $1 AND NOT n.revoque AND (n.finit_le IS NULL OR n.finit_le > now()) ORDER BY n.debute_le`, [id])).rows;
 });
 
-app.get('/actualites', async (req) => {
-  // Programmation, 30 oct. 2026 : une actualité programmée ne
-  // sonne la cloche qu'à sa publication, une seule fois, grâce
-  // au drapeau. La prise du drapeau est atomique : deux appels
-  // en même temps ne notifient qu'une fois.
-  try {
-    const dues = (await q(`SELECT id, titre FROM actualites WHERE programmee_le IS NOT NULL AND programmee_le <= now() AND NOT notif_envoyee`)).rows;
-    for (const d of dues) {
-      const prise = (await q(`UPDATE actualites SET notif_envoyee = true WHERE id = $1 AND NOT notif_envoyee RETURNING id`, [d.id])).rows[0];
-      if (prise) await notifierTous('nouvelle_actualite', 'Nouvelle actualité', `Bonjour {prenom}, ${d.titre}`, 'actualite', d.id, undefined, d.titre);
-    }
-  } catch (e) {
-    app.log.error(e);
-  }
+app.get('/actualites', async (req, reply) => {
+  // Carte 160, 23 nov. 2026 : lecture seule. La notification
+  // des actualités programmées est sortie de cette route vers la
+  // tâche de fond notifierActualitesProgrammeesDues, au démarrage
+  // et toutes les heures. Aucune écriture en base lors d'une
+  // lecture. ETag, condensé du contenu renvoyé : quand le client
+  // renvoie le même dans If-None-Match, 304 sans corps.
   const { etablissement_id } = z.object({ etablissement_id: z.string().uuid().optional() }).parse(req.query);
-  return (
+  const lignes = (
     await q(
       `SELECT id, etablissement_id, titre, texte, image_id, publiee_le FROM actualites
        WHERE ($1::uuid IS NULL OR etablissement_id = $1) AND (programmee_le IS NULL OR programmee_le <= now()) ORDER BY publiee_le DESC LIMIT 100`,
       [etablissement_id ?? null],
     )
   ).rows;
+  const etag = etagPourContenu(lignes);
+  if (etagCorrespond(req, etag)) return reply.code(304).send();
+  return reply.header('ETag', etag).header('Cache-Control', 'public, max-age=60').send(lignes);
 });
 
 // Dates, lieu, tarif NULL = « À confirmer » côté application.
@@ -6188,9 +6192,9 @@ app.post('/admin/actualites', { preHandler: contenuG }, async (req, reply) => {
   const [sql, params] = insertSql('actualites', { ...b, auteur_id: req.user.sub });
   const row = (await q(sql, params)).rows[0];
   // Programmation, 30 oct. 2026 : une actualité programmée ne
-  // sonne pas à sa création, mais à sa publication, par le
-  // balayage de la lecture membres. Immédiate ou passée, elle
-  // sonne comme avant.
+  // sonne pas à sa création, mais à sa publication, par la tâche
+  // de fond horaire notifierActualitesProgrammeesDues, carte 160.
+  // Immédiate ou passée, elle sonne comme avant.
   if (!b.programmee_le || new Date(b.programmee_le) <= new Date()) {
     await notifierTous('nouvelle_actualite', 'Nouvelle actualité', `Bonjour {prenom}, ${row.titre}`, 'actualite', row.id, undefined, row.titre);
   }
@@ -12786,6 +12790,29 @@ async function purgerStoriesExpirees() {
 }
 await purgerStoriesExpirees();
 setInterval(purgerStoriesExpirees, 60 * 60 * 1000).unref();
+
+// Actualités programmées, carte 160, 23 nov. 2026 : la
+// notification ne passe plus par la lecture des membres (GET
+// /actualites), mais par cette tâche de fond, une fois au
+// démarrage puis toutes les heures, même modèle que la purge
+// des stories. Une actualité programmée ne sonne la cloche
+// qu'à sa publication, une seule fois, grâce au drapeau. La
+// prise du drapeau est atomique : deux exécutions en même temps
+// ne notifient qu'une fois. Une actualité supprimée avant sa
+// publication ne sonne jamais, comme avant.
+async function notifierActualitesProgrammeesDues() {
+  try {
+    const dues = (await q(`SELECT id, titre FROM actualites WHERE programmee_le IS NOT NULL AND programmee_le <= now() AND NOT notif_envoyee`)).rows;
+    for (const d of dues) {
+      const prise = (await q(`UPDATE actualites SET notif_envoyee = true WHERE id = $1 AND NOT notif_envoyee RETURNING id`, [d.id])).rows[0];
+      if (prise) await notifierTous('nouvelle_actualite', 'Nouvelle actualité', `Bonjour {prenom}, ${d.titre}`, 'actualite', d.id, undefined, d.titre);
+    }
+  } catch (e) {
+    app.log.error(e);
+  }
+}
+await notifierActualitesProgrammeesDues();
+setInterval(notifierActualitesProgrammeesDues, 60 * 60 * 1000).unref();
 
 // Messages éphémères, 21 nov. 2026, carte 3 : purge des messages
 // dont expire_le est passé, contenu et pièces R2, sans trace.
