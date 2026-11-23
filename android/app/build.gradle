@@ -75,6 +75,13 @@ android {
             // Avec key.properties : signature de publication.
             // Sans : signature de débogage, comme avant.
             signingConfig = keystorePropertiesFile.exists() ? signingConfigs.release : signingConfigs.debug
+            // APK plus légère, 22 nov. 2026 : minification R8 et réduction
+            // des ressources, réglage standard du modèle Flutter actuel.
+            // Aucune fonctionnalité retirée, le code et les ressources
+            // inutilisés sont seulement éliminés. S'applique aussi aux
+            // futures AAB, qui seront plus légères aussi.
+            minifyEnabled = true
+            shrinkResources = true
         }
     }
 }
