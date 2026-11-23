@@ -29,6 +29,30 @@ import 'main.dart';
 import 'messagerie.dart';
 import 'sonnerie_appel.dart';
 
+/// Micro (et caméra en vidéo) demandés avant d'ouvrir l'écran
+/// d'appel, carte 155 : avant, ils étaient demandés pendant
+/// l'appel, après l'ouverture de l'écran et le démarrage du
+/// minuteur de sonnerie de 30 secondes, donc la sonnerie pouvait
+/// expirer pendant que l'utilisateur répondait aux fenêtres
+/// système. Sur le web, le navigateur demande lui-même
+/// l'autorisation, permission_handler ne s'y applique pas, on
+/// laisse getUserMedia demander. Un échec vaut refus, jamais de
+/// plantage sur le bouton d'appel.
+Future<bool> demanderAutorisationsAppel({required bool video}) async {
+  if (kIsWeb) return true;
+  try {
+    final micro = await Permission.microphone.request();
+    if (!micro.isGranted) return false;
+    if (video) {
+      final camera = await Permission.camera.request();
+      if (!camera.isGranted) return false;
+    }
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 /// Écran d'appel entrant : nom de l'appelant, accepter ou refuser.
 /// Vérifie d'abord que l'appel sonne encore, sinon il se ferme
 /// seul avec « Appel terminé ».
@@ -142,11 +166,20 @@ class _EcranAppelEntrantState extends State<EcranAppelEntrant> {
   }
 
   /// Bascule haut-parleur de l'écran entrant : ne lève jamais, un
-  /// échec audio ne doit pas empêcher l'appel.
+  /// échec audio ne doit pas empêcher l'appel. Carte 157 : la
+  /// route forcée est aussi posée dans l'état global, pour que
+  /// l'écran en cours d'appel reprenne la bonne valeur, à la
+  /// reprise comme au décrochage.
   Future<void> _forcerHautParleurEntrant(bool actif) async {
     try {
       await Helper.setSpeakerphoneOn(actif);
-    } catch (_) {}
+    } catch (_) {
+      return;
+    }
+    etatAppelGlobal.mettreAJourAudio(
+      muet: etatAppelGlobal.muet,
+      hautParleur: actif,
+    );
   }
 
   /// Ferme l'écran après 2 secondes, le temps de lire le message.
@@ -214,6 +247,24 @@ class _EcranAppelEntrantState extends State<EcranAppelEntrant> {
 
   Future<void> _accepter() async {
     if (_actionEnCours || _termine) return;
+    // Carte 155 : le micro et la caméra sont demandés avant
+    // d'ouvrir l'écran d'appel, pour que les fenêtres système
+    // ne mangent pas les 30 secondes de sonnerie. Refus : on
+    // affiche le message et on n'accepte pas, l'appel sonne
+    // encore, l'utilisateur peut refuser ou réessayer.
+    final autorise = await demanderAutorisationsAppel(
+      video: widget.typeAppel == 'video',
+    );
+    if (!autorise) {
+      if (!mounted) return;
+      toast(
+        context,
+        widget.typeAppel == 'video'
+            ? tr('Micro ou caméra refusé : autorise le micro et la caméra dans les réglages pour appeler en vidéo.')
+            : tr('Micro refusé : autorise le micro dans les réglages pour appeler.'),
+      );
+      return;
+    }
     _accepte = true;
     setState(() => _actionEnCours = true);
     try {
@@ -440,6 +491,11 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
   bool _muet = false;
   bool _hautParleur = false;
 
+  /// Vidéo ajoutée en cours d'appel audio, carte 156 : l'appel
+  /// est parti en audio, l'utilisateur a basculé en vidéo, ou
+  /// l'autre côté a basculé et son offre portait la vidéo.
+  bool _videoAjoutee = false;
+
   /// Haut-parleur forcé pendant la sonnerie, 20 nov. 2026,
   /// appelant comme appelé, 21 nov. 2026 : il revient à
   /// l'écouteur au décrochage seulement si l'utilisateur n'a
@@ -468,7 +524,7 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
   /// plus raccrocher, il quitte l'écran sans couper l'appel.
   bool _reductionDemandee = false;
 
-  bool get _estVideo => widget.typeAppel == 'video';
+  bool get _estVideo => widget.typeAppel == 'video' || _videoAjoutee;
 
   @override
   void initState() {
@@ -477,6 +533,11 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     _service = widget.serviceAppel ?? ServiceAppelWebRtcReel();
     _signalisation =
         widget.signalisation ?? ClientSignalisationAppels();
+    // Partage d'écran arrêté depuis le système, carte 158 : le
+    // service prévient, l'écran se redessine avec la caméra.
+    _service.quandPartageTermine(() {
+      if (mounted) setState(() {});
+    });
     _lecteurCree = widget.lecteurSonnerie == null;
     _lecteurSonnerie =
         widget.lecteurSonnerie ?? LecteurSonnerieJustAudio();
@@ -524,6 +585,11 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     if (!kIsWeb) {
       _hautParleurSonnerie = true;
       _hautParleur = true;
+      // Carte 157 : la route forcée est posée dans l'état
+      // global, pour que la reprise après réduction retrouve le
+      // haut-parleur, pas l'écouteur. Sans ça, demarrer() remet
+      // le global à faux et la reprise perd la route.
+      etatAppelGlobal.mettreAJourAudio(muet: _muet, hautParleur: true);
       unawaited(_appliquerHautParleur(true));
     }
     _demarrer();
@@ -620,11 +686,10 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     unawaited(_interrogerSignaux());
   }
 
-  Future<void> _demarrer() async {
-    // Minuteur de sonnerie dès la création de l'appel, étape 2 :
-    // avant, il ne démarrait qu'après la chaîne (vérifier l'appel,
-    // config ICE, micro, connexion), donc l'appel sonnait plus de
-    // 30 secondes côté appelé.
+  /// Minuteur de sonnerie de 30 secondes, carte 155 : il ne
+  /// démarre qu'après les autorisations, jamais avant.
+  void _demarrerMinuteurSonnerie() {
+    _minuteurSonnerie?.cancel();
     _minuteurSonnerie = Timer(dureeSonnerieAppel, () {
       if (mounted && !_enCours && !_termine) {
         if (widget.suisAppelant) {
@@ -633,6 +698,9 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
         _terminerLocal(tr('Pas de réponse'));
       }
     });
+  }
+
+  Future<void> _demarrer() async {
     // Étape en cours, pour un message d'erreur précis : avant,
     // toute exception donnait le même message générique, qui
     // cachait la vraie cause, comme addStream sur Safari.
@@ -688,6 +756,14 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
         _terminerLocal(null);
         return;
       }
+      // Minuteur de sonnerie, carte 155 : il ne démarre qu'une
+      // fois les autorisations accordées et le micro ouvert.
+      // Avant, il démarrait à la création de l'appel, donc la
+      // sonnerie pouvait expirer pendant que l'utilisateur
+      // répondait aux fenêtres système. Il démarre ici, pas
+      // après toute la chaîne, pour que l'appel ne sonne pas
+      // plus de 30 secondes côté appelé, étape 2.
+      _demarrerMinuteurSonnerie();
       // Haut-parleur après le micro, 20 nov. 2026 : le forçage
       // d'initState précède l'ouverture du micro, qui bascule la
       // session audio en mode communication et peut remettre la
@@ -788,18 +864,13 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     }
   }
 
-  /// Micro (et caméra en vidéo) : le navigateur demande lui-même
-  /// l'autorisation sur le web, permission_handler ne s'y applique
-  /// pas, on laisse getUserMedia demander.
+  /// Micro (et caméra en vidéo), carte 155 : les autorisations
+  /// sont déjà demandées avant l'ouverture de l'écran, au
+  /// bouton d'appel ou à l'acceptation, cette demande ne sert
+  /// plus que de filet, elle répond aussitôt quand c'est déjà
+  /// accordé.
   Future<bool> _autorisations() async {
-    if (kIsWeb) return true;
-    final micro = await Permission.microphone.request();
-    if (!micro.isGranted) return false;
-    if (_estVideo) {
-      final camera = await Permission.camera.request();
-      if (!camera.isGranted) return false;
-    }
-    return true;
+    return demanderAutorisationsAppel(video: _estVideo);
   }
 
   Future<void> _interrogerSignaux() async {
@@ -822,17 +893,7 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     switch (signal.type) {
       case 'offre':
         if (widget.suisAppelant) return;
-        final offre = offreDepuisContenu(signal.contenu);
-        if (offre == null) return;
-        _service
-            .creerReponse({'sdp': offre.sdp, 'type': offre.type})
-            .then((reponse) {
-          if (!mounted || _termine) return;
-          unawaited(_passerEnCours());
-          unawaited(_envoyerSignal('reponse', reponse));
-        }).catchError((_) {
-          _terminerLocal(tr('L’appel n’a pas pu aboutir.'));
-        });
+        unawaited(_repondreOffre(signal));
       case 'reponse':
         if (!widget.suisAppelant) return;
         final reponse = offreDepuisContenu(signal.contenu);
@@ -867,6 +928,35 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
         _terminerLocal(tr('Appel annulé'));
       case 'termine':
         _terminerLocal(tr('Appel terminé'));
+    }
+  }
+
+  /// Réponse à une offre, carte 156 : quand l'offre porte une
+  /// piste vidéo et que l'appel est en audio, l'appelant bascule
+  /// en vidéo. On ouvre notre caméra avant de répondre, pour que
+  /// l'image parte dans les deux sens, et l'écran passe en vidéo.
+  /// Caméra refusée : on répond quand même, on reçoit la vidéo
+  /// sans en envoyer.
+  Future<void> _repondreOffre(SignalAppel signal) async {
+    final offre = offreDepuisContenu(signal.contenu);
+    if (offre == null) return;
+    final basculeVideo =
+        !_estVideo && offre.sdp.contains('m=video');
+    if (basculeVideo) {
+      final ok = await _service.ajouterPisteVideo();
+      if (ok && mounted && !_termine) {
+        setState(() => _videoAjoutee = true);
+        etatAppelGlobal.mettreAJourTypeAppel('video');
+      }
+    }
+    try {
+      final reponse = await _service
+          .creerReponse({'sdp': offre.sdp, 'type': offre.type});
+      if (!mounted || _termine) return;
+      unawaited(_passerEnCours());
+      unawaited(_envoyerSignal('reponse', reponse));
+    } catch (_) {
+      _terminerLocal(tr('L’appel n’a pas pu aboutir.'));
     }
   }
 
@@ -989,21 +1079,30 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     // le haut-parleur au décrochage.
     _hautParleurSonnerie = false;
     final actif = !_hautParleur;
-    await _service.setHautParleur(actif);
-    if (mounted) setState(() => _hautParleur = actif);
+    // Carte 157 : l'application relit la vraie route dans le
+    // service, qui ne la pose qu'après le succès de Helper.
+    await _appliquerHautParleur(actif);
     etatAppelGlobal.mettreAJourAudio(
       muet: _muet,
-      hautParleur: actif,
+      hautParleur: _hautParleur,
     );
   }
 
   /// Applique la route haut-parleur : ne lève jamais, un échec
-  /// audio ne doit pas empêcher l'appel.
+  /// audio ne doit pas empêcher l'appel. Carte 157 : après
+  /// chaque application, le bouton affiche la vraie route tenue
+  /// par le service, pas l'état demandé. Helper ne permet pas
+  /// de relire la route sur la plateforme, la valeur du service
+  /// est la seule vérité, elle n'est posée qu'après le succès.
   Future<void> _appliquerHautParleur(bool actif) async {
     try {
       await _service.setHautParleur(actif);
     } catch (e) {
       debugPrint('Appel : haut-parleur impossible : ${BugReports.scrub('$e')}');
+    }
+    final vrai = _service.hautParleur;
+    if (mounted && vrai != _hautParleur) {
+      setState(() => _hautParleur = vrai);
     }
   }
 
@@ -1032,14 +1131,52 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     return tr('Connexion…');
   }
 
-  /// « Appel vidéo » pendant un appel audio, 21 nov. 2026 : le
-  /// moteur ne bascule pas d'audio en vidéo en cours d'appel, le
-  /// bouton l'explique au lieu de rester muet.
-  void _videoIndisponible() {
-    toast(
-      context,
-      tr('La vidéo n’est pas disponible pendant un appel audio.'),
-    );
+  /// « Appel vidéo » pendant un appel audio, carte 156 : la
+  /// bascule est réelle maintenant, la caméra s'ouvre, la piste
+  /// vidéo est ajoutée, une nouvelle offre part, l'autre côté
+  /// répond et l'écran passe en vidéo. Avant, le bouton
+  /// expliquait seulement que la vidéo n'était pas disponible.
+  Future<void> _basculerVersVideo() async {
+    if (_estVideo || _termine) return;
+    if (!_enCours) {
+      toast(context, tr('Décroche d’abord pour passer en vidéo.'));
+      return;
+    }
+    final offre = await _service.ajouterVideo();
+    if (offre == null) {
+      if (mounted) {
+        toast(context, tr('La caméra n’a pas pu s’ouvrir.'));
+      }
+      return;
+    }
+    if (!mounted || _termine) return;
+    setState(() => _videoAjoutee = true);
+    etatAppelGlobal.mettreAJourTypeAppel('video');
+    unawaited(_envoyerSignal('offre', offre));
+  }
+
+  /// Partage d'écran, carte 158 : le partage remplace la caméra,
+  /// l'autre côté voit l'écran en grand à la place de la vidéo.
+  /// Sur iOS, flutter_webrtc ne prend pas en charge la capture,
+  /// le service refuse et on l'explique.
+  Future<void> _basculerPartageEcran() async {
+    if (!_estVideo || _termine) return;
+    if (_service.ecranPartage) {
+      await _service.arreterPartageEcran();
+      if (mounted) setState(() {});
+      return;
+    }
+    final ok = await _service.partagerEcran();
+    if (!ok) {
+      if (mounted) {
+        toast(
+          context,
+          tr('Le partage d’écran n’est pas disponible sur cet appareil.'),
+        );
+      }
+      return;
+    }
+    if (mounted) setState(() {});
   }
 
   /// Feuille « Plus » : les actions qui ne tiennent pas dans la
@@ -1058,6 +1195,28 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
           onTap: () {
             Navigator.of(context).pop();
             unawaited(_basculerCameraAvantArriere());
+          },
+        ),
+      );
+      // Partage d'écran, carte 158 : remplace la caméra, comme
+      // sur les autres réseaux sociaux.
+      actions.add(
+        ListTile(
+          leading: Icon(
+            _service.ecranPartage
+                ? Icons.stop_screen_share
+                : Icons.screen_share,
+            color: Colors.white,
+          ),
+          title: Text(
+            _service.ecranPartage
+                ? tr('Arrêter le partage')
+                : tr('Partager l’écran'),
+            style: const TextStyle(color: Colors.white),
+          ),
+          onTap: () {
+            Navigator.of(context).pop();
+            unawaited(_basculerPartageEcran());
           },
         ),
       );
@@ -1099,7 +1258,11 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
 
   @override
   Widget build(BuildContext context) {
-    final distant = _service.fluxDistant != null;
+    // Vidéo distante, carte 156 : le flux existe dès l'audio,
+    // seule une piste vidéo dit que l'autre envoie une image,
+    // sinon la photo s'affiche au lieu d'une vidéo noire.
+    final distant =
+        _service.fluxDistant?.getVideoTracks().isNotEmpty ?? false;
     return PopScope(
       // Réduction demandée, carte 4 : le retour quitte l'écran
       // sans raccrocher. Tout autre retour raccroche, comme avant.
@@ -1115,10 +1278,15 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
                   children: [
                     Positioned.fill(
                       child: distant
-                          ? RTCVideoView(
-                              _service.renduDistant,
-                              objectFit: RTCVideoViewObjectFit
-                                  .RTCVideoViewObjectFitCover,
+                          ? GestureDetector(
+                              // Retourner la caméra, carte 159 :
+                              // double toucher sur la vidéo distante.
+                              onDoubleTap: _basculerCameraAvantArriere,
+                              child: RTCVideoView(
+                                _service.renduDistant,
+                                objectFit: RTCVideoViewObjectFit
+                                    .RTCVideoViewObjectFitCover,
+                              ),
                             )
                           : Center(
                               child: Column(
@@ -1159,6 +1327,30 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
                         ),
                       ),
                     ),
+                    // Retourner la caméra, carte 159 : petit
+                    // bouton sur la fenêtre vidéo locale, en haut
+                    // à droite, en plus de Plus puis Basculer.
+                    Positioned(
+                      right: 20,
+                      top: 20,
+                      child: SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: FilledButton(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.black45,
+                            shape: const CircleBorder(),
+                            padding: EdgeInsets.zero,
+                          ),
+                          onPressed: _basculerCameraAvantArriere,
+                          child: const Icon(
+                            Icons.switch_camera,
+                            size: 20,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
                     // Réduire, carte 4 : quitte l'écran sans
                     // raccrocher, une fois décroché, la pastille
                     // permet ensuite d'y revenir.
@@ -1181,7 +1373,7 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
                         onMuet: _basculerMuet,
                         onHautParleur: _basculerHautParleur,
                         onCamera: _basculerCamera,
-                        onVideoIndisponible: _videoIndisponible,
+                        onBasculerVideo: _basculerVersVideo,
                         onPlus: _ouvrirPlus,
                         onRaccrocher: _raccrocher,
                       ),
@@ -1251,7 +1443,7 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
                           onMuet: _basculerMuet,
                           onHautParleur: _basculerHautParleur,
                           onCamera: _basculerCamera,
-                          onVideoIndisponible: _videoIndisponible,
+                          onBasculerVideo: _basculerVersVideo,
                           onPlus: _ouvrirPlus,
                           onRaccrocher: _raccrocher,
                         ),
@@ -1272,8 +1464,7 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
 /// centre, le sixième emplacement vide. Pas de Partager, pas
 /// d'ajout de personne, appels à deux seulement. En vidéo,
 /// « Appel vidéo » coupe ou remet la caméra ; en audio, il
-/// explique que la vidéo n'est pas disponible, le moteur ne
-/// bascule pas d'audio en vidéo en cours d'appel.
+/// bascule en vidéo, carte 156, le partage d'écran est sous Plus.
 class _CommandesAppel extends StatelessWidget {
   const _CommandesAppel({
     required this.estVideo,
@@ -1284,7 +1475,7 @@ class _CommandesAppel extends StatelessWidget {
     required this.onMuet,
     required this.onHautParleur,
     required this.onCamera,
-    required this.onVideoIndisponible,
+    required this.onBasculerVideo,
     required this.onPlus,
     required this.onRaccrocher,
   });
@@ -1297,7 +1488,7 @@ class _CommandesAppel extends StatelessWidget {
   final VoidCallback onMuet;
   final VoidCallback onHautParleur;
   final VoidCallback onCamera;
-  final VoidCallback onVideoIndisponible;
+  final VoidCallback onBasculerVideo;
   final VoidCallback onPlus;
   final VoidCallback onRaccrocher;
 
@@ -1328,7 +1519,7 @@ class _CommandesAppel extends StatelessWidget {
                   icone: cameraActive ? Icons.videocam : Icons.videocam_off,
                   actif: false,
                   libelle: tr('Appel vidéo'),
-                  onPressed: estVideo ? onCamera : onVideoIndisponible,
+                  onPressed: estVideo ? onCamera : onBasculerVideo,
                 ),
               ),
               Expanded(

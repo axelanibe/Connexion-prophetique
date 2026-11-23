@@ -155,6 +155,15 @@ class EtatAppelGlobal extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  /// Bascule audio vers vidéo, carte 156 : le type de l'appel
+  /// change en cours d'appel, la pastille rouvre l'écran en
+  /// vidéo, pas en audio.
+  void mettreAJourTypeAppel(String typeAppel) {
+    if (_typeAppel == typeAppel) return;
+    _typeAppel = typeAppel;
+    notifyListeners();
+  }
+
   /// Réduit l'écran sans raccrocher : l'appel continue, la
   /// pastille apparaît sur l'accueil, dans le tiroir et dans
   /// l'en-tête web.

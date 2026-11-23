@@ -1384,6 +1384,23 @@ class _MessagerieConversationScreenState
   /// fait en arrière-plan, l'écran attend son identifiant.
   Future<void> _appeler(String type) async {
     if (_appelEnCours) return;
+    // Carte 155 : le micro et la caméra sont demandés avant
+    // d'ouvrir l'écran d'appel, pour que les fenêtres système
+    // ne mangent pas les 30 secondes de sonnerie. Refus : on
+    // affiche le message et on ne lance pas l'appel.
+    final autorise =
+        await demanderAutorisationsAppel(video: type == 'video');
+    if (!autorise) {
+      if (mounted) {
+        toast(
+          context,
+          type == 'video'
+              ? tr('Micro ou caméra refusé : autorise le micro et la caméra dans les réglages pour appeler en vidéo.')
+              : tr('Micro refusé : autorise le micro dans les réglages pour appeler.'),
+        );
+      }
+      return;
+    }
     setState(() => _appelEnCours = true);
     final creation = _api.creerAppelConversation(
       widget.conversation.id,

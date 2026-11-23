@@ -60,6 +60,36 @@ abstract class ServiceAppelWebRtc {
   /// Bascule entre caméra avant et arrière.
   Future<void> basculerCamera();
 
+  /// Ajoute la vidéo à un appel audio en cours (carte 156) : ouvre
+  /// la caméra, ajoute la piste vidéo et crée une nouvelle offre
+  /// à envoyer. Renvoie l'offre, ou null si la connexion n'est
+  /// pas prête ou si la caméra ne s'ouvre pas.
+  Future<Map<String, dynamic>?> ajouterVideo();
+
+  /// Ouvre la caméra et ajoute la piste vidéo à la connexion,
+  /// sans créer d'offre (carte 156) : le côté qui répond à une
+  /// offre de bascule envoie ainsi sa propre vidéo dans la
+  /// réponse. Renvoie faux si la connexion n'est pas prête ou
+  /// si la caméra ne s'ouvre pas.
+  Future<bool> ajouterPisteVideo();
+
+  /// Partage l'écran à la place de la caméra (carte 158) : capture
+  /// l'écran et remplace la piste vidéo locale par la piste
+  /// d'écran. Renvoie faux si la capture est refusée ou
+  /// indisponible, par exemple sur iOS, où flutter_webrtc ne
+  /// prend pas en charge la capture d'écran.
+  Future<bool> partagerEcran();
+
+  /// Arrête le partage d'écran et revient à la caméra (carte 158).
+  Future<void> arreterPartageEcran();
+
+  /// Vrai quand l'écran est partagé en ce moment.
+  bool get ecranPartage;
+
+  /// Appelé quand le partage d'écran se termine seul, par
+  /// exemple quand l'utilisateur l'arrête depuis le système.
+  void quandPartageTermine(void Function() rappel);
+
   /// Flux local (micro, caméra en vidéo), null avant préparation.
   MediaStream? get fluxLocal;
 
@@ -71,6 +101,11 @@ abstract class ServiceAppelWebRtc {
 
   /// Rendu distant, pour RTCVideoView.
   RTCVideoRenderer get renduDistant;
+
+  /// Vraie route audio tenue par le service, carte 157 : elle
+  /// n'est posée qu'après le succès de Helper, c'est la seule
+  /// vérité que le bouton affiche.
+  bool get hautParleur;
 
   /// Libère la connexion, les flux et les rendus.
   Future<void> liberer();
@@ -89,6 +124,21 @@ class ServiceAppelWebRtcReel implements ServiceAppelWebRtc {
   bool _distantDefini = false;
   bool _libere = false;
 
+  /// Envoyeur de la piste vidéo locale, pour plafonner son débit
+  /// (carte 154) et remplacer sa piste (carte 158).
+  RTCRtpSender? _envoyeurVideo;
+
+  /// Flux de l'écran partagé (carte 158), null hors partage.
+  MediaStream? _fluxEcran;
+
+  /// Piste caméra gardée pendant le partage d'écran (carte 158),
+  /// pour revenir à elle.
+  MediaStreamTrack? _pisteCamera;
+
+  /// Vrai quand l'écran est partagé (carte 158).
+  bool _ecranPartage = false;
+  void Function()? _rappelPartageTermine;
+
   /// Route voulue, 21 nov. 2026 : haut-parleur actif ou écouteur.
   /// Le volume de la piste distante en dépend.
   bool _hautParleur = false;
@@ -104,6 +154,9 @@ class ServiceAppelWebRtcReel implements ServiceAppelWebRtc {
 
   @override
   MediaStream? get fluxDistant => _fluxDistant;
+
+  @override
+  bool get hautParleur => _hautParleur;
 
   @override
   void quandCandidat(void Function(Map<String, dynamic>) rappel) {
@@ -128,13 +181,24 @@ class ServiceAppelWebRtcReel implements ServiceAppelWebRtc {
     // laissait le choix à la plateforme, sans garantie
     // d'annulation d'écho, ce qui nourrissait l'écho en
     // haut-parleur. Les trois sont demandées à vrai.
+    // Vidéo plafonnée, carte 154 : sans limite, la caméra
+    // envoyait sa pleine résolution et l'image se cassait en
+    // blocs sur une connexion limitée. 640 sur 480, 24 images
+    // par seconde, en idéal pour laisser retomber proprement.
     final flux = await navigator.mediaDevices.getUserMedia({
       'audio': {
         'echoCancellation': true,
         'noiseSuppression': true,
         'autoGainControl': true,
       },
-      'video': video ? {'facingMode': 'user'} : false,
+      'video': video
+          ? {
+              'facingMode': 'user',
+              'width': {'ideal': 640},
+              'height': {'ideal': 480},
+              'frameRate': {'ideal': 24},
+            }
+          : false,
     });
     _fluxLocal = flux;
     _renduLocal.srcObject = flux;
@@ -159,8 +223,12 @@ class ServiceAppelWebRtcReel implements ServiceAppelWebRtc {
     // le prévoit le standard, ce qui marche sur Safari
     // comme ailleurs, 20 nov. 2026.
     for (final piste in flux.getTracks()) {
-      await connexion.addTrack(piste, flux);
+      final envoyeur = await connexion.addTrack(piste, flux);
+      // Envoyeur vidéo gardé, carte 154 : pour plafonner son
+      // débit, et carte 158, pour remplacer sa piste.
+      if (piste.kind == 'video') _envoyeurVideo = envoyeur;
     }
+    await _plafonnerDebitVideo();
     connexion.onIceCandidate = (candidat) {
       if (candidat.candidate == null || candidat.candidate!.isEmpty) return;
       _rappelCandidat?.call({
@@ -177,6 +245,11 @@ class ServiceAppelWebRtcReel implements ServiceAppelWebRtc {
           ? evenement.streams.first
           : null;
       if (fluxDistant != null) _definirDistant(fluxDistant);
+      // Bascule audio vers vidéo, carte 156 : la piste vidéo
+      // distante arrive après l'audio, sur le même flux, et
+      // _definirDistant ne prévient l'écran qu'une fois. Sans
+      // ce rappel, l'écran ne sait pas que la vidéo est là.
+      if (evenement.track.kind == 'video') _rappelFluxDistant?.call();
     };
     connexion.onIceConnectionState = (etat) {
       // Seule une défaillance termine l'appel : une coupure
@@ -210,6 +283,28 @@ class ServiceAppelWebRtcReel implements ServiceAppelWebRtc {
         // B-11 : jamais $e brut journalisé sur un chemin d'appel.
         debugPrint('Appel : volume distant impossible : ${BugReports.scrub('$e')}');
       }
+    }
+  }
+
+  /// Plafond du débit vidéo, carte 154 : sans plafond, la caméra
+  /// envoyait sa pleine résolution et l'image se cassait en blocs
+  /// sur une connexion limitée. 500 kbit/s et 24 images par
+  /// seconde suffisent pour 640 sur 480. Un échec ne doit jamais
+  /// empêcher l'appel.
+  Future<void> _plafonnerDebitVideo() async {
+    final envoyeur = _envoyeurVideo;
+    if (envoyeur == null) return;
+    try {
+      final parametres = envoyeur.parameters;
+      final encodages = parametres.encodings;
+      if (encodages == null || encodages.isEmpty) return;
+      for (final encodage in encodages) {
+        encodage.maxBitrate = 500000;
+        encodage.maxFramerate = 24;
+      }
+      await envoyeur.setParameters(parametres);
+    } catch (_) {
+      // L'appel continue sans plafond.
     }
   }
 
@@ -270,8 +365,12 @@ class ServiceAppelWebRtcReel implements ServiceAppelWebRtc {
 
   @override
   Future<void> setHautParleur(bool actif) async {
-    _hautParleur = actif;
+    // Carte 157 : l'état n'est posé qu'après le succès de Helper.
+    // Avant, il était posé avant l'appel plateforme, donc le
+    // service croyait le haut-parleur actif alors que la route
+    // n'avait pas changé, et le bouton mentait.
     await Helper.setSpeakerphoneOn(actif);
+    _hautParleur = actif;
     await _appliquerVolumeDistant();
   }
 
@@ -290,9 +389,151 @@ class ServiceAppelWebRtcReel implements ServiceAppelWebRtc {
   }
 
   @override
+  Future<bool> ajouterPisteVideo() async {
+    final connexion = _connexion;
+    if (connexion == null || _libere) return false;
+    // Déjà une piste vidéo locale : rien à ajouter.
+    if (_fluxLocal?.getVideoTracks().isNotEmpty ?? false) return true;
+    MediaStream? flux;
+    try {
+      flux = await navigator.mediaDevices.getUserMedia({
+        'audio': false,
+        'video': {
+          'facingMode': 'user',
+          'width': {'ideal': 640},
+          'height': {'ideal': 480},
+          'frameRate': {'ideal': 24},
+        },
+      });
+      final pistes = flux.getVideoTracks();
+      if (pistes.isEmpty) return false;
+      final piste = pistes.first;
+      // La piste rejoint le flux local, pour l'aperçu et la coupe.
+      await _fluxLocal?.addTrack(piste);
+      _renduLocal.srcObject = _fluxLocal;
+      final envoyeur = await connexion.addTrack(piste, _fluxLocal!);
+      _envoyeurVideo = envoyeur;
+      await _plafonnerDebitVideo();
+      return true;
+    } catch (_) {
+      // La caméra a pu s'ouvrir avant l'échec : on l'arrête,
+      // sinon elle reste allumée sans être envoyée.
+      for (final piste in flux?.getTracks() ?? const []) {
+        try {
+          await piste.stop();
+        } catch (_) {}
+      }
+      return false;
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>?> ajouterVideo() async {
+    final ok = await ajouterPisteVideo();
+    if (!ok) return null;
+    try {
+      return await creerOffre();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  bool get ecranPartage => _ecranPartage;
+
+  @override
+  void quandPartageTermine(void Function() rappel) {
+    _rappelPartageTermine = rappel;
+  }
+
+  @override
+  Future<bool> partagerEcran() async {
+    final connexion = _connexion;
+    if (connexion == null || _libere) return false;
+    if (_ecranPartage) return true;
+    // Sur iOS, flutter_webrtc ne prend pas en charge la capture
+    // d'écran : elle exigerait une extension de diffusion
+    // ReplayKit, hors de ce chantier.
+    if (defaultTargetPlatform == TargetPlatform.iOS) return false;
+    // Sans envoyeur vidéo, il n'y a rien à remplacer.
+    final envoyeur = _envoyeurVideo;
+    if (envoyeur == null) return false;
+    MediaStream? fluxEcran;
+    try {
+      fluxEcran = await navigator.mediaDevices.getDisplayMedia({
+        'video': true,
+        'audio': false,
+      });
+      final pistes = fluxEcran.getVideoTracks();
+      if (pistes.isEmpty) return false;
+      final pisteEcran = pistes.first;
+      // La piste caméra est gardée, pour revenir à elle.
+      final pistesCamera = _fluxLocal?.getVideoTracks() ?? const [];
+      _pisteCamera = pistesCamera.isNotEmpty ? pistesCamera.first : null;
+      await envoyeur.replaceTrack(pisteEcran);
+      _fluxEcran = fluxEcran;
+      _ecranPartage = true;
+      // L'aperçu local montre l'écran partagé.
+      _renduLocal.srcObject = fluxEcran;
+      await _plafonnerDebitVideo();
+      // Arrêt depuis le système : le partage se termine seul,
+      // l'écran est prévenu pour remettre son bouton.
+      pisteEcran.onEnded = () {
+        if (_ecranPartage) {
+          unawaited(arreterPartageEcran());
+          _rappelPartageTermine?.call();
+        }
+      };
+      return true;
+    } catch (_) {
+      // La capture a pu démarrer avant l'échec : on l'arrête,
+      // sinon l'écran reste partagé sans être envoyé.
+      for (final piste in fluxEcran?.getTracks() ?? const []) {
+        try {
+          await piste.stop();
+        } catch (_) {}
+      }
+      return false;
+    }
+  }
+
+  @override
+  Future<void> arreterPartageEcran() async {
+    if (!_ecranPartage) return;
+    _ecranPartage = false;
+    try {
+      final envoyeur = _envoyeurVideo;
+      final pisteCamera = _pisteCamera;
+      if (envoyeur != null && pisteCamera != null) {
+        await envoyeur.replaceTrack(pisteCamera);
+      }
+    } catch (_) {}
+    for (final piste in _fluxEcran?.getTracks() ?? const []) {
+      try {
+        await piste.stop();
+      } catch (_) {}
+    }
+    _fluxEcran = null;
+    _pisteCamera = null;
+    _renduLocal.srcObject = _fluxLocal;
+  }
+
+  @override
   Future<void> liberer() async {
     if (_libere) return;
     _libere = true;
+    // Arrêt du partage d'écran en cours, carte 158 : la piste
+    // d'écran est arrêtée et la caméra est restaurée.
+    _ecranPartage = false;
+    for (final piste in _fluxEcran?.getTracks() ?? const []) {
+      try {
+        await piste.stop();
+      } catch (_) {}
+    }
+    _fluxEcran = null;
+    _pisteCamera = null;
+    _envoyeurVideo = null;
+    _rappelPartageTermine = null;
     // Retour à l'écouteur avant de fermer, 21 nov. 2026 : la
     // route forcée ne doit pas survivre à l'appel.
     try {
