@@ -14,6 +14,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'auth_session.dart';
 import 'stockage_auth.dart';
@@ -243,6 +244,27 @@ class ApiClient {
     return jsonDecode(res.body);
   }
 
+  /// GET conditionnel, carte 160, 23 nov. 2026 : envoie
+  /// If-None-Match quand un ETag est gardé en local. Renvoie null
+  /// quand le serveur répond 304, sinon le corps décodé et le
+  /// nouvel ETag. Une 401 remonte comme pour _get, par le
+  /// renouvellement de _sendWithRefresh.
+  Future<Map<String, dynamic>?> _getSiModifie(String path, String? etag) async {
+    final res = await _sendWithRefresh(
+      (headers) => _client
+          .get(
+            Uri.parse('$kApiBaseUrl$path'),
+            headers: etag == null || etag.isEmpty ? headers : {...headers, 'If-None-Match': etag},
+          )
+          .timeout(const Duration(seconds: 45)),
+    );
+    if (res.statusCode == 304) return null;
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw _error(res.statusCode, res.body, entetes: res.headers);
+    }
+    return {'data': jsonDecode(res.body), 'etag': res.headers['etag'] ?? res.headers['ETag']};
+  }
+
   Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) async {
     final res = await _sendWithRefresh(
       (headers) => _client
@@ -308,7 +330,46 @@ class ApiClient {
     return data as Map<String, dynamic>;
   }
 
-  Future<List<Map<String, dynamic>>> fetchActualites() => _list('/actualites');
+  /// Actualités, carte 160, 23 nov. 2026 : lecture conditionnelle
+  /// avec ETag. Le serveur répond 304 sans corps quand la liste
+  /// est inchangée, la copie gardée en local est alors renvoyée.
+  /// En cas d'erreur autre qu'une session morte (401), la copie
+  /// locale est renvoyée pour que la synchronisation continue
+  /// hors ligne. Une 401 remonte toujours, pour ne pas masquer
+  /// une session morte. Sans copie locale, l'erreur remonte
+  /// comme avant.
+  Future<List<Map<String, dynamic>>> fetchActualites() async {
+    final prefs = await SharedPreferences.getInstance();
+    try {
+      final reponse = await _getSiModifie('/actualites', prefs.getString('actualites_etag'));
+      if (reponse == null) return _listeActualitesEnCache(prefs);
+      final donnees = reponse['data'];
+      final liste = donnees is List ? donnees.cast<Map<String, dynamic>>() : const <Map<String, dynamic>>[];
+      await prefs.setString('actualites_cache_json', jsonEncode(liste));
+      final etag = reponse['etag'] as String?;
+      if (etag != null && etag.isNotEmpty) await prefs.setString('actualites_etag', etag);
+      return liste;
+    } on ApiException catch (e) {
+      if (e.status == 401) rethrow;
+      final enCache = _listeActualitesEnCache(prefs);
+      if (enCache.isNotEmpty) return enCache;
+      rethrow;
+    } catch (_) {
+      final enCache = _listeActualitesEnCache(prefs);
+      if (enCache.isNotEmpty) return enCache;
+      rethrow;
+    }
+  }
+
+  List<Map<String, dynamic>> _listeActualitesEnCache(SharedPreferences prefs) {
+    try {
+      final raw = prefs.getString('actualites_cache_json');
+      if (raw == null || raw.isEmpty) return const [];
+      final data = jsonDecode(raw);
+      if (data is List) return data.cast<Map<String, dynamic>>();
+    } catch (_) {}
+    return const [];
+  }
   Future<List<Map<String, dynamic>>> fetchEvenements() => _list('/evenements');
 
   /// Nom de salle Jitsi d'un événement, 22 nov. 2026 : route
@@ -516,10 +577,20 @@ class ApiClient {
   /// configVersion, minAppVersion et updateUrl, sur /api/config.
   /// En cas d'erreur, on renvoie un objet vide : l'appelant garde
   /// alors la dernière configuration locale, ou les défauts.
+  /// ETag, carte 160, 23 nov. 2026 : sur 304, la configuration
+  /// est inchangée, on renvoie vide comme sur une erreur, et
+  /// l'appelant garde sa dernière configuration locale.
   Future<Map<String, dynamic>> fetchVersionConfig() async {
     try {
-      final data = await _get('/api/config');
-      if (data is Map<String, dynamic>) return data;
+      final prefs = await SharedPreferences.getInstance();
+      final reponse = await _getSiModifie('/api/config', prefs.getString('version_config_etag'));
+      if (reponse == null) return const {};
+      final data = reponse['data'];
+      if (data is Map<String, dynamic>) {
+        final etag = reponse['etag'] as String?;
+        if (etag != null && etag.isNotEmpty) await prefs.setString('version_config_etag', etag);
+        return data;
+      }
     } catch (_) {}
     return const {};
   }
