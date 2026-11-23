@@ -8,9 +8,11 @@
 // les deux téléphones.
 
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -636,6 +638,7 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     _monId = _api.membreId;
     _muet = etatAppelGlobal.muet;
     _hautParleur = etatAppelGlobal.hautParleur;
+    _cameraActive = etatAppelGlobal.cameraActive;
     _enCours = etatAppelGlobal.enCours;
     _debutAppel = etatAppelGlobal.debut;
     if (_debutAppel != null) {
@@ -987,6 +990,14 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
       muet: _muet,
       hautParleur: _hautParleur,
     );
+    // Connexion Telecom sortante, carte 163 : sans cet appel,
+    // la connexion restait en numérotation pendant tout
+    // l'appel. Android seulement, sans bloquer l'appel.
+    if (!kIsWeb && Platform.isAndroid && _appelId.isNotEmpty) {
+      unawaited(
+        FlutterCallkitIncoming.setCallConnected(_appelId).catchError((_) {}),
+      );
+    }
     if (forcerHautParleur) {
       await _appliquerHautParleur(false);
     }
@@ -1110,6 +1121,9 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     final active = !_cameraActive;
     await _service.setCameraActive(active);
     if (mounted) setState(() => _cameraActive = active);
+    // Carte 163 : l'état global garde le choix, pour que la
+    // reprise après une mise en attente retrouve la caméra.
+    etatAppelGlobal.mettreAJourCamera(active);
   }
 
   Future<void> _basculerCameraAvantArriere() async {
@@ -1120,6 +1134,9 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
   /// erreur, appel en cours avec la durée, sonnerie, connexion.
   String _statutAppel() {
     if (_messageErreur != null) return _messageErreur!;
+    // Mise en attente Telecom, carte 163 : l'écran l'affiche
+    // pendant qu'un appel cellulaire suspend notre appel.
+    if (etatAppelGlobal.enAttente) return tr('Appel en attente…');
     if (_enCours) {
       return '${tr('Appel en cours…')} ${dureeAppelFormatee(_duree)}';
     }

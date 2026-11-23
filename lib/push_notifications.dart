@@ -55,6 +55,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
+import 'appel_en_cours.dart';
 import 'choix_sons.dart';
 import 'notif_settings.dart';
 import 'stockage_auth.dart';
@@ -105,6 +106,13 @@ Future<bool> _montrerAppelNatif(Map<String, String> donnees) async {
           textAccept: 'Accepter',
           textDecline: 'Refuser',
           ringtonePath: ChoixSons.ressourceSonneriePour(sonnerieId),
+          // Carte 163, Telecom : lancer l'activité d'appel du
+          // paquet au lieu de la notification, pour que l'écran
+          // s'affiche sur le téléphone verrouillé même quand
+          // l'autorisation plein écran est révoquée, l'appel
+          // Telecom actif exemptant le lancement. Un échec de
+          // ce chemin retombe sur la notification, comme avant.
+          isFullScreen: true,
         ),
       ),
     );
@@ -113,6 +121,50 @@ Future<bool> _montrerAppelNatif(Map<String, String> donnees) async {
     return false;
   }
 }
+
+/// Adaptateur testable autour des méthodes plein écran de
+/// flutter_callkit_incoming, carte 150, 22 nov. 2026.
+/// Sur Android 14 et plus, l'autorisation « Notifications plein
+/// écran » est spéciale : la déclarer ne suffit pas, l'utilisateur
+/// doit l'accorder dans Paramètres. Le paquet renvoie vrai en
+/// dessous d'Android 14, où l'autorisation n'existe pas, donc
+/// aucune version SDK à tester côté Dart : disponible() est la
+/// seule source de vérité. Les méthodes du paquet sont injectables
+/// en test, pour ne pas passer par un canal simulé.
+class PleinEcranAppel {
+  PleinEcranAppel({
+    Future<bool> Function()? disponible,
+    Future<bool> Function()? demander,
+  })  : _disponible =
+            disponible ?? FlutterCallkitIncoming.canUseFullScreenIntent,
+        _demander =
+            demander ?? FlutterCallkitIncoming.requestFullIntentPermission;
+
+  /// Instance partagée, utilisée par l'écran de bienvenue des
+  /// autorisations et par Paramètres.
+  static final PleinEcranAppel instance = PleinEcranAppel();
+
+  final Future<bool> Function() _disponible;
+  final Future<bool> Function() _demander;
+
+  /// Vrai si l'écran d'appel peut s'afficher sur le téléphone
+  /// verrouillé. Toujours vrai en dessous d'Android 14.
+  Future<bool> disponible() => _disponible();
+
+  /// Ouvre la page Paramètres de l'application pour accorder
+  /// l'autorisation. Renvoie l'état après le retour.
+  Future<bool> demander() => _demander();
+}
+
+/// Vrai si l'exemption d'optimisation de la batterie doit être
+/// demandée, carte 151 : une seule fois, et seulement si elle
+/// n'est pas déjà accordée. Après un refus, on renvoie vers les
+/// réglages du téléphone au lieu de redemander.
+bool doitDemanderExemptionBatterie({
+  required bool dejaDemandee,
+  required bool exemptionAccordee,
+}) =>
+    !dejaDemandee && !exemptionAccordee;
 
 /// Recrée le canal des messages avec le son choisi, carte 4,
 /// 21 nov. 2026 : sur Android, un canal déjà créé ne se met
@@ -407,6 +459,16 @@ class PushNotifications {
             };
             if (!_onAppelEntrantController.isClosed) {
               _onAppelEntrantController.add(donnees);
+            }
+          } else if (appel is CallEventActionCallToggleHold) {
+            // Mise en attente Telecom, carte 163 : un appel
+            // cellulaire met notre appel en attente, et sa fin
+            // le reprend. Sans cette écoute, le média
+            // continuait sans pause et sans affichage. Seul
+            // l'appel en cours est concerné.
+            if (etatAppelGlobal.actif &&
+                etatAppelGlobal.appelId == appel.id) {
+              unawaited(etatAppelGlobal.mettreEnAttente(appel.isOnHold));
             }
           }
         });

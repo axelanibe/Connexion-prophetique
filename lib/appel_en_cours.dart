@@ -33,6 +33,16 @@ class EtatAppelGlobal extends ChangeNotifier with WidgetsBindingObserver {
   bool _muet = false;
   bool _hautParleur = false;
 
+  /// Mise en attente Telecom, carte 163 : un appel cellulaire
+  /// met notre appel en attente, et sa fin le reprend. Le média
+  /// est mis en pause pendant l'attente, puis repris avec les
+  /// choix de l'utilisateur.
+  bool _enAttente = false;
+
+  /// Caméra active, gardée comme le muet, pour que la reprise
+  /// après une mise en attente retrouve le bon état.
+  bool _cameraActive = true;
+
   /// Service WebRTC de l'appel, gardé ici pendant la réduction,
   // pour que le média survive sans l'écran.
   ServiceAppelWebRtc? _service;
@@ -78,6 +88,8 @@ class EtatAppelGlobal extends ChangeNotifier with WidgetsBindingObserver {
   bool get prepare => _prepare;
   bool get muet => _muet;
   bool get hautParleur => _hautParleur;
+  bool get enAttente => _enAttente;
+  bool get cameraActive => _cameraActive;
   ServiceAppelWebRtc? get service => _service;
   ClientSignalisationAppels? get signalisation => _signalisation;
   bool get appelSystemeActif => _appelSystemeActif;
@@ -116,6 +128,8 @@ class EtatAppelGlobal extends ChangeNotifier with WidgetsBindingObserver {
     _prepare = false;
     _muet = false;
     _hautParleur = false;
+    _enAttente = false;
+    _cameraActive = true;
     _service = service;
     _signalisation = signalisation;
     _appelSystemeActif = false;
@@ -153,6 +167,37 @@ class EtatAppelGlobal extends ChangeNotifier with WidgetsBindingObserver {
     _muet = muet;
     _hautParleur = hautParleur;
     notifyListeners();
+  }
+
+  /// Caméra choisie sur l'écran, gardée comme l'audio, pour que
+  /// la reprise après une mise en attente retrouve son état.
+  void mettreAJourCamera(bool active) {
+    if (_cameraActive == active) return;
+    _cameraActive = active;
+    notifyListeners();
+  }
+
+  /// Mise en attente Telecom, carte 163 : met le média en pause
+  /// (micro coupé, caméra arrêtée), puis le reprend avec les
+  /// choix de l'utilisateur à la levée. Sans appel en cours,
+  /// rien ne se passe. Un échec audio ne bloque jamais l'appel.
+  Future<void> mettreEnAttente(bool enAttente) async {
+    if (!actif || _enAttente == enAttente) return;
+    _enAttente = enAttente;
+    notifyListeners();
+    final service = _service;
+    if (service == null) return;
+    try {
+      if (enAttente) {
+        await service.setMuet(true);
+        await service.setCameraActive(false);
+      } else {
+        await service.setMuet(_muet);
+        await service.setCameraActive(_cameraActive);
+      }
+    } catch (_) {
+      // L'appel continue, l'affichage porte l'attente.
+    }
   }
 
   /// Bascule audio vers vidéo, carte 156 : le type de l'appel
@@ -256,6 +301,8 @@ class EtatAppelGlobal extends ChangeNotifier with WidgetsBindingObserver {
     _prepare = false;
     _muet = false;
     _hautParleur = false;
+    _enAttente = false;
+    _cameraActive = true;
     _service = null;
     _signalisation = null;
     _retirerObservateur();
