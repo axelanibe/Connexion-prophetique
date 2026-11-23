@@ -1,0 +1,14 @@
+/* Indicateur de chargement, 31 oct. 2026, barre de progression, 22 nov. 2026 :
+   feuille externe, jamais en ligne, pour que l'indicateur survive à un
+   resserrement de la CSP qui retirerait unsafe-inline. */
+#chargement{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#0B1F3A;color:#F5F6FA;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;text-align:center;padding:24px}
+#chargement .nom{color:#D4A72C;font-size:22px;font-weight:700;letter-spacing:2px}
+#chargement .anneau{width:48px;height:48px;border-radius:50%;border:4px solid rgba(212,167,44,.25);border-top-color:#D4A72C;animation:chargement-tourne 1s linear infinite}
+@keyframes chargement-tourne{to{transform:rotate(360deg)}}
+#chargement .texte{font-size:16px}
+#chargement .barre{width:min(240px,70vw);height:6px;border-radius:3px;background:rgba(212,167,44,.25);overflow:hidden}
+#chargement .remplissage{height:100%;width:0%;border-radius:3px;background:#D4A72C;transition:width .3s ease}
+#chargement .erreur{max-width:280px}
+#chargement .erreur p{font-size:15px;margin:0 0 12px}
+#chargement .erreur button{font:inherit;font-size:15px;font-weight:700;color:#0B1F3A;background:#D4A72C;border:0;border-radius:999px;padding:10px 22px;cursor:pointer}
+#chargement.en-erreur .anneau,#chargement.en-erreur .barre{display:none}

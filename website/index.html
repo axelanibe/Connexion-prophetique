@@ -39,14 +39,8 @@
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://www.connexionprophetique.com/">
   <meta property="og:image" content="https://www.connexionprophetique.com/og-image.png">
-<!-- Indicateur chargement, 31 oct. 2026 -->
-  <style>
-  #chargement{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#0B1F3A;color:#F5F6FA;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;text-align:center;padding:24px}
-  #chargement .nom{color:#D4A72C;font-size:22px;font-weight:700;letter-spacing:2px}
-  #chargement .anneau{width:48px;height:48px;border-radius:50%;border:4px solid rgba(212,167,44,.25);border-top-color:#D4A72C;animation:chargement-tourne 1s linear infinite}
-  @keyframes chargement-tourne{to{transform:rotate(360deg)}}
-  #chargement .texte{font-size:16px}
-  </style>
+<!-- Indicateur chargement, 31 oct. 2026, barre de progression, 22 nov. 2026 -->
+  <link rel="stylesheet" href="chargement.css">
 <!-- Referencement, 31 oct. 2026 -->
   <link rel="canonical" href="https://www.connexionprophetique.com/">
   <meta name="robots" content="index, follow">
@@ -101,11 +95,16 @@
     <p><a href="https://www.connexionprophetique.com/privacy.html">Confidentialité</a></p>
   </noscript>
 
-  <!-- Indicateur chargement, 31 oct. 2026 -->
+  <!-- Indicateur chargement, 31 oct. 2026, barre de progression, 22 nov. 2026 -->
   <div id="chargement">
     <div class="nom">CONNEXION PROPHETIQUE</div>
     <div class="anneau" aria-hidden="true"></div>
+    <div class="barre" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Chargement"><div class="remplissage" id="chargement-barre"></div></div>
     <div class="texte" id="chargement-texte">Chargement…</div>
+    <div class="erreur" id="chargement-erreur" hidden>
+      <p id="chargement-erreur-texte">Le chargement prend trop de temps. Vérifiez votre connexion puis réessayez.</p>
+      <button type="button" id="chargement-recharger">Recharger</button>
+    </div>
   </div>
   <script src="chargement.js"></script>
   <script src="flutter_bootstrap.js" async></script>

@@ -1,10 +1,11 @@
 ((a,b,c)=>{a[b]=a[b]||{}
 a[b][c]=a[b][c]||[]
 a[b][c].push({p:"main.dart.js_16",e:"beginPart"})})(self,"$__dart_deferred_initializers__","eventLog")
-$__dart_deferred_initializers__.current=function(a,b,c,$){var B,A,C
-B=c[0]
-A=c[2]
-C=c[21]
-var z=a.updateTypes([]);(function constants(){C.Qy=new B.D(!0,A.t,null,null,null,null,22,A.z,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)})()};
+$__dart_deferred_initializers__.current=function(a,b,c,$){var A,B,C
+A=c[0]
+B=c[2]
+C=c[18]
+var z=a.updateTypes([]);(function constants(){C.qS=new A.a_(1,0.8627450980392157,0.9882352941176471,0.9058823529411765,B.w)
+C.zh=new A.a_(1,0.996078431372549,0.8862745098039215,0.8862745098039215,B.w)})()};
 ((a,b)=>{a[b]=a.current
-a.eventLog.push({p:"main.dart.js_16",e:"endPart",h:b})})($__dart_deferred_initializers__,"23INzTfso12qy+Phz7Ykf1oXQkQ=");
+a.eventLog.push({p:"main.dart.js_16",e:"endPart",h:b})})($__dart_deferred_initializers__,"s3Dy3Ujn9fmMfgBjGxzYSjWthdQ=");

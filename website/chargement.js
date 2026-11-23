@@ -1,9 +1,75 @@
+// Indicateur de chargement, 31 oct. 2026, barre de progression, 22 nov. 2026 :
+// la barre avance sur des étapes réelles, lues dans l'API Performance,
+// jamais sur un minuteur. main.dart.js téléchargé, puis le moteur
+// CanvasKit, puis le premier rendu Flutter qui retire l'indicateur.
+// Délai de secours, 22 nov. 2026 : si la barre n'avance plus, 15 s
+// après la dernière étape, 60 s pour le premier téléchargement
+// (main.dart.js, 1,3 Mo, une connexion lente normale peut dépasser
+// 15 s), un message d'erreur avec un bouton de rechargement s'affiche.
 (function(){
-  var t = document.getElementById('chargement-texte');
-  if (t && (navigator.language || '').toLowerCase().indexOf('en') === 0) { t.textContent = 'Loading…'; }
+  var texte = document.getElementById('chargement-texte');
+  var barre = document.getElementById('chargement-barre');
+  var conteneur = document.getElementById('chargement');
+  var erreur = document.getElementById('chargement-erreur');
+  var erreurTexte = document.getElementById('chargement-erreur-texte');
+  var recharger = document.getElementById('chargement-recharger');
+  var anglais = (navigator.language || '').toLowerCase().indexOf('en') === 0;
+  var messages = anglais
+    ? ['Loading…', 'Starting the engine…', 'Opening the app…']
+    : ['Chargement…', 'Démarrage du moteur…', 'Ouverture de l’application…'];
+  var messageErreur = anglais
+    ? 'Loading is taking too long. Check your connection and try again.'
+    : 'Le chargement prend trop de temps. Vérifiez votre connexion puis réessayez.';
+  var etape = 0;
+  var secours = null;
+  function armerSecours() {
+    if (secours) window.clearTimeout(secours);
+    var delai = (etape === 0) ? 60000 : 15000;
+    secours = window.setTimeout(afficherErreur, delai);
+  }
+  function afficherErreur() {
+    window.clearInterval(surveille);
+    if (erreurTexte) erreurTexte.textContent = messageErreur;
+    if (erreur) erreur.hidden = false;
+    if (conteneur) conteneur.classList.add('en-erreur');
+  }
+  function avancer(pourcent, message) {
+    if (barre) {
+      barre.style.width = pourcent + '%';
+      var piste = barre.parentElement;
+      if (piste) piste.setAttribute('aria-valuenow', String(pourcent));
+    }
+    if (texte && message != null) texte.textContent = message;
+    armerSecours();
+  }
+  if (texte && anglais) texte.textContent = messages[0];
+  if (recharger) {
+    if (anglais) recharger.textContent = 'Reload';
+    recharger.addEventListener('click', function(){ window.location.reload(); });
+  }
+  avancer(8, null);
+  function ressourceFinie(suffixe) {
+    if (!window.performance || !performance.getEntriesByType) return false;
+    var entrees = performance.getEntriesByType('resource');
+    for (var i = 0; i < entrees.length; i++) {
+      if ((entrees[i].name || '').indexOf(suffixe) !== -1) return true;
+    }
+    return false;
+  }
+  var surveille = window.setInterval(function() {
+    if (etape === 0 && ressourceFinie('main.dart.js')) {
+      etape = 1;
+      avancer(45, messages[1]);
+    } else if (etape === 1 && ressourceFinie('canvaskit.wasm')) {
+      etape = 2;
+      avancer(75, messages[2]);
+    }
+  }, 250);
   window.addEventListener('flutter-first-frame', function(){
-    var el = document.getElementById('chargement');
-    if (el) { el.remove(); }
+    window.clearInterval(surveille);
+    avancer(100, null);
+    if (secours) window.clearTimeout(secours);
+    if (conteneur) { conteneur.remove(); }
   });
   // Carte 152, 22 nov. 2026 : filet de sécurité, 60 s sans
   // premier rendu. Un premier chargement à froid télécharge
