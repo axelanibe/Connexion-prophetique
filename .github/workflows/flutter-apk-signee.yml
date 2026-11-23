@@ -1,5 +1,12 @@
 # Construction APK signée CONNEXION PROPHÉTIQUE, cartes 36 à 39.
 # Déclenchement manuel seulement, aucune publication Play Store, aucune soumission.
+# APK plus légère, 22 nov. 2026 : obfuscation du code Dart et minification
+# R8 avec réduction des ressources (minifyEnabled et shrinkResources dans
+# android/app/build.gradle). Aucune fonctionnalité retirée. Les drapeaux
+# --build-name 1.0.2 --build-number 4005 gardent la version 1.0.2 et le
+# numéro 4005, comme l'AAB et l'APK 1.0.2 testée par Axel, car le pubspec
+# porte 1.0.2+2005. Les infos de débogage sont déposées en artifact
+# (app-release-debug-info) pour dé-obfusquer les traces de plantage.
 # Signature de publication uniquement depuis les secrets Actions, jamais en clair,
 # jamais dans le dépôt, jamais dans les journaux : le workflow décode la clé,
 # écrit un key.properties temporaire, signe, puis supprime les temporaires,
@@ -133,7 +140,7 @@ jobs:
           fi
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
-      - run: flutter build apk --release --split-per-abi
+      - run: flutter build apk --release --split-per-abi --build-name 1.0.2 --build-number 4005 --obfuscate --split-debug-info=build/app/outputs/flutter-apk/debug-info
       - name: Vérifier la signature, sans afficher de secret
         run: |
           ls -lh build/app/outputs/flutter-apk/
@@ -148,6 +155,11 @@ jobs:
         with:
           name: app-release-signee-split
           path: build/app/outputs/flutter-apk/*-release.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release-debug-info
+          path: build/app/outputs/flutter-apk/debug-info
           if-no-files-found: error
       - name: Supprimer les fichiers de signature temporaires
         if: always()
