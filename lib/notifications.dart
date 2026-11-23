@@ -86,7 +86,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:timezone/data/latest_all.dart' as tzdata;
+import 'package:timezone/data/latest_all.dart' deferred as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import 'bible.dart';
@@ -245,6 +245,11 @@ class DailyVerseNotifications {
 
   Future<void> init() async {
     if (_ready) return;
+    // Bande passante, 22 nov. 2026 : la base des fuseaux fait
+    // 1,09 Mo dans main.dart.js. Chargement différé, elle ne
+    // part que quand les notifications se programment, jamais
+    // au premier affichage.
+    await tzdata.loadLibrary();
     tzdata.initializeTimeZones();
     // Carte 94 : régler tz.local sur le fuseau de l'appareil,
     // lu par flutter_timezone, nom IANA, par exemple
