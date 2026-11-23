@@ -90,6 +90,11 @@ dependencies:
   # Platform.isAndroid dans lib/push_notifications.dart, le web
   # continue à compiler et à fonctionner comme avant.
   flutter_callkit_incoming: 3.1.6
+  # Réveil en arrière-plan, carte 151, 22 nov. 2026 : écoute du
+  # changement de connexion, pour relancer la synchro, le sondage
+  # des appels entrants et une vérification de session au retour
+  # du réseau. Version 6.1.4, compatible Flutter 3.27 et Dart 3.6.
+  connectivity_plus: ^6.1.4
   # Fermeture de la page pendant un appel, carte 4, 21 nov. 2026 :
   # fetch avec keepalive pour envoyer 'termine' à la fermeture,
   # avec l'en-tête Authorization que sendBeacon ne peut pas porter.
