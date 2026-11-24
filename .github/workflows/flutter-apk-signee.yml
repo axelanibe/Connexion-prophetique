@@ -151,6 +151,29 @@ jobs:
           done
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+
+      # Sons d'appel et de message, carte 164 : R8 avec
+      # shrinkResources éliminait les six sons personnalisés, le
+      # membre n'entendait que le son générique. Le build échoue
+      # si l'un des six manque dans l'une des APK.
+      - name: Vérifier les sons d'appel dans les APK (carte 164)
+        run: |
+          set -e
+          AAPT2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
+          if [ ! -f "$AAPT2" ]; then
+            AAPT2="$ANDROID_HOME/build-tools/35.0.0/aapt2"
+          fi
+          for apk in build/app/outputs/flutter-apk/*-release.apk; do
+            echo "APK : $apk"
+            RESSOURCES=$("$AAPT2" dump resources "$apk")
+            for SON in son_message_cp son_message_ding_dong son_notification_cp sonnerie_appel_cp sonnerie_appel_cp_carillon sonnerie_appel_cp_melodie; do
+              if ! echo "$RESSOURCES" | grep -q "raw/$SON"; then
+                echo "ERREUR : le son raw/$SON manque dans $apk (R8 l'a éliminé)."
+                exit 1
+              fi
+              echo "Son présent : raw/$SON"
+            done
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: app-release-signee-split
