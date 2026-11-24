@@ -918,6 +918,28 @@ class ApiClient {
   /// ou le Bureau dans son périmètre, le serveur vérifie.
   Future<Map<String, dynamic>> supprimerTemoignage(String id) => _delete('/temoignages/$id');
 
+  /// Mur des membres, carte 174, refonte totale tranche 2,
+  /// carte 176, 24 nov. 2026 : les publications des membres,
+  /// les plus récentes d'abord, avec leurs nombres de J'aime et
+  /// de commentaires et mon J'aime. Lecture seule, jamais
+  /// d'écriture sur un GET.
+  Future<Map<String, dynamic>> fetchMur() async {
+    final data = await _get('/mur');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Publication sur le mur, POST /mur en JSON : texte seul,
+  /// photo seule, ou les deux. La photo est une adresse de
+  /// données, réduite côté application comme la photo de profil.
+  Future<Map<String, dynamic>> publierMur({String? texte, String? photo}) =>
+      _post('/mur', {'texte': texte ?? '', if (photo != null) 'photo': photo});
+
+  /// Suppression d'une publication du mur, DELETE /mur/:id :
+  /// son auteur, ou le Bureau dans son périmètre, le serveur
+  /// vérifie. Les J'aime et commentaires partent avec elle.
+  Future<Map<String, dynamic>> supprimerPublicationMur(String id) => _delete('/mur/$id');
+
   /// Chaîne de prière en direct, 21 nov. 2026, tranche 1,
   /// refonte d'après la maquette : la chaîne d'un jour, 24
   /// créneaux d'une heure, le jour en AAAA-MM-JJ quand il est

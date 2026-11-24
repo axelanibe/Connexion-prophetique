@@ -1304,6 +1304,16 @@ const Map<String, String> _en = {
   // Mur des membres, refonte totale, tranche 1, carte 176.
   'Mur des membres': 'Members wall',
   'Aucune publication pour le moment.': 'No posts yet.',
+  // Mur des membres, refonte totale, tranche 2, carte 174.
+  'Écrire quelque chose…': 'Write something…',
+  'Publication publiée.': 'Post published.',
+  'Impossible de charger le mur.': 'Unable to load the wall.',
+  'Impossible de publier.': 'Unable to publish.',
+  'Photo trop volumineuse.': 'Photo too large.',
+  'Supprimer cette publication ?': 'Delete this post?',
+  'La publication disparaîtra pour tous les membres.': 'The post will disappear for all members.',
+  'Publication supprimée.': 'Post deleted.',
+  'Impossible de supprimer la publication.': 'Unable to delete the post.',
   'Enseignements, actualités, camps et témoignages': 'Teachings, news, camps and testimonies',
   'Aucune activité pour le moment.': 'No activity yet.',
   'Impossible de charger Mon mur.': 'Unable to load My wall.',
