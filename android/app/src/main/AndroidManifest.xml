@@ -99,6 +99,12 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Carte 167, 24 nov. 2026 : désactiver Impeller, retour à
+             Skia, contre le scintillement des couleurs sur Samsung.
+             Une seule ligne, réversible, sans changement Dart. -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
         <!-- Carte 94, 8 nov. 2026 : receveurs de flutter_local_notifications,
              exigés par sa documentation, absents jusqu'ici, ce qui
              empêchait toute notification programmée d'être délivrée.
