@@ -3,8 +3,8 @@
 # APK plus légère, 22 nov. 2026 : obfuscation du code Dart et minification
 # R8 avec réduction des ressources (minifyEnabled et shrinkResources dans
 # android/app/build.gradle). Aucune fonctionnalité retirée. Les drapeaux
-# --build-name 1.0.2 --build-number 4005 gardent la version 1.0.2 et le
-# numéro 4005, comme l'AAB et l'APK 1.0.2 testée par Axel, car le pubspec
+# --build-name 1.0.2 --build-number 4006 gardent la version 1.0.2 et le
+# numéro 4006, comme l'AAB et l'APK 1.0.2 testée par Axel, car le pubspec
 # porte 1.0.2+2005. Les infos de débogage sont déposées en artifact
 # (app-release-debug-info) pour dé-obfusquer les traces de plantage.
 # Signature de publication uniquement depuis les secrets Actions, jamais en clair,
@@ -140,7 +140,7 @@ jobs:
           fi
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
-      - run: flutter build apk --release --split-per-abi --build-name 1.0.2 --build-number 4005 --obfuscate --split-debug-info=build/app/outputs/flutter-apk/debug-info
+      - run: flutter build apk --release --split-per-abi --build-name 1.0.2 --build-number 4006 --obfuscate --split-debug-info=build/app/outputs/flutter-apk/debug-info
       - name: Vérifier la signature, sans afficher de secret
         run: |
           ls -lh build/app/outputs/flutter-apk/
