@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sons d'appel et de message, carte 164 : R8 avec
+     shrinkResources les élimine, car seul un getIdentifier avec
+     une chaîne à l'exécution les référence. Sans ce fichier, les
+     six sons sont absents de l'APK et le son choisi par le membre
+     ne joue jamais.
+     Emplacement obligatoire : res/raw/, pas res/values/. En
+     res/values/, AAPT2 compile ce fichier en stub vide (il ne
+     définit aucune ressource) et le shrinker ne voit jamais les
+     règles, les six sons sont éliminés malgré le fichier. En
+     res/raw/, le fichier est conservé tel quel en texte dans
+     l'APK et ses règles sont appliquées. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@raw/son_message_cp,@raw/son_message_ding_dong,@raw/son_notification_cp,@raw/sonnerie_appel_cp,@raw/sonnerie_appel_cp_carillon,@raw/sonnerie_appel_cp_melodie" />
