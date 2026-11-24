@@ -52,6 +52,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
@@ -60,9 +61,56 @@ import 'choix_sons.dart';
 import 'notif_settings.dart';
 import 'stockage_auth.dart';
 
+/// Clé de l'acceptation d'appel persistée à froid, carte 164 :
+/// quand l'application est fermée, l'acceptation ne peut pas
+/// partir vers l'écouteur de l'application en cours, qui
+/// n'existe pas. Le gestionnaire d'arrière-plan la persiste ici,
+/// et l'application la rejoue au démarrage.
+const String cleAppelAccepteArrierePlan = 'appel_accepte_arriere_plan';
+
+/// Gestionnaire d'arrière-plan CallKit, carte 164 : il tourne
+/// dans l'exécuteur d'arrière-plan du paquet, quand l'application
+/// est fermée ou tuée. Sans lui, l'acceptation est abandonnée par
+/// le paquet, et décrocher ne fait qu'ouvrir l'application.
+/// L'acceptation est persistée, puis rejouée au démarrage par
+/// rejouerAcceptationArrierePlan. Un refus, une fin ou une
+/// expiration efface l'acceptation persistée, pour ne jamais
+/// rouvrir un appel déjà terminé.
+@pragma('vm:entry-point')
+Future<void> gererEvenementAppelArrierePlan(CallEvent evenement) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    if (evenement is CallEventActionCallAccept) {
+      final parametres = evenement.callKitParams;
+      final supplement = parametres.extra ?? const <String, dynamic>{};
+      await prefs.setString(
+        cleAppelAccepteArrierePlan,
+        jsonEncode(<String, dynamic>{
+          'appel_id': parametres.id,
+          'appelant_nom': parametres.nameCaller ?? '',
+          'conversation_id': (supplement['conversation_id'] ?? '').toString(),
+          'type_appel': (supplement['type_appel'] ??
+                  (parametres.type == 1 ? 'video' : 'audio'))
+              .toString(),
+        }),
+      );
+    } else if (evenement is CallEventActionCallDecline ||
+        evenement is CallEventActionCallEnded ||
+        evenement is CallEventActionCallTimeout) {
+      await prefs.remove(cleAppelAccepteArrierePlan);
+    }
+  } catch (_) {
+    // L'acceptation à froid est un repli : un échec ici ne doit
+    // jamais faire planter l'exécuteur d'arrière-plan.
+  }
+}
+
 /// Écran d'appel natif pour un appel entrant, Android seulement,
-/// 20 nov. 2026 : plein écran avec la sonnerie du téléphone, même
-/// application fermée ou téléphone verrouillé, comme WhatsApp.
+/// 20 nov. 2026 : notification avec la sonnerie du téléphone,
+/// même application fermée ou téléphone verrouillé, comme
+/// WhatsApp. Le plein écran est abandonné, carte 164 : avec le
+/// plein écran, la sonnerie native ne démarre jamais, le paquet
+/// ne joue la sonnerie que dans le chemin notification.
 /// Le serveur envoie un message de données seul pour un appel
 /// entrant, sans champ notification. Vrai si l'écran natif est
 /// affiché, faux sinon (identifiant manquant ou échec), pour que
@@ -106,13 +154,18 @@ Future<bool> _montrerAppelNatif(Map<String, String> donnees) async {
           textAccept: 'Accepter',
           textDecline: 'Refuser',
           ringtonePath: ChoixSons.ressourceSonneriePour(sonnerieId),
-          // Carte 163, Telecom : lancer l'activité d'appel du
-          // paquet au lieu de la notification, pour que l'écran
-          // s'affiche sur le téléphone verrouillé même quand
-          // l'autorisation plein écran est révoquée, l'appel
-          // Telecom actif exemptant le lancement. Un échec de
-          // ce chemin retombe sur la notification, comme avant.
-          isFullScreen: true,
+          // Carte 164 : le plein écran de la 163 est abandonné.
+          // Le paquet ne joue la sonnerie native qu'à un seul
+          // endroit, dans showIncomingNotification, le chemin
+          // notification. Avec le plein écran, le récepteur
+          // lance l'activité directement, sans notification,
+          // donc sans sonnerie ni vibration, et l'activité ne
+          // fait que protéger une sonnerie qui ne joue pas. Une
+          // sonnerie qui fonctionne compte plus que d'éviter la
+          // permission, et la permission est déjà déclarée pour
+          // la 1.0.2. La connexion Telecom est créée dans les
+          // deux chemins, la mise en attente de la 163 reste.
+          isFullScreen: false,
         ),
       ),
     );
@@ -165,6 +218,30 @@ bool doitDemanderExemptionBatterie({
   required bool exemptionAccordee,
 }) =>
     !dejaDemandee && !exemptionAccordee;
+
+/// Demande l'exemption d'optimisation de la batterie, carte 164 :
+/// une seule fois, par le dialogue système, au premier appel,
+/// jamais à l'avance et jamais répétée. Android exige
+/// l'approbation de l'utilisateur une fois, l'application ne peut
+/// pas se l'accorder seule. La clé exemption_batterie_demandee est
+/// la même que celle de l'ancienne carte de bienvenue, un membre
+/// qui l'a déjà accordée n'est jamais redemandé. Un échec ne
+/// bloque jamais l'appel.
+Future<void> demanderExemptionBatterieAuPremierAppel() async {
+  if (kIsWeb || !Platform.isAndroid) return;
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('exemption_batterie_demandee') ?? false) return;
+    final accordee =
+        await Permission.ignoreBatteryOptimizations.isGranted;
+    await prefs.setBool('exemption_batterie_demandee', true);
+    if (!accordee) {
+      await Permission.ignoreBatteryOptimizations.request();
+    }
+  } catch (_) {
+    // Voir ci-dessus : l'appel continue sans exemption.
+  }
+}
 
 /// Recrée le canal des messages avec le son choisi, carte 4,
 /// 21 nov. 2026 : sur Android, un canal déjà créé ne se met
@@ -220,6 +297,17 @@ Future<void> pushBackgroundHandler(RemoteMessage message) async {
   if (!kIsWeb &&
       Platform.isAndroid &&
       donnees['type'] == 'appel_entrant') {
+    // Acceptation à froid, carte 164 : cet isolate démarre sans
+    // l'application, l'exécuteur d'arrière-plan CallKit n'est
+    // donc jamais enregistré, et l'acceptation serait perdue.
+    // On l'enregistre ici, avant d'afficher l'appel entrant.
+    try {
+      await FlutterCallkitIncoming.onBackgroundMessage(
+        gererEvenementAppelArrierePlan,
+      );
+    } catch (_) {
+      // Voir ci-dessus : l'appel s'affiche quand même.
+    }
     if (await _montrerAppelNatif(donnees)) return;
   }
   // Carte 1, 21 nov. 2026 : vérifier la permission avant
@@ -293,7 +381,18 @@ Future<void> pushBackgroundHandler(RemoteMessage message) async {
 }
 
 class PushNotifications {
-  PushNotifications._();
+  PushNotifications._() {
+    // Acceptation à froid, carte 164 : l'accueil s'abonne après
+    // init(), l'acceptation rejouée avant l'abonnement attend ici
+    // et part au premier abonné, pour ne jamais être perdue.
+    _onAppelEntrantController.onListen = () {
+      final enAttente = _appelAccepteEnAttente;
+      if (enAttente != null && !_onAppelEntrantController.isClosed) {
+        _appelAccepteEnAttente = null;
+        _onAppelEntrantController.add(enAttente);
+      }
+    };
+  }
   static final instance = PushNotifications._();
 
   /// Vrai seulement après une initialisation Firebase réussie sur
@@ -325,6 +424,45 @@ class PushNotifications {
       StreamController<Map<String, String>>.broadcast();
   Stream<Map<String, String>> get onAppelEntrant =>
       _onAppelEntrantController.stream;
+
+  /// Acceptation à froid en attente d'abonné, carte 164 :
+  /// init() tourne sans attendre et l'accueil s'abonne plus tard,
+  /// un événement émis avant l'abonnement serait perdu, le flux
+  /// étant diffusé. On garde l'acceptation ici et on l'émet au
+  /// premier abonné, ou aussitôt si l'accueil est déjà abonné.
+  Map<String, String>? _appelAccepteEnAttente;
+
+  /// Rejoue l'acceptation persistée à froid, carte 164 : un appel
+  /// accepté depuis l'écran système quand l'application était
+  /// fermée attend ici, et l'accueil ouvre l'écran d'appel
+  /// entrant, qui passe directement en cours, sans relancer la
+  /// sonnerie. La clé est effacée après lecture, pour ne jamais
+  /// rejouer deux fois le même appel.
+  Future<void> rejouerAcceptationArrierePlan() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final brut = prefs.getString(cleAppelAccepteArrierePlan);
+      if (brut == null || brut.isEmpty) return;
+      await prefs.remove(cleAppelAccepteArrierePlan);
+      final donnees = jsonDecode(brut) as Map<String, dynamic>;
+      final appelId = (donnees['appel_id'] ?? '').toString();
+      if (appelId.isEmpty || _onAppelEntrantController.isClosed) return;
+      _appelAccepteEnAttente = <String, String>{
+        'type': 'appel_entrant',
+        'appel_id': appelId,
+        'appelant_nom': (donnees['appelant_nom'] ?? '').toString(),
+        'conversation_id': (donnees['conversation_id'] ?? '').toString(),
+        'type_appel': (donnees['type_appel'] ?? 'audio').toString(),
+        'accepte_via_callkit': 'true',
+      };
+      if (_onAppelEntrantController.hasListener) {
+        _onAppelEntrantController.add(_appelAccepteEnAttente!);
+        _appelAccepteEnAttente = null;
+      }
+    } catch (_) {
+      // Un contenu illisible ne bloque jamais le démarrage.
+    }
+  }
 
   bool _initialized = false;
   String? _token;
@@ -472,6 +610,21 @@ class PushNotifications {
             }
           }
         });
+        // Acceptation à froid, carte 164 : quand l'application
+        // est fermée, l'acceptation part vers l'exécuteur
+        // d'arrière-plan du paquet, pas vers l'écouteur
+        // ci-dessus. On l'enregistre ici pour que l'exécuteur
+        // soit démarré, et on rejoue l'acceptation persistée,
+        // s'il y en a une.
+        try {
+          await FlutterCallkitIncoming.onBackgroundMessage(
+            gererEvenementAppelArrierePlan,
+          );
+        } catch (_) {
+          // Voir ci-dessus : l'acceptation en avant-plan
+          // continue, l'acceptation à froid est perdue.
+        }
+        unawaited(rejouerAcceptationArrierePlan());
       }
       FirebaseMessaging.onMessageOpenedApp.listen((message) {
         _emitTap(_data(message));

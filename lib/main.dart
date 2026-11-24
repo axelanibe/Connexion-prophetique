@@ -4901,6 +4901,10 @@ Future<bool> demanderPhotosAuMoment(BuildContext context) => demanderPermissionA
 // car elle sert les rappels. Appareil photo et photos ne le sont
 // plus ici, ils sont demandés au moment de leur utilisation, au
 // scan ou au choix d'une photo, avec une courte explication.
+// Carte 164, 23 nov. 2026 : batterie et plein écran retirés, ils
+// étaient demandés ici à l'avance. La batterie est demandée une
+// seule fois, au premier appel, le micro à l'acceptation et la
+// caméra à la bascule en vidéo.
 // Chaque autorisation est expliquée en français avant que le système
 // ne pose la question. Refuser ici ne bloque rien : la notification
 // ne sera plus jamais demandée, carte 98, un refus renvoie vers les
@@ -4921,12 +4925,6 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
   // verset_notif_permission_demandee. Sert à montrer
   // « Activer dans les réglages » au lieu de redemander.
   bool _demandeFaite = false;
-  // Batterie, carte 151, 22 nov. 2026 : statut de l'exemption
-  // d'optimisation et drapeau de demande unique, même règle que
-  // la notification. Sert à montrer « Activer dans les réglages »
-  // au lieu de redemander après un refus.
-  PermissionStatus? _batterie;
-  bool _batterieDemandeFaite = false;
 
   @override
   void initState() {
@@ -4955,27 +4953,10 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
         final prefs = await SharedPreferences.getInstance();
         faite = prefs.getBool('verset_notif_permission_demandee') ?? false;
       } catch (_) {}
-      // Batterie, carte 151 : statut et drapeau de demande unique,
-      // Android seulement.
-      PermissionStatus? batterie;
-      var batterieFaite = false;
-      if (!kIsWeb &&
-          defaultTargetPlatform == TargetPlatform.android) {
-        try {
-          batterie = await Permission.ignoreBatteryOptimizations.status;
-        } catch (_) {}
-        try {
-          final prefs = await SharedPreferences.getInstance();
-          batterieFaite =
-              prefs.getBool('exemption_batterie_demandee') ?? false;
-        } catch (_) {}
-      }
       if (mounted) {
         setState(() {
           _notif = n;
           _demandeFaite = faite;
-          _batterie = batterie;
-          _batterieDemandeFaite = batterieFaite;
         });
       }
     } catch (_) {}
@@ -5020,41 +5001,6 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
     setState(() => _busy = true);
     await _request(Permission.notification);
     if (mounted) setState(() => _busy = false);
-  }
-
-  /// Exemption d'optimisation de la batterie, carte 151, 22 nov.
-  /// 2026 : une seule demande, drapeau exemption_batterie_demandee,
-  /// comme la notification. Après un refus, la carte renvoie vers
-  /// les réglages au lieu de redemander.
-  Future<void> _demanderExemptionBatterie() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      if (!doitDemanderExemptionBatterie(
-        dejaDemandee:
-            prefs.getBool('exemption_batterie_demandee') ?? false,
-        exemptionAccordee: _batterie?.isGranted ?? false,
-      )) {
-        await _refresh();
-        if (mounted) setState(() => _busy = false);
-        return;
-      }
-      await prefs.setBool('exemption_batterie_demandee', true);
-    } catch (_) {}
-    PermissionStatus statut;
-    try {
-      statut = await Permission.ignoreBatteryOptimizations.request();
-    } catch (_) {
-      if (mounted) setState(() => _busy = false);
-      return;
-    }
-    if (!mounted) return;
-    setState(() {
-      _batterie = statut;
-      _batterieDemandeFaite = true;
-      _busy = false;
-    });
   }
 
   Future<void> _finish() async {
@@ -5133,96 +5079,12 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
     );
   }
 
-  /// Exemption d'optimisation de la batterie, carte 151, 22 nov.
-  /// 2026 : Android seulement, même présentation que la carte de
-  /// notification. Une seule demande, puis les réglages après un
-  /// refus. L'icône est nouvelle dans la police, à régénérer au
-  /// déploiement web, voir le rapport.
-  Widget _carteBatterie() {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
-      return const SizedBox.shrink();
-    }
-    final accordee = _batterie?.isGranted ?? false;
-    final bloque = _batterie != null &&
-        (_batterie!.isPermanentlyDenied ||
-            _batterie! == PermissionStatus.restricted);
-    final refuseApresDemande =
-        _batterie != null && _batterie!.isDenied && _batterieDemandeFaite;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(Cp.s2),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              const Icon(
-                Icons.battery_charging_full_outlined,
-                color: Cp.navy,
-              ),
-              const SizedBox(width: Cp.s1),
-              Expanded(
-                child: Text(
-                  tr('Batterie, appels en arrière-plan'),
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w800),
-                ),
-              ),
-              if (accordee)
-                const Icon(
-                  Icons.check_circle_outlined,
-                  color: Cp.goldDeep,
-                ),
-            ]),
-            const SizedBox(height: Cp.s1),
-            Text(
-              tr(
-                'Pour que les appels te réveillent même quand l’application dort, laisse l’application ignorer l’optimisation de la batterie.',
-              ),
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: Cp.s1),
-            Row(children: [
-              Text(
-                _statusLabel(_batterie),
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted),
-              ),
-              const Spacer(),
-              if (accordee)
-                Text(
-                  tr('Autorisée'),
-                  style: const TextStyle(
-                    color: Cp.goldDeep,
-                    fontWeight: FontWeight.w700,
-                  ),
-                )
-              else if (bloque || refuseApresDemande)
-                FilledButton(
-                  onPressed: () => openAppSettings(),
-                  child: Text(tr('Activer dans les réglages')),
-                )
-              else
-                FilledButton(
-                  onPressed:
-                      _busy ? null : _demanderExemptionBatterie,
-                  child: Text(_busy ? tr('En cours…') : tr('Autoriser')),
-                ),
-            ]),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return basic(tr('Bienvenue'), [
-      Text(tr(defaultTargetPlatform == TargetPlatform.iOS ? 'Pour recevoir tes rappels, l’application a besoin d’une seule autorisation au lancement : les notifications. iOS ne permet pas de la demander pendant l’installation, c’est donc ici qu’elle se demande.' : 'Pour recevoir tes rappels et tes appels, l’application a besoin de quelques autorisations au lancement : les notifications, et sur Android, l’affichage des appels sur l’écran verrouillé et l’exemption de batterie. Android ne permet pas de les demander pendant l’installation, c’est donc ici qu’elles se demandent.'), style: Theme.of(context).textTheme.bodyMedium),
+      Text(tr(defaultTargetPlatform == TargetPlatform.iOS ? 'Pour recevoir tes rappels, l’application a besoin d’une seule autorisation au lancement : les notifications. iOS ne permet pas de la demander pendant l’installation, c’est donc ici qu’elle se demande.' : 'Pour recevoir tes rappels, l’application a besoin d’une seule autorisation au lancement : les notifications. Android ne permet pas de la demander pendant l’installation, c’est donc ici qu’elle se demande.'), style: Theme.of(context).textTheme.bodyMedium),
       const SizedBox(height: Cp.s1),
-      Text(tr('Tu peux refuser : aucune ne sera plus jamais demandée, tu pourras les activer toi-même dans les réglages du téléphone. L’appareil photo et les photos, eux, ne sont demandés qu’au moment où tu en as besoin, au scan ou au choix d’une photo.'), style: Theme.of(context).textTheme.bodyMedium),
+      Text(tr('Tu peux refuser : elle ne sera plus jamais demandée, tu pourras l’activer toi-même dans les réglages du téléphone. Le micro et la caméra, eux, ne sont demandés qu’au moment où tu en as besoin, à l’acceptation d’un appel et à la bascule en vidéo.'), style: Theme.of(context).textTheme.bodyMedium),
       const SizedBox(height: Cp.s2),
       _permCard(
         icon: Icons.notifications_outlined,
@@ -5231,10 +5093,6 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
         status: _notif,
         permission: Permission.notification,
       ),
-      const SizedBox(height: Cp.s2),
-      const CarteAppelPleinEcran(),
-      const SizedBox(height: Cp.s2),
-      _carteBatterie(),
       const SizedBox(height: Cp.s3),
       SizedBox(
         width: double.infinity,
@@ -5251,141 +5109,6 @@ class _PermissionsWelcomePageState extends State<PermissionsWelcomePage> with Wi
         Expanded(child: FilledButton(onPressed: _finish, child: Text(tr('Continuer')))),
       ]),
     ]);
-  }
-}
-
-// Appels sur écran verrouillé, carte 150, 22 nov. 2026 : Android
-// seulement, jamais sur le web ni sur iOS. Sur Android 14 et plus,
-// l'autorisation plein écran est spéciale, la déclarer ne suffit
-// pas, il faut l'accorder dans Paramètres. La carte montre une
-// courte explication et un bouton qui ouvre Paramètres tant que
-// l'autorisation manque, et « Activé » quand elle est accordée.
-// L'état est relu au retour des réglages. L'adaptateur est
-// injectable en test, pour vérifier que l'invite s'affiche quand
-// l'autorisation manque et pas quand elle est accordée.
-class CarteAppelPleinEcran extends StatefulWidget {
-  const CarteAppelPleinEcran({super.key, this.adaptateur});
-
-  final PleinEcranAppel? adaptateur;
-
-  @override
-  State<CarteAppelPleinEcran> createState() => _CarteAppelPleinEcranState();
-}
-
-class _CarteAppelPleinEcranState extends State<CarteAppelPleinEcran>
-    with WidgetsBindingObserver {
-  bool? _disponible;
-  bool _busy = false;
-
-  PleinEcranAppel get _adaptateur =>
-      widget.adaptateur ?? PleinEcranAppel.instance;
-
-  bool get _estAndroid =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _refresh();
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Retour des réglages du téléphone : le statut a pu changer.
-    if (state == AppLifecycleState.resumed) _refresh();
-  }
-
-  Future<void> _refresh() async {
-    if (!_estAndroid) return;
-    var disponible = true;
-    try {
-      disponible = await _adaptateur.disponible();
-    } catch (_) {}
-    if (mounted) setState(() => _disponible = disponible);
-  }
-
-  Future<void> _demander() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      await _adaptateur.demander();
-    } catch (_) {}
-    if (mounted) {
-      setState(() => _busy = false);
-      await _refresh();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_estAndroid) return const SizedBox.shrink();
-    if (_disponible == null) return const SizedBox.shrink();
-    final disponible = _disponible!;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(Cp.s2),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              const Icon(Icons.phone_outlined, color: Cp.navy),
-              const SizedBox(width: Cp.s1),
-              Expanded(
-                child: Text(
-                  tr('Appels sur écran verrouillé'),
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w800),
-                ),
-              ),
-              if (disponible)
-                const Icon(
-                  Icons.check_circle_outlined,
-                  color: Cp.goldDeep,
-                ),
-            ]),
-            const SizedBox(height: Cp.s1),
-            Text(
-              tr(
-                'Pour voir un appel entrant sur l’écran verrouillé, comme WhatsApp, autorise les notifications en plein écran.',
-              ),
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: Cp.s1),
-            Row(children: [
-              Text(
-                disponible ? tr('Activé') : tr('À activer'),
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted),
-              ),
-              const Spacer(),
-              if (disponible)
-                Text(
-                  tr('Activé'),
-                  style: const TextStyle(
-                    color: Cp.goldDeep,
-                    fontWeight: FontWeight.w700,
-                  ),
-                )
-              else
-                FilledButton(
-                  onPressed: _busy ? null : _demander,
-                  child: Text(_busy ? tr('En cours…') : tr('Autoriser')),
-                ),
-            ]),
-          ],
-        ),
-      ),
-    );
   }
 }
 
@@ -12124,9 +11847,6 @@ class _SectionAutorisations extends StatefulWidget {
 class _SectionAutorisationsState extends State<_SectionAutorisations>
     with WidgetsBindingObserver {
   Map<Permission, PermissionStatus>? _statuts;
-  // Appels sur écran verrouillé, carte 150 : état booléen, pas
-  // une Permission, lu via l'adaptateur. Null hors Android.
-  bool? _pleinEcranDisponible;
 
   @override
   void initState() {
@@ -12156,31 +11876,14 @@ class _SectionAutorisationsState extends State<_SectionAutorisations>
       Permission.camera,
       Permission.photos,
     ];
-    // Batterie, carte 151 : exemption d'optimisation, Android
-    // seulement, lue comme les autres autorisations.
-    final estAndroid =
-        defaultTargetPlatform == TargetPlatform.android;
-    if (estAndroid) {
-      permissions.add(Permission.ignoreBatteryOptimizations);
-    }
     for (final permission in permissions) {
       try {
         statuts[permission] = await permission.status;
       } catch (_) {}
     }
-    // Appels sur écran verrouillé, carte 150 : état booléen, lu
-    // via l'adaptateur. Vrai en dessous d'Android 14, où
-    // l'autorisation n'existe pas.
-    bool? pleinEcran;
-    if (estAndroid) {
-      try {
-        pleinEcran = await PleinEcranAppel.instance.disponible();
-      } catch (_) {}
-    }
     if (mounted) {
       setState(() {
         _statuts = statuts;
-        _pleinEcranDisponible = pleinEcran;
       });
     }
   }
@@ -12197,16 +11900,13 @@ class _SectionAutorisationsState extends State<_SectionAutorisations>
   }
 
   bool get _uneRefusee =>
-      (_statuts?.values.any(
+      _statuts?.values.any(
             (s) =>
                 s.isDenied ||
                 s.isPermanentlyDenied ||
                 s == PermissionStatus.restricted,
           ) ??
-          false) ||
-      // Appels sur écran verrouillé, carte 150 : à activer, le
-      // bouton « Ouvrir les réglages » apparaît aussi.
-      _pleinEcranDisponible == false;
+          false;
 
   Widget _ligne({
     required IconData icone,
@@ -12222,31 +11922,6 @@ class _SectionAutorisationsState extends State<_SectionAutorisations>
           Expanded(child: Text(titre)),
           Text(
             _libelleStatut(_statuts?[permission]),
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Ligne à libellé libre, pour l'état booléen des appels sur
-  /// écran verrouillé, carte 150, qui n'est pas une Permission.
-  Widget _ligneStatut({
-    required IconData icone,
-    required String titre,
-    required String statut,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Icon(icone, color: Cp.navy),
-          const SizedBox(width: Cp.s1),
-          Expanded(child: Text(titre)),
-          Text(
-            statut,
             style: Theme.of(
               context,
             ).textTheme.bodyMedium?.copyWith(color: Cp.inkMuted),
@@ -12298,23 +11973,6 @@ class _SectionAutorisationsState extends State<_SectionAutorisations>
           titre: tr('Photos'),
           permission: Permission.photos,
         ),
-        // Appels sur écran verrouillé, carte 150, et batterie,
-        // carte 151 : états relus au retour des réglages, Android
-        // seulement, absents sur iOS et sur le web.
-        if (_pleinEcranDisponible != null)
-          _ligneStatut(
-            icone: Icons.phone_outlined,
-            titre: tr('Appels sur écran verrouillé'),
-            statut: _pleinEcranDisponible!
-                ? tr('Activé')
-                : tr('À activer'),
-          ),
-        if (_statuts?[Permission.ignoreBatteryOptimizations] != null)
-          _ligne(
-            icone: Icons.battery_charging_full_outlined,
-            titre: tr('Batterie, appels en arrière-plan'),
-            permission: Permission.ignoreBatteryOptimizations,
-          ),
         if (_uneRefusee) ...[
           const SizedBox(height: Cp.s1),
           SizedBox(

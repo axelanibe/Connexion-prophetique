@@ -107,8 +107,139 @@ abstract class ServiceAppelWebRtc {
   /// vérité que le bouton affiche.
   bool get hautParleur;
 
+  /// Statistiques WebRTC de l'appel en cours, carte 166 : codec
+  /// négocié, paquets perdus, gigue, débit réel envoyé, images
+  /// par seconde et résolution. Un résumé vide si la connexion
+  /// n'est pas prête ou si la lecture échoue, jamais une
+  /// exception : l'appel continue sans statistiques.
+  Future<Map<String, dynamic>> statistiquesAppel();
+
   /// Libère la connexion, les flux et les rendus.
   Future<void> liberer();
+}
+
+/// Vrai quand le rendu distant doit être reposé, carte 165 : le
+/// rendu natif ne prend que la première piste vidéo au moment où
+/// on le pose, il ne voit jamais une piste ajoutée ensuite. Il
+/// faut donc reposer le rendu quand une piste vidéo arrive et
+/// qu'aucune n'était attachée, ou quand la piste attachée a
+/// changé. Sans piste vidéo, jamais : un appel audio n'a rien à
+/// rattacher.
+bool doitRattacherRenduDistant(
+  String? idPisteAttachee,
+  String? idPisteCourante,
+) =>
+    idPisteCourante != null && idPisteCourante != idPisteAttachee;
+
+/// Résumé des statistiques WebRTC brutes, carte 166 : codec
+/// négocié, paquets perdus à l'envoi et à la réception, gigue,
+/// aller-retour, débit réel envoyé, images par seconde et
+/// résolution envoyée. Le débit est calculé sur la différence
+/// des octets envoyés entre deux résumés, [precedent] étant le
+/// résumé précédent, avec ses clés octetsEnvoyes et
+/// horodatageMs. Une valeur absente donne null, jamais une
+/// exception : un rapport incomplet reste lisible.
+Map<String, dynamic> resumerStatistiquesAppel(
+  List<StatsReport> rapports, {
+  Map<String, dynamic>? precedent,
+}) {
+  String? codecVideo;
+  int? octetsEnvoyes;
+  int? paquetsEnvoyes;
+  int? paquetsPerdusEnvoi;
+  int? paquetsPerdusReception;
+  double? gigueEnvoi;
+  double? gigueReception;
+  double? allerRetourMs;
+  double? imagesParSeconde;
+  int? largeur;
+  int? hauteur;
+  for (final rapport in rapports) {
+    final valeurs = rapport.values;
+    if (rapport.type == 'codec') {
+      final mime = (valeurs['mimeType'] ?? '').toString();
+      if (mime.startsWith('video/')) {
+        codecVideo = mime.substring('video/'.length);
+      }
+    } else if (rapport.type == 'outbound-rtp' &&
+        valeurs['kind'] == 'video') {
+      octetsEnvoyes = (valeurs['bytesSent'] as num?)?.toInt();
+      paquetsEnvoyes = (valeurs['packetsSent'] as num?)?.toInt();
+      imagesParSeconde = (valeurs['framesPerSecond'] as num?)?.toDouble();
+      largeur = (valeurs['frameWidth'] as num?)?.toInt();
+      hauteur = (valeurs['frameHeight'] as num?)?.toInt();
+    } else if (rapport.type == 'remote-inbound-rtp' &&
+        valeurs['kind'] == 'video') {
+      paquetsPerdusEnvoi = (valeurs['packetsLost'] as num?)?.toInt();
+      gigueEnvoi = (valeurs['jitter'] as num?)?.toDouble();
+      final allerRetour = (valeurs['roundTripTime'] as num?)?.toDouble();
+      if (allerRetour != null) allerRetourMs = allerRetour * 1000;
+    } else if (rapport.type == 'inbound-rtp' && valeurs['kind'] == 'video') {
+      paquetsPerdusReception = (valeurs['packetsLost'] as num?)?.toInt();
+      gigueReception = (valeurs['jitter'] as num?)?.toDouble();
+    } else if (rapport.type == 'candidate-pair' &&
+        valeurs['state'] == 'succeeded') {
+      final allerRetour =
+          (valeurs['currentRoundTripTime'] as num?)?.toDouble();
+      if (allerRetourMs == null && allerRetour != null) {
+        allerRetourMs = allerRetour * 1000;
+      }
+    }
+  }
+  double? debitKbitS;
+  final octetsPrecedents = (precedent?['octetsEnvoyes'] as num?)?.toInt();
+  final horodatagePrecedent = (precedent?['horodatageMs'] as num?)?.toInt();
+  final horodatageMs = DateTime.now().millisecondsSinceEpoch;
+  if (octetsEnvoyes != null &&
+      octetsPrecedents != null &&
+      horodatagePrecedent != null) {
+    final secondes = (horodatageMs - horodatagePrecedent) / 1000;
+    if (secondes > 0 && octetsEnvoyes >= octetsPrecedents) {
+      debitKbitS = (octetsEnvoyes - octetsPrecedents) * 8 / secondes / 1000;
+    }
+  }
+  return <String, dynamic>{
+    'codecVideo': codecVideo,
+    'octetsEnvoyes': octetsEnvoyes,
+    'paquetsEnvoyes': paquetsEnvoyes,
+    'paquetsPerdusEnvoi': paquetsPerdusEnvoi,
+    'paquetsPerdusReception': paquetsPerdusReception,
+    'gigueEnvoiMs': gigueEnvoi == null ? null : gigueEnvoi * 1000,
+    'gigueReceptionMs': gigueReception == null ? null : gigueReception * 1000,
+    'allerRetourMs': allerRetourMs,
+    'debitSortantKbitS': debitKbitS,
+    'imagesParSeconde': imagesParSeconde,
+    'largeur': largeur,
+    'hauteur': hauteur,
+    'horodatageMs': horodatageMs,
+  };
+}
+
+/// Formate le résumé des statistiques pour l'écran, carte 166 :
+/// une ligne par mesure, « inconnu » quand la mesure est absente,
+/// pour que le membre puisse la copier et l'envoyer à la structure.
+String formaterStatistiques(Map<String, dynamic> resume) {
+  String ligne(String nom, Object? valeur, [String unite = '']) {
+    if (valeur == null) return '$nom : inconnu';
+    if (valeur is double) return '$nom : ${valeur.toStringAsFixed(1)}$unite';
+    return '$nom : $valeur$unite';
+  }
+
+  final resolution = resume['largeur'] != null && resume['hauteur'] != null
+      ? '${resume['largeur']}x${resume['hauteur']}'
+      : null;
+  return <String>[
+    ligne('Codec vidéo', resume['codecVideo']),
+    ligne('Débit sortant', resume['debitSortantKbitS'], ' kbit/s'),
+    ligne('Paquets envoyés', resume['paquetsEnvoyes']),
+    ligne('Paquets perdus (envoi)', resume['paquetsPerdusEnvoi']),
+    ligne('Paquets perdus (réception)', resume['paquetsPerdusReception']),
+    ligne('Gigue (envoi)', resume['gigueEnvoiMs'], ' ms'),
+    ligne('Gigue (réception)', resume['gigueReceptionMs'], ' ms'),
+    ligne('Aller-retour', resume['allerRetourMs'], ' ms'),
+    ligne('Images par seconde', resume['imagesParSeconde']),
+    ligne('Résolution envoyée', resolution),
+  ].join('\n');
 }
 
 /// Implémentation réelle, flutter_webrtc.
@@ -123,6 +254,17 @@ class ServiceAppelWebRtcReel implements ServiceAppelWebRtc {
   void Function()? _rappelConnexionPerdue;
   bool _distantDefini = false;
   bool _libere = false;
+
+  /// Identifiant de la piste vidéo distante attachée au rendu,
+  /// carte 165 : le rendu natif ne voit jamais une piste ajoutée
+  /// après sa pose. On retient l'identifiant attaché pour savoir
+  /// quand reposer le rendu, quand une nouvelle piste arrive.
+  String? _idPisteVideoDistante;
+
+  /// Dernier résumé de statistiques, carte 166 : il sert à
+  /// calculer le débit réel envoyé, sur la différence des octets
+  /// entre deux lectures.
+  Map<String, dynamic>? _dernierResumeStats;
 
   /// Envoyeur de la piste vidéo locale, pour plafonner son débit
   /// (carte 154) et remplacer sa piste (carte 158).
@@ -262,10 +404,28 @@ class ServiceAppelWebRtcReel implements ServiceAppelWebRtc {
 
   void _definirDistant(MediaStream flux) {
     _fluxDistant = flux;
+    final pistesVideo = flux.getVideoTracks();
+    final idPisteVideo =
+        pistesVideo.isNotEmpty ? pistesVideo.first.id : null;
     if (!_distantDefini) {
       _distantDefini = true;
+      _idPisteVideoDistante = idPisteVideo;
       _renduDistant.srcObject = flux;
       unawaited(_appliquerVolumeDistant());
+      _rappelFluxDistant?.call();
+    } else if (doitRattacherRenduDistant(
+      _idPisteVideoDistante,
+      idPisteVideo,
+    )) {
+      // Bascule audio vers vidéo, carte 165 : le rendu natif ne
+      // prend que la première piste vidéo au moment où on le
+      // pose, il ne voit jamais une piste ajoutée ensuite. Le
+      // correctif de la 156 ne faisait que rappeler l'écran, il
+      // ne rattachait jamais le rendu, et la vue restait noire.
+      // Reposer le rendu quand la piste vidéo arrive, et
+      // rappeler l'écran, pour que la vue s'affiche.
+      _idPisteVideoDistante = idPisteVideo;
+      _renduDistant.srcObject = flux;
       _rappelFluxDistant?.call();
     }
   }
@@ -516,6 +676,27 @@ class ServiceAppelWebRtcReel implements ServiceAppelWebRtc {
     _fluxEcran = null;
     _pisteCamera = null;
     _renduLocal.srcObject = _fluxLocal;
+  }
+
+  @override
+  Future<Map<String, dynamic>> statistiquesAppel() async {
+    final connexion = _connexion;
+    if (connexion == null || _libere) return const {};
+    try {
+      final rapports = await connexion.getStats();
+      final resume = resumerStatistiquesAppel(
+        rapports,
+        precedent: _dernierResumeStats,
+      );
+      _dernierResumeStats = resume;
+      // Journal, carte 166 : chaque lecture est tracée, pour
+      // que le diagnostic survive à l'appel, même sans copie
+      // de l'écran par le membre.
+      debugPrint('Appel : statistiques : ${formaterStatistiques(resume)}');
+      return resume;
+    } catch (_) {
+      return const {};
+    }
   }
 
   @override

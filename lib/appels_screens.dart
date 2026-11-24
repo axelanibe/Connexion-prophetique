@@ -12,6 +12,7 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -29,6 +30,7 @@ import 'choix_sons.dart';
 import 'i18n.dart';
 import 'main.dart';
 import 'messagerie.dart';
+import 'push_notifications.dart';
 import 'sonnerie_appel.dart';
 
 /// Micro (et caméra en vidéo) demandés avant d'ouvrir l'écran
@@ -998,6 +1000,10 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
         FlutterCallkitIncoming.setCallConnected(_appelId).catchError((_) {}),
       );
     }
+    // Batterie, carte 164 : exemption demandée une seule fois,
+    // par le dialogue système, au premier appel, jamais à
+    // l'avance et jamais répétée. Un échec ne bloque pas l'appel.
+    unawaited(demanderExemptionBatterieAuPremierAppel());
     if (forcerHautParleur) {
       await _appliquerHautParleur(false);
     }
@@ -1172,6 +1178,50 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
     unawaited(_envoyerSignal('offre', offre));
   }
 
+  /// Statistiques WebRTC de l'appel en cours, carte 166 : le
+  /// membre les affiche depuis la feuille « Plus », les copie et
+  /// les envoie à la structure, pour diagnostiquer le
+  /// scintillement des couleurs. Elles sont aussi journalisées
+  /// par le service à chaque lecture.
+  Future<void> _afficherStatistiques() async {
+    if (_termine || !mounted) return;
+    final resume = await _service.statistiquesAppel();
+    if (!mounted || _termine) return;
+    final texte = resume.isEmpty
+        ? tr('Statistiques indisponibles pour cet appel.')
+        : formaterStatistiques(resume);
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1B2C40),
+        title: Text(
+          tr('Statistiques de l’appel'),
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: SingleChildScrollView(
+          child: Text(
+            texte,
+            style: const TextStyle(color: Colors.white),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(tr('Fermer')),
+          ),
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: texte));
+              Navigator.of(context).pop();
+              toast(context, tr('Statistiques copiées.'));
+            },
+            child: Text(tr('Copier')),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Partage d'écran, carte 158 : le partage remplace la caméra,
   /// l'autre côté voit l'écran en grand à la place de la vidéo.
   /// Sur iOS, flutter_webrtc ne prend pas en charge la capture,
@@ -1239,6 +1289,22 @@ class _EcranAppelEnCoursState extends State<EcranAppelEnCours> {
       );
     }
     if (_enCours) {
+      // Statistiques WebRTC, carte 166 : le membre les affiche
+      // pendant l'appel, les copie et les envoie à la structure,
+      // pour diagnostiquer le scintillement des couleurs.
+      actions.add(
+        ListTile(
+          leading: const Icon(Icons.analytics_outlined, color: Colors.white),
+          title: Text(
+            tr('Statistiques'),
+            style: const TextStyle(color: Colors.white),
+          ),
+          onTap: () {
+            Navigator.of(context).pop();
+            unawaited(_afficherStatistiques());
+          },
+        ),
+      );
       actions.add(
         ListTile(
           leading:
