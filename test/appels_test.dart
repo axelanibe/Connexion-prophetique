@@ -235,6 +235,24 @@ class FauxServiceAppel implements ServiceAppelWebRtc {
     _ecranPartage = false;
   }
 
+  /// Statistiques fixes, carte 166 : la feuille « Plus » les
+  /// affiche et les copie, sans connexion réelle.
+  @override
+  Future<Map<String, dynamic>> statistiquesAppel() async =>
+      <String, dynamic>{
+        'codecVideo': 'VP8',
+        'debitSortantKbitS': 420.0,
+        'paquetsEnvoyes': 1000,
+        'paquetsPerdusEnvoi': 3,
+        'paquetsPerdusReception': 1,
+        'gigueEnvoiMs': 12.0,
+        'gigueReceptionMs': 8.0,
+        'allerRetourMs': 90.0,
+        'imagesParSeconde': 24.0,
+        'largeur': 640,
+        'hauteur': 480,
+      };
+
   @override
   Future<void> liberer() async {
     libere = true;

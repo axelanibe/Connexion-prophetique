@@ -208,6 +208,22 @@ class FauxServiceAppel implements ServiceAppelWebRtc {
   }
 
   @override
+  Future<Map<String, dynamic>> statistiquesAppel() async =>
+      <String, dynamic>{
+        'codecVideo': 'VP8',
+        'debitSortantKbitS': 420.0,
+        'paquetsEnvoyes': 1000,
+        'paquetsPerdusEnvoi': 3,
+        'paquetsPerdusReception': 1,
+        'gigueEnvoiMs': 12.0,
+        'gigueReceptionMs': 8.0,
+        'allerRetourMs': 90.0,
+        'imagesParSeconde': 24.0,
+        'largeur': 640,
+        'hauteur': 480,
+      };
+
+  @override
   Future<void> liberer() async {
     libere = true;
   }
@@ -424,14 +440,35 @@ void main() {
     await tester.tap(find.byIcon(Icons.more_horiz));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
-    // En audio, la feuille ne propose que Réduire.
-    expect(find.byType(ListTile), findsOneWidget);
-    await tester.tap(find.byType(ListTile));
+    // En audio, la feuille propose Statistiques et Réduire,
+    // carte 166. « Réduire » existe aussi dans la grille
+    // d'appel, on vise la tuile de la feuille.
+    expect(find.byType(ListTile), findsNWidgets(2));
+    expect(find.text('Statistiques'), findsOneWidget);
+    await tester.tap(find.widgetWithText(ListTile, 'Réduire'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
     await tester.pump(const Duration(seconds: 1));
     expect(find.byType(EcranAppelEnCours), findsNothing);
+  });
+
+  testWidgets('Plus : Statistiques affiche le résumé, carte 166',
+      (tester) async {
+    await _pomperAppeleeDecrochee(tester);
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('Statistiques'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.textContaining('Codec vidéo : VP8'), findsOneWidget);
+    expect(find.text('Copier'), findsOneWidget);
+    await tester.tap(find.text('Fermer'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.textContaining('Codec vidéo : VP8'), findsNothing);
   });
 }

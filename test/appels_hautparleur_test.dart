@@ -195,6 +195,9 @@ class _FauxService implements ServiceAppelWebRtc {
   }
 
   @override
+  Future<Map<String, dynamic>> statistiquesAppel() async => const {};
+
+  @override
   Future<void> liberer() async {
     libere = true;
   }
