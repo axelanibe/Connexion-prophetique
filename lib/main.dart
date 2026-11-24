@@ -77,6 +77,7 @@ import 'gallery_save.dart';
 import 'indicatif_pays.dart';
 import 'identifiant_connexion.dart';
 import 'carte_nouvelle.dart';
+import 'mur_membres.dart';
 import 'api.dart';
 import 'stockage_auth.dart';
 import 'verification_auth.dart';
@@ -7440,6 +7441,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         onCamps: () => go(c, const CampsPage()),
         onEtabs: () => go(c, const EtabsPage()),
         onNews: () => go(c, const NewsPage()),
+        onMurMembres: () => go(c, const MurMembresPage()),
         onShop: () => widget.onTab(2),
         onGrowth: () => go(c, const EpanouissementPage()),
         // Le tiroir n'est pas dans l'Explorer : il s'ouvre par le
@@ -11421,12 +11423,13 @@ class _MenuLateralState extends State<MenuLateral> {
                   // appel est réduit. Sans appel, rien ne s'affiche.
                   // Le toucher referme le tiroir puis rouvre l'appel.
                   const BarreAppelEnCours(fermerAvant: true),
-                  // Témoignages seul, 19 nov. 2026 : la section
-                  // Navigation disparaît, les onglets vivent dans
-                  // la pilule et dans la barre du haut. Témoignages
-                  // n'est ni dans la pilule ni dans la barre, il
-                  // reste ici comme entrée seule, décision d'Axel.
-                  ..._entreesNavigation().map(
+                  // Navigation du tiroir, refonte totale, tranche 1,
+                  // carte 176, 24 nov. 2026 : les six entrées de la
+                  // maquette, Accueil, Bible, Librairie, Structure,
+                  // Mur des membres, Témoignages. Les onglets
+                  // vivent aussi dans la pilule et dans la barre
+                  // du haut, le mur ouvre sa page.
+                  ..._entreesNavigation(context).map(
                     (e) => _entreeNavigation(context, e),
                   ),
                   // Recherche active, 22 nov. 2026 : « Pour vous »
@@ -11535,22 +11538,35 @@ class _MenuLateralState extends State<MenuLateral> {
   // de sous-titre pour une navigation. Un toucher referme le tiroir
   // puis demande l'onglet, appliqué par l'AppShell à la fin de
   // l'image en cours.
-  List<(String, IconData, String, int)> _entreesNavigation() => [
-        ('temoignages', Ic.temoignages, tr('Témoignages'), 4),
+  // Six entrées de navigation, refonte totale, tranche 1, carte 176 :
+  // l'onglet ouvre son onglet, le mur ouvre sa page, membre
+  // connecté seulement. L'ordre est celui de la maquette.
+  List<(String, IconData, String, int?, void Function()?)> _entreesNavigation(BuildContext c) => [
+        ('accueil', Ic.home, tr('Accueil'), 0, null),
+        ('bible', Ic.bible, tr('Bible'), 1, null),
+        ('librairie', Ic.book, tr('Librairie'), 2, null),
+        ('structure', Ic.users, tr('Structure'), 3, null),
+        if (app.member != null)
+          ('mur-membres', Icons.people_outlined, tr('Mur des membres'), null, () => go(c, const MurMembresPage())),
+        ('temoignages', Ic.temoignages, tr('Témoignages'), 4, null),
       ];
 
   Widget _entreeNavigation(
     BuildContext c,
-    (String, IconData, String, int) e,
+    (String, IconData, String, int?, void Function()?) e,
   ) {
-    // Pastille « Nouveau », 19 nov. 2026 : Témoignages est la seule
-    // nouveauté de cette section.
+    // Pastille « Nouveau » : Témoignages et le mur sont les
+    // nouveautés de cette section, jusqu'à leur première ouverture.
     final nouveau = _pastilleNouveau(e.$1);
     return InkWell(
       onTap: () {
         unawaited(NouveautesVues.instance.marquerVue(e.$1));
         Navigator.of(c).pop();
-        app.requestTab(e.$4);
+        if (e.$5 != null) {
+          e.$5!();
+        } else {
+          app.requestTab(e.$4!);
+        }
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),

@@ -238,6 +238,7 @@ class HomeActions {
     this.onCamps,
     this.onEtabs,
     this.onNews,
+    this.onMurMembres,
     this.onShop,
     this.onGrowth,
     this.onAnswer,
@@ -257,7 +258,7 @@ class HomeActions {
     this.onSearch,
   });
   final VoidCallback? onSignup, onQuitVisitor, onLanguage, onCreateCard, onBible, onQuiz, onTeachings, onEmploi, onPrayer, onProfile, onPayCotisation, onSearch;
-  final VoidCallback? onReadChapter, onListen, onShare, onShareVerseCard, onCamps, onEtabs, onNews, onShop, onGrowth;
+  final VoidCallback? onReadChapter, onListen, onShare, onShareVerseCard, onCamps, onEtabs, onNews, onMurMembres, onShop, onGrowth;
   final VoidCallback? onJournalRevelation, onJournalMessage;
   final VoidCallback? onSeeAllEvents, onSendPrayer;
   final VoidCallback? onAddQuizQuestion, onManageQuizQuestions, onPublishNews;
@@ -681,6 +682,15 @@ class _HomeWebContentState extends State<_HomeWebContent> with SingleTickerProvi
                       memberMatricule: memberMatricule,
                       memberPhoto: memberPhoto,
                       memberValidUntilLabel: memberValidUntilLabel)),
+              // Tuile Mur des membres, refonte totale, tranche 1,
+              // carte 176, 24 nov. 2026 : bien visible dès
+              // l'ouverture, juste après la carte du héros,
+              // membre connecté seulement. Elle ouvre la coquille
+              // du mur, les publications arrivent avec la carte 174.
+              if (!visitor) ...[
+                const SizedBox(height: 24),
+                RepaintBoundary(child: _TuileMurMembres(onTap: actions.onMurMembres)),
+              ],
               // Prochain culte, tranche 1, 19 nov. 2026 : juste
               // après la carte du héros, en haut de l'accueil,
               // membre connecté seulement, jamais visiteur. Sans
@@ -1393,6 +1403,38 @@ class _DecouvrirGrid extends StatelessWidget {
     );
   }
 }
+
+// Tuile Mur des membres, refonte totale, tranche 1, carte 176 :
+// carte blanche pleine largeur, icône bleu nuit et or, titre
+// seul, sans sous-titre ni explication.
+class _TuileMurMembres extends StatelessWidget {
+  const _TuileMurMembres({required this.onTap});
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(22),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: _whiteCard(22),
+        child: Row(children: [
+          _IconTile(Icons.people_outlined, size: 48, iconSize: 24, radius: 14),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(tr('Mur des membres'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: W.ink, fontSize: 17, fontWeight: FontWeight.w800)),
+          ),
+          const Icon(Icons.chevron_right_outlined, color: W.muted, size: 22),
+        ]),
+      ),
+    );
+  }
+}
+
 // Verset du jour compact, 29 oct. 2026, réorganisation de
 // l'accueil : carte resserrée, et la note de la lecture vocale
 // affichée directement, sans repli, 1er nov. 2026.

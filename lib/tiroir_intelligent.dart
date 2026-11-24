@@ -102,7 +102,7 @@ class NouveautesVues {
 
   /// Fonctionnalités mises en avant, par identifiant d'entrée du
   /// tiroir.
-  static const Set<String> ids = {'magnetophone', 'temoignages', 'messagerie', 'chaine-priere'};
+  static const Set<String> ids = {'magnetophone', 'temoignages', 'messagerie', 'chaine-priere', 'mur-membres'};
 
   static final NouveautesVues instance = NouveautesVues._();
   NouveautesVues._();

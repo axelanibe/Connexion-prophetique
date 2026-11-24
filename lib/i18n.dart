@@ -1301,6 +1301,9 @@ const Map<String, String> _en = {
   'Écrire un commentaire': 'Write a comment',
   'Supprimer ce commentaire': 'Delete this comment',
   'Mon mur': 'My wall',
+  // Mur des membres, refonte totale, tranche 1, carte 176.
+  'Mur des membres': 'Members wall',
+  'Aucune publication pour le moment.': 'No posts yet.',
   'Enseignements, actualités, camps et témoignages': 'Teachings, news, camps and testimonies',
   'Aucune activité pour le moment.': 'No activity yet.',
   'Impossible de charger Mon mur.': 'Unable to load My wall.',
