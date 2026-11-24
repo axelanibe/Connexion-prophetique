@@ -12,9 +12,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:connexion_prophetique/api.dart';
 import 'package:connexion_prophetique/main.dart';
 import 'package:connexion_prophetique/messagerie.dart';
 import 'package:connexion_prophetique/tiroir_intelligent.dart';
+
+/// Client qui renvoie un mur vide, sans serveur : la page du
+/// mur lit le fil à l'ouverture, comme les témoignages.
+class _ClientMurVide extends ApiClient {
+  @override
+  Future<Map<String, dynamic>> fetchMur() async => const {'publications': []};
+}
 
 void main() {
   group('Suppression de la page Plus, source', () {
@@ -107,6 +115,8 @@ void main() {
 
     testWidgets('membre : toucher Mur des membres ouvre le mur vide', (tester) async {
       app.member = Member('Test', 'CP-TT-2526', 'Céleste', DateTime(2026, 1, 1));
+      api = _ClientMurVide();
+      addTearDown(() => api = ApiClient());
       await ouvrirMenu(tester);
       expect(find.text('Mur des membres'), findsOneWidget);
       await tester.tap(find.text('Mur des membres'));
