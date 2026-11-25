@@ -16,6 +16,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  CATEGORIES_MUR,
   LONGUEUR_MAX_TEXTE_MUR,
   TAILLE_MAX_PHOTO_MUR_OCTETS,
   LIMITE_MUR_PUBLICATIONS,
@@ -93,29 +94,55 @@ test('validerPublicationMur : octets non image refusés en 415', () => {
   assert.equal(refus.statut, 415);
 });
 
+// ── Catégories, mur v2 tranche 1 ─────────────────────────────────
+test('CATEGORIES_MUR : les 6 catégories, prière comprise', () => {
+  assert.deepEqual([...CATEGORIES_MUR], ['temoignage', 'priere', 'verset', 'encouragement', 'enseignement', 'autre']);
+});
+
+test('validerPublicationMur : catégorie valide acceptée, invalide refusée en 400', () => {
+  assert.equal(validerPublicationMur({ texte: 'Bonjour', photo: null, categorie: 'priere' }), null);
+  assert.equal(validerPublicationMur({ texte: 'Bonjour', photo: null }), null);
+  const refus = validerPublicationMur({ texte: 'Bonjour', photo: null, categorie: 'nimporte' });
+  assert.equal(refus.statut, 400);
+});
+
 // ── Format public ────────────────────────────────────────────
-test('formaterPublicationMur : forme publique, sans identifiant auteur', () => {
+test('formaterPublicationMur : forme publique complète', () => {
   const ligne = {
     id: 'p1',
+    auteur_id: 'a1',
     auteur_nom: 'Marie K',
     etablissement_nom: 'Céleste',
     texte: 'Courage',
     photo: 'data:image/jpeg;base64,/9j/',
+    categorie: 'temoignage',
+    statut_moderation: 'visible',
     nb_jaime: '3',
+    nb_amen: 1,
+    nb_priere: '2',
+    mon_type: 'jaime',
     nb_commentaires: 2,
-    aime: true,
+    enregistre: true,
     est_auteur: false,
     cree_le: new Date('2026-11-24T10:00:00.000Z'),
   };
   assert.deepEqual(formaterPublicationMur(ligne), {
     id: 'p1',
+    auteur_id: 'a1',
     auteur_nom: 'Marie K',
     etablissement_nom: 'Céleste',
     texte: 'Courage',
     photo: 'data:image/jpeg;base64,/9j/',
+    categorie: 'temoignage',
+    statut_moderation: 'visible',
+    video: null,
     nb_jaime: 3,
+    nb_amen: 1,
+    nb_priere: 2,
+    mon_type: 'jaime',
     nb_commentaires: 2,
     aime: true,
+    enregistre: true,
     est_auteur: false,
     cree_le: '2026-11-24T10:00:00.000Z',
   });
@@ -123,12 +150,36 @@ test('formaterPublicationMur : forme publique, sans identifiant auteur', () => {
 
 test('formaterPublicationMur : valeurs absentes, zéros et faux', () => {
   const forme = formaterPublicationMur({ id: 'p2' });
+  assert.equal(forme.auteur_id, null);
   assert.equal(forme.auteur_nom, '');
   assert.equal(forme.texte, '');
   assert.equal(forme.photo, null);
+  assert.equal(forme.categorie, 'autre');
+  assert.equal(forme.statut_moderation, 'visible');
+  assert.equal(forme.video, null);
   assert.equal(forme.nb_jaime, 0);
+  assert.equal(forme.nb_amen, 0);
+  assert.equal(forme.nb_priere, 0);
+  assert.equal(forme.mon_type, null);
   assert.equal(forme.nb_commentaires, 0);
   assert.equal(forme.aime, false);
+  assert.equal(forme.enregistre, false);
   assert.equal(forme.est_auteur, false);
   assert.equal(forme.cree_le, null);
+});
+
+test('formaterPublicationMur : vidéo présente quand la clé R2 est là', () => {
+  const forme = formaterPublicationMur({
+    id: 'p3',
+    cle_r2_video: 'mur-videos/abc.mp4',
+    type_mime_video: 'video/mp4',
+    taille_video_octets: 12345,
+  });
+  assert.deepEqual(forme.video, { url: '/mur/p3/video', type_mime: 'video/mp4', taille_octets: 12345 });
+});
+
+test('formaterPublicationMur : aime vaut vrai quand mon_type est renseigné', () => {
+  assert.equal(formaterPublicationMur({ id: 'p4', mon_type: 'amen' }).aime, true);
+  assert.equal(formaterPublicationMur({ id: 'p4', mon_type: null }).aime, false);
+  assert.equal(formaterPublicationMur({ id: 'p4', aime: true }).aime, true);
 });
