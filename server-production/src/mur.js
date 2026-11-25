@@ -15,6 +15,11 @@
 // sans accès base, pour être testé sans serveur ni base, comme
 // src/temoignages.js. Les routes vivent dans server.js.
 
+/// Catégories d'une publication, dans l'ordre du fil. La
+// prière ne concerne que les sujets généraux, comme prions
+// pour une nation ; le sujet personnel reste par e-mail.
+export const CATEGORIES_MUR = Object.freeze(['temoignage', 'priere', 'verset', 'encouragement', 'enseignement', 'autre']);
+
 /// Longueur maximale du texte, comme les témoignages.
 export const LONGUEUR_MAX_TEXTE_MUR = 2000;
 
@@ -38,8 +43,13 @@ export function estImageAutorisee(octets) {
 
 /// Refus de publication, null quand tout est bon. Un texte seul
 // est accepté, une photo seule aussi, jamais les deux vides.
-export function validerPublicationMur({ texte, photo }) {
+// La catégorie, quand elle est donnée, est l'une des 6 ; sans
+// elle, la publication vaut 'autre'.
+export function validerPublicationMur({ texte, photo, categorie }) {
   const textePropre = typeof texte === 'string' ? texte.trim() : '';
+  if (categorie != null && categorie !== '' && !CATEGORIES_MUR.includes(categorie)) {
+    return { statut: 400, message: 'Catégorie invalide.' };
+  }
   if (textePropre.length > LONGUEUR_MAX_TEXTE_MUR) {
     return { statut: 400, message: 'Texte trop long : 2000 caractères au plus.' };
   }
@@ -64,22 +74,38 @@ export function validerPublicationMur({ texte, photo }) {
 }
 
 /// Publication publique, telle que renvoyée par les routes :
-// jamais l'identifiant de l'auteur, seulement son nom, son
-// établissement, le texte, la photo, les nombres de J'aime et
-// de commentaires, mon J'aime et mon droit de suppression.
+// jamais le matricule, seulement son nom, son établissement,
+// le texte, la photo, la catégorie, les nombres de réactions
+// par type, mon type de réaction, mon J'aime et mon droit de
+// suppression. L'identifiant de l'auteur est renvoyé, il faut
+// l'ouvrir le profil et suivre ; la photo de l'auteur passe
+// par la route batch, jamais dans le fil.
 export function formaterPublicationMur(ligne) {
   const l = ligne ?? {};
+  const nombre = (v) => (typeof v === 'number' ? v : Number.parseInt(v ?? '0', 10) || 0);
   return {
     id: l.id,
+    auteur_id: l.auteur_id ?? null,
     auteur_nom: l.auteur_nom ?? '',
     etablissement_nom: l.etablissement_nom ?? '',
     texte: l.texte ?? '',
     photo: l.photo ?? null,
-    nb_jaime: typeof l.nb_jaime === 'number' ? l.nb_jaime : Number.parseInt(l.nb_jaime ?? '0', 10) || 0,
-    nb_commentaires: typeof l.nb_commentaires === 'number'
-      ? l.nb_commentaires
-      : Number.parseInt(l.nb_commentaires ?? '0', 10) || 0,
-    aime: l.aime === true,
+    categorie: l.categorie ?? 'autre',
+    statut_moderation: l.statut_moderation ?? 'visible',
+    video: l.cle_r2_video
+      ? {
+          url: `/mur/${l.id}/video`,
+          type_mime: l.type_mime_video ?? null,
+          taille_octets: nombre(l.taille_video_octets),
+        }
+      : null,
+    nb_jaime: nombre(l.nb_jaime),
+    nb_amen: nombre(l.nb_amen),
+    nb_priere: nombre(l.nb_priere),
+    mon_type: l.mon_type ?? null,
+    nb_commentaires: nombre(l.nb_commentaires),
+    aime: l.mon_type != null ? true : l.aime === true,
+    enregistre: l.enregistre === true,
     est_auteur: l.est_auteur === true,
     cree_le: l.cree_le instanceof Date ? l.cree_le.toISOString() : (l.cree_le ?? null),
   };
