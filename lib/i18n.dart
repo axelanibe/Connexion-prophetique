@@ -1314,6 +1314,23 @@ const Map<String, String> _en = {
   'La publication disparaîtra pour tous les membres.': 'The post will disappear for all members.',
   'Publication supprimée.': 'Post deleted.',
   'Impossible de supprimer la publication.': 'Unable to delete the post.',
+  'Saisissez au moins 3 caractères.': 'Enter at least 3 characters.',
+  // Mur des membres v2, tranche 1, carte 176.
+  'Témoignages': 'Testimonies',
+  'Prières': 'Prayers',
+  'Versets': 'Verses',
+  'Encouragements': 'Encouragements',
+  'Autres': 'Other',
+  'Rechercher sur le mur…': 'Search the wall…',
+  'Afficher plus': 'Show more',
+  'Aucune publication dans cette catégorie.': 'No posts in this category.',
+  'Détail de la publication': 'Post detail',
+  'Impossible de charger la publication.': 'Unable to load the post.',
+  'La prière du mur concerne les sujets généraux, comme prions pour une nation. Le sujet personnel reste par e-mail.':
+      'Wall prayers are for general subjects, such as praying for a nation. Personal subjects stay by e-mail.',
+  'Car là où sont deux ou trois réunis en mon nom, je suis au milieu d’eux.':
+      'For where two or three gather in my name, there am I with them.',
+  'Matthieu 18:20': 'Matthew 18:20',
   'Enseignements, actualités, camps et témoignages': 'Teachings, news, camps and testimonies',
   'Aucune activité pour le moment.': 'No activity yet.',
   'Impossible de charger Mon mur.': 'Unable to load My wall.',

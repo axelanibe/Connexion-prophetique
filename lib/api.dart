@@ -922,18 +922,45 @@ class ApiClient {
   /// carte 176, 24 nov. 2026 : les publications des membres,
   /// les plus récentes d'abord, avec leurs nombres de J'aime et
   /// de commentaires et mon J'aime. Lecture seule, jamais
-  /// d'écriture sur un GET.
-  Future<Map<String, dynamic>> fetchMur() async {
-    final data = await _get('/mur');
+  /// d'écriture sur un GET. Mur v2, tranche 1, 25 nov. 2026 :
+  /// catégorie, recherche et pagination, 20 par page, curseur
+  /// sur la dernière publication vue.
+  Future<Map<String, dynamic>> fetchMur({String? categorie, String? recherche, String? avant, int? limite}) async {
+    final params = <String, String>{};
+    if (categorie != null && categorie.isNotEmpty) params['categorie'] = categorie;
+    if (recherche != null && recherche.isNotEmpty) params['q'] = recherche;
+    if (avant != null && avant.isNotEmpty) params['avant'] = avant;
+    if (limite != null) params['limite'] = limite.toString();
+    final query = params.isEmpty
+        ? ''
+        : '?${params.entries.map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}').join('&')}';
+    final data = await _get('/mur$query');
     if (data is Map<String, dynamic>) return data;
     return const {};
+  }
+
+  /// Détail d'une publication du mur, GET /mur/:id.
+  Future<Map<String, dynamic>> fetchMurDetail(String id) async {
+    final data = await _get('/mur/${Uri.encodeComponent(id)}');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Photos des auteurs du fil, en lot, 100 au plus.
+  Future<Map<String, dynamic>> fetchPhotosAuteurs(List<String> ids) async {
+    if (ids.isEmpty) return const {'photos': []};
+    final data = await _get('/mur/auteurs-photos?ids=${ids.map(Uri.encodeComponent).join(',')}');
+    if (data is Map<String, dynamic>) return data;
+    return const {'photos': []};
   }
 
   /// Publication sur le mur, POST /mur en JSON : texte seul,
   /// photo seule, ou les deux. La photo est une adresse de
   /// données, réduite côté application comme la photo de profil.
-  Future<Map<String, dynamic>> publierMur({String? texte, String? photo}) =>
-      _post('/mur', {'texte': texte ?? '', if (photo != null) 'photo': photo});
+  /// La catégorie part avec la publication, 'temoignage' par
+  /// défaut côté application.
+  Future<Map<String, dynamic>> publierMur({String? texte, String? photo, String? categorie}) =>
+      _post('/mur', {'texte': texte ?? '', if (photo != null) 'photo': photo, if (categorie != null) 'categorie': categorie});
 
   /// Suppression d'une publication du mur, DELETE /mur/:id :
   /// son auteur, ou le Bureau dans son périmètre, le serveur
