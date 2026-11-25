@@ -6,7 +6,8 @@
 // par cible, nombre visible, jamais de liste publique ; les
 // commentaires sont visibles par tous, l'auteur supprime le
 // sien, la structure supprime tout. Les cibles sont les temps
-// forts et les témoignages : les enseignements et les méditations
+// forts, les témoignages et les publications du mur des membres,
+// carte 174, 24 nov. 2026 : les enseignements et les méditations
 // ont déjà leurs Amens, un J'aime dessus ferait doublon.
 // Tranche 4, Mon mur : la page du Profil qui rassemble les
 // dernières activités, enseignements, actualités et annonces,
@@ -20,7 +21,7 @@
 // src/amens.js. Les routes vivent dans server.js.
 
 /// Cibles possibles d'un J'aime ou d'un commentaire.
-export const CIBLES_AIME = Object.freeze(['temps_fort', 'temoignage']);
+export const CIBLES_AIME = Object.freeze(['temps_fort', 'temoignage', 'mur']);
 
 /// Longueurs maximales des textes.
 export const LONGUEUR_MAX_TITRE_TEMPS_FORT = 200;

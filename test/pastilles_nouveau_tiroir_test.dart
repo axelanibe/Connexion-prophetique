@@ -6,6 +6,9 @@
 // n'ont pas d'entrée dans le tiroir (les appels vivent dans la
 // conversation, les stories sur l'accueil), elles n'ont donc pas
 // de pastille. La pastille ne touche ni la pilule ni l'en-tête.
+// Refonte totale, tranche 1, carte 176, 24 nov. 2026 : le mur
+// des membres rejoint les nouveautés, pastille or jusqu'à sa
+// première ouverture, membre seulement.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -86,10 +89,11 @@ void main() {
       expect(find.text('Témoignages'), findsOneWidget);
     });
 
-    testWidgets('membre : Nouveau sur Magnétophone, Témoignages et Chaîne de prière, Messagerie partie', (tester) async {
+    testWidgets('membre : Nouveau sur Magnétophone, Témoignages, Chaîne de prière et Mur des membres, Messagerie partie', (tester) async {
       app.member = Member('Test', 'CP-TT-2526', 'Céleste', DateTime(2026, 1, 1));
       await ouvrirMenu(tester);
-      expect(find.text('Nouveau'), findsNWidgets(3));
+      expect(find.text('Nouveau'), findsNWidgets(4));
+      expect(find.text('Mur des membres'), findsOneWidget);
       expect(find.text('Messagerie'), findsNothing);
     });
 
@@ -100,7 +104,7 @@ void main() {
       await ouvrirMenu(tester);
       expect(find.text('Aide de la structure'), findsOneWidget);
       expect(find.text('3'), findsOneWidget);
-      expect(find.text('Nouveau'), findsNWidgets(3));
+      expect(find.text('Nouveau'), findsNWidgets(4));
     });
 
     testWidgets('déjà vue, plus de pastille sur cette entrée', (tester) async {

@@ -12,9 +12,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:connexion_prophetique/api.dart';
 import 'package:connexion_prophetique/main.dart';
 import 'package:connexion_prophetique/messagerie.dart';
 import 'package:connexion_prophetique/tiroir_intelligent.dart';
+
+/// Client qui renvoie un mur vide, sans serveur : la page du
+/// mur lit le fil à l'ouverture, comme les témoignages.
+class _ClientMurVide extends ApiClient {
+  @override
+  Future<Map<String, dynamic>> fetchMur() async => const {'publications': []};
+}
 
 void main() {
   group('Suppression de la page Plus, source', () {
@@ -89,18 +97,31 @@ void main() {
       app.tabRequest = -1;
     });
 
-    testWidgets('Témoignages seul, sans section Navigation, touche l’onglet 4', (tester) async {
+    testWidgets('six entrées, sans section Navigation, touche l’onglet 4', (tester) async {
       await ouvrirMenu(tester);
       expect(find.text('Navigation'), findsNothing);
-      expect(find.text('Accueil'), findsNothing);
-      expect(find.text('Bible'), findsNothing);
-      expect(find.text('Librairie'), findsNothing);
-      expect(find.text('Structure'), findsNothing);
+      expect(find.text('Accueil'), findsOneWidget);
+      expect(find.text('Bible'), findsOneWidget);
+      expect(find.text('Librairie'), findsOneWidget);
+      expect(find.text('Structure'), findsOneWidget);
       expect(find.text('Témoignages'), findsOneWidget);
+      // Visiteur : le mur est membre seulement.
+      expect(find.text('Mur des membres'), findsNothing);
       expect(find.text('Plus'), findsNothing);
       await tester.tap(find.text('Témoignages'));
       await tester.pumpAndSettle();
       expect(app.tabRequest, 4);
+    });
+
+    testWidgets('membre : toucher Mur des membres ouvre le mur vide', (tester) async {
+      app.member = Member('Test', 'CP-TT-2526', 'Céleste', DateTime(2026, 1, 1));
+      api = _ClientMurVide();
+      addTearDown(() => api = ApiClient());
+      await ouvrirMenu(tester);
+      expect(find.text('Mur des membres'), findsOneWidget);
+      await tester.tap(find.text('Mur des membres'));
+      await tester.pumpAndSettle();
+      expect(find.text('Aucune publication pour le moment.'), findsOneWidget);
     });
 
     testWidgets('le tiroir ne garde plus l’entrée Mes absences et demandes', (tester) async {

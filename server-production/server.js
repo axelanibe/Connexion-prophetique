@@ -120,6 +120,17 @@ import {
   formaterTemoignagePublic,
 } from './src/temoignages.js';
 
+// Mur des membres, carte 174, refonte totale tranche 2,
+// carte 176, 24 nov. 2026 : aides pures, sans accès base,
+// testées sans serveur, comme les témoignages.
+import {
+  LONGUEUR_MAX_TEXTE_MUR,
+  TAILLE_MAX_PHOTO_MUR_OCTETS,
+  LIMITE_MUR_PUBLICATIONS,
+  validerPublicationMur,
+  formaterPublicationMur,
+} from './src/mur.js';
+
 // Chaîne de prière en direct, 21 nov. 2026, tranche 1 : aides
 // pures, sans accès base, testées sans serveur, comme les
 // stories et les témoignages.
@@ -8751,6 +8762,90 @@ app.delete('/temoignages/:id', { preHandler: membreG }, async (req) => {
   return { ok: true };
 });
 
+// ───────────────────────── Mur des membres ─────────────────────────
+// Carte 174, refonte totale tranche 2, carte 176, 24 nov. 2026 :
+// publications des membres, visibles par tous, sans modération.
+// Lecture seule en base : GET ne fait que lire, les J'aime et
+// les commentaires passent par les routes génériques, cible
+// 'mur'. Photo en base comme la photo de profil, 700 Ko au
+// plus, jamais de média R2.
+app.get('/mur', { preHandler: membreG }, async (req) => {
+  const lignes = (await q(
+    `SELECT p.id, p.texte, p.photo_donnees AS photo, p.cree_le,
+            m.nom_complet AS auteur_nom, e.nom AS etablissement_nom,
+            (SELECT COUNT(*) FROM aimes WHERE cible_type = 'mur' AND cible_id = p.id) AS nb_jaime,
+            (SELECT COUNT(*) FROM commentaires WHERE cible_type = 'mur' AND cible_id = p.id) AS nb_commentaires,
+            EXISTS (SELECT 1 FROM aimes WHERE cible_type = 'mur' AND cible_id = p.id AND membre_id = $1) AS aime,
+            (p.auteur_id = $1) AS est_auteur
+     FROM mur_publications p
+     LEFT JOIN membres m ON m.id = p.auteur_id
+     LEFT JOIN etablissements e ON e.id = p.etablissement_id
+     ORDER BY p.cree_le DESC
+     LIMIT ${LIMITE_MUR_PUBLICATIONS}`,
+    [req.user.mid ?? null],
+  )).rows;
+  return { publications: lignes.map(formaterPublicationMur) };
+});
+
+app.post('/mur', { preHandler: membreG }, async (req, reply) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour publier.');
+  // Administrateur d'établissement : seulement son établissement.
+  // Administrateur général : celui de la requête, ou la structure.
+  // Membre : son établissement.
+  const etablissementId = req.user.role === 'admin_general'
+    ? (typeof req.query.etablissement_id === 'string' && UUID_RE.test(req.query.etablissement_id) ? req.query.etablissement_id : null)
+    : req.user.eid;
+  if (req.user.role === 'admin_etablissement' && !etablissementId) throw httpError(403, 'Accès refusé.');
+  const body = req.body ?? {};
+  const refus = validerPublicationMur({ texte: body.texte, photo: body.photo });
+  if (refus) throw httpError(refus.statut, refus.message);
+  const textePropre = String(body.texte ?? '').trim();
+  const photo = typeof body.photo === 'string' && body.photo !== '' ? body.photo : null;
+  const cree = (await q(
+    `INSERT INTO mur_publications (auteur_id, etablissement_id, texte, photo_donnees)
+     VALUES ($1,$2,$3,$4) RETURNING id, texte, photo_donnees AS photo, cree_le`,
+    [req.user.mid, etablissementId, textePropre, photo],
+  )).rows[0];
+  const noms = (await q(
+    `SELECT m.nom_complet AS auteur_nom, e.nom AS etablissement_nom
+     FROM (SELECT $1::uuid AS auteur_id, $2::uuid AS etablissement_id) x
+     LEFT JOIN membres m ON m.id = x.auteur_id
+     LEFT JOIN etablissements e ON e.id = x.etablissement_id`,
+    [req.user.mid, etablissementId],
+  )).rows[0];
+  return reply.code(201).send({
+    publication: formaterPublicationMur({
+      ...cree,
+      auteur_nom: noms?.auteur_nom ?? '',
+      etablissement_nom: noms?.etablissement_nom ?? '',
+      nb_jaime: 0,
+      nb_commentaires: 0,
+      aime: false,
+      est_auteur: true,
+    }),
+  });
+});
+
+app.delete('/mur/:id', { preHandler: membreG }, async (req) => {
+  const id = req.params.id;
+  if (!UUID_RE.test(id ?? '')) throw httpError(404, 'Publication introuvable.');
+  const ligne = (await q(`SELECT id, auteur_id, etablissement_id FROM mur_publications WHERE id = $1`, [id])).rows[0];
+  if (!ligne) throw httpError(404, 'Publication introuvable.');
+  // Auteur ou structure, comme pour les témoignages : 404 dans
+  // les deux cas, sans révéler si la publication existe ou à
+  // qui elle appartient.
+  const estModerateur = req.user.role === 'admin_general' || req.user.role === 'admin_etablissement';
+  const estAuteur = req.user.mid != null && ligne.auteur_id === req.user.mid;
+  if (!estAuteur) {
+    if (!estModerateur) throw httpError(404, 'Publication introuvable.');
+    if (req.user.role === 'admin_etablissement' && req.user.eid !== ligne.etablissement_id) throw httpError(404, 'Publication introuvable.');
+  }
+  await q(`DELETE FROM aimes WHERE cible_type = 'mur' AND cible_id = $1`, [id]);
+  await q(`DELETE FROM commentaires WHERE cible_type = 'mur' AND cible_id = $1`, [id]);
+  await q(`DELETE FROM mur_publications WHERE id = $1`, [id]);
+  return { ok: true };
+});
+
 // ───────────────────────── Chaîne de prière ─────────────────────────
 // Tranche 1, 21 nov. 2026 : 24 créneaux d'une heure, un membre
 // par créneau, un créneau par membre et par jour. La chaîne est
@@ -9759,12 +9854,15 @@ app.delete('/admin/evenements/:id/temps-forts/:tempsFortId', { preHandler: conte
   return { ok: true };
 });
 
-// La cible d'un J'aime ou d'un commentaire existe, temps fort
-// ou témoignage approuvé ou non : l'application ne montre le
-// bouton que sur ce qu'elle affiche déjà.
+// La cible d'un J'aime ou d'un commentaire existe, temps fort,
+// témoignage approuvé ou non, ou publication du mur : l'application
+// ne montre le bouton que sur ce qu'elle affiche déjà.
 async function cibleAimeExiste(cibleType, cibleId) {
   if (cibleType === 'temps_fort') {
     return !!(await q('SELECT id FROM temps_forts_camp WHERE id = $1', [cibleId])).rows[0];
+  }
+  if (cibleType === 'mur') {
+    return !!(await q('SELECT id FROM mur_publications WHERE id = $1', [cibleId])).rows[0];
   }
   return !!(await q('SELECT id FROM temoignages WHERE id = $1', [cibleId])).rows[0];
 }
@@ -12066,6 +12164,23 @@ try {
   await q(`ALTER TABLE temoignages DROP CONSTRAINT IF EXISTS temoignages_taille_octets_check`);
   await q(`ALTER TABLE temoignages ADD CONSTRAINT temoignages_taille_octets_check CHECK (taille_octets >= 0)`);
 } catch (e) { app.log.warn({ err: e, migration: 'temoignages texte' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Mur des membres, carte 174, refonte totale tranche 2,
+// carte 176, 24 nov. 2026 : une publication par ligne, texte
+// léger et photo en base comme la photo de profil, jamais de
+// média R2. Les J'aime et les commentaires vivent dans les
+// tables génériques, cible 'mur', effacés avec la publication.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS mur_publications (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    auteur_id uuid,
+    etablissement_id uuid,
+    texte text NOT NULL DEFAULT '',
+    photo_donnees text,
+    cree_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_mur_publications_fil ON mur_publications (cree_le DESC)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS mur_publications' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Chaîne de prière en direct, 21 nov. 2026, tranche 1 : un
 // créneau par heure du jour courant, un membre par créneau,
