@@ -21,7 +21,13 @@ import 'package:connexion_prophetique/tiroir_intelligent.dart';
 /// mur lit le fil à l'ouverture, comme les témoignages.
 class _ClientMurVide extends ApiClient {
   @override
-  Future<Map<String, dynamic>> fetchMur() async => const {'publications': []};
+  Future<Map<String, dynamic>> fetchMur({
+    String? categorie,
+    String? recherche,
+    String? avant,
+    int? limite,
+  }) async =>
+      const {'publications': []};
 }
 
 void main() {

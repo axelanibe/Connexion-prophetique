@@ -16,6 +16,8 @@
 // direct, sans les aides de main.dart, pour ne pas créer de
 // cycle d'import. Il utilise le client global api, comme
 // camp_planning.dart.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -144,9 +146,12 @@ class ElementMur {
 
 /// Un commentaire : auteur, texte, date, et mon droit de
 /// suppression, auteur ou structure, décidé par le serveur.
+/// 'parent_id', mur v2 tranche 3, est nul pour un commentaire
+/// de premier niveau, renseigné pour une réponse.
 class CommentaireMur {
   CommentaireMur({
     required this.id,
+    this.parentId,
     this.auteurNom = '',
     this.texte = '',
     this.creeLe,
@@ -155,6 +160,7 @@ class CommentaireMur {
 
   factory CommentaireMur.fromJson(Map<String, dynamic> j) => CommentaireMur(
         id: (j['id'] ?? '').toString(),
+        parentId: (j['parent_id'] as String?)?.isEmpty == true ? null : j['parent_id'] as String?,
         auteurNom: (j['auteur_nom'] ?? '').toString(),
         texte: (j['texte'] ?? '').toString(),
         creeLe: j['cree_le'] == null ? null : DateTime.tryParse(j['cree_le'].toString()),
@@ -162,6 +168,7 @@ class CommentaireMur {
       );
 
   final String id;
+  final String? parentId;
   final String auteurNom;
   final String texte;
   final DateTime? creeLe;
@@ -185,8 +192,25 @@ String _erreurLisible(Object e) {
 /// (nombreInitial, aAimeInitial), un seul appel pour toute la
 /// liste ; les commentaires ne se chargent qu'au dépliage, pour
 /// ne pas appeler le serveur pour chaque carte.
+///
+/// Mur v2 tranche 3 : mode réactions quand plusieurs types
+/// sont donnés (J'aime, Amen, Prière, une seule par membre),
+/// réponses à un niveau et mentions @ dans les commentaires.
+/// Le mode à un type garde le comportement actuel, pour les
+/// temps forts et les témoignages.
 class AimesCommentaires extends StatefulWidget {
-  const AimesCommentaires({super.key, required this.cibleType, required this.cibleId, this.nombreInitial, this.aAimeInitial});
+  const AimesCommentaires({
+    super.key,
+    required this.cibleType,
+    required this.cibleId,
+    this.nombreInitial,
+    this.aAimeInitial,
+    this.types = const ['jaime'],
+    this.nbJaimeInitial,
+    this.nbAmenInitial,
+    this.nbPriereInitial,
+    this.monTypeInitial,
+  });
 
   final String cibleType;
   final String cibleId;
@@ -195,6 +219,13 @@ class AimesCommentaires extends StatefulWidget {
   final int? nombreInitial;
   final bool? aAimeInitial;
 
+  /// Types de réaction proposés, un seul par défaut.
+  final List<String> types;
+  final int? nbJaimeInitial;
+  final int? nbAmenInitial;
+  final int? nbPriereInitial;
+  final String? monTypeInitial;
+
   @override
   State<AimesCommentaires> createState() => _AimesCommentairesState();
 }
@@ -202,18 +233,30 @@ class AimesCommentaires extends StatefulWidget {
 class _AimesCommentairesState extends State<AimesCommentaires> {
   int _nombre = 0;
   bool _aAime = false;
+  final _comptes = <String, int>{'jaime': 0, 'amen': 0, 'priere': 0};
+  String? _monType;
   List<CommentaireMur> _commentaires = [];
   bool _commentairesCharges = false;
   bool _peutModerer = false;
   bool _deplie = false;
   bool _actionEnCours = false;
   final _texteControleur = TextEditingController();
+  CommentaireMur? _reponseA;
+  final _mentions = <Map<String, String>>[];
+  List<Map<String, dynamic>> _suggestions = [];
+  String _derniereRechercheMention = '';
+
+  bool get _reactions => widget.types.length > 1;
 
   @override
   void initState() {
     super.initState();
     _nombre = widget.nombreInitial ?? 0;
     _aAime = widget.aAimeInitial ?? false;
+    _comptes['jaime'] = widget.nbJaimeInitial ?? widget.nombreInitial ?? 0;
+    _comptes['amen'] = widget.nbAmenInitial ?? 0;
+    _comptes['priere'] = widget.nbPriereInitial ?? 0;
+    _monType = widget.monTypeInitial ?? (widget.aAimeInitial == true ? 'jaime' : null);
     if (widget.nombreInitial == null || widget.aAimeInitial == null) _chargerCompte();
   }
 
@@ -223,14 +266,29 @@ class _AimesCommentairesState extends State<AimesCommentaires> {
     super.dispose();
   }
 
+  /// Compte renvoyé par le serveur, par type : resynchronise
+  /// les nombres et mon type, en un seul ou trois boutons.
+  void _appliquerCompte(Map<String, dynamic> compte) {
+    int nombre(Object? v) => v is int ? v : int.tryParse((v ?? '').toString()) ?? 0;
+    setState(() {
+      _nombre = nombre(compte['nombre']);
+      _aAime = compte['a_aime'] == true;
+      if (compte.containsKey('nb_jaime')) _comptes['jaime'] = nombre(compte['nb_jaime']);
+      if (compte.containsKey('nb_amen')) _comptes['amen'] = nombre(compte['nb_amen']);
+      if (compte.containsKey('nb_priere')) _comptes['priere'] = nombre(compte['nb_priere']);
+      if (compte.containsKey('mon_type')) {
+        final monType = (compte['mon_type'] as String?)?.isEmpty == true ? null : compte['mon_type'] as String?;
+        _monType = monType;
+        _aAime = monType != null;
+      }
+    });
+  }
+
   Future<void> _chargerCompte() async {
     try {
       final compte = await api.fetchCompteAime(widget.cibleType, widget.cibleId);
       if (!mounted) return;
-      setState(() {
-        _nombre = (compte['nombre'] as num?)?.toInt() ?? 0;
-        _aAime = compte['a_aime'] == true;
-      });
+      _appliquerCompte(compte);
     } catch (_) {}
   }
 
@@ -266,11 +324,8 @@ class _AimesCommentairesState extends State<AimesCommentaires> {
           ? await api.retirerAime(widget.cibleType, widget.cibleId)
           : await api.aimer(widget.cibleType, widget.cibleId);
       if (!mounted) return;
-      setState(() {
-        _nombre = (compte['nombre'] as num?)?.toInt() ?? _nombre;
-        _aAime = compte['a_aime'] == true;
-        _actionEnCours = false;
-      });
+      _appliquerCompte(compte);
+      setState(() => _actionEnCours = false);
     } catch (e) {
       if (!mounted) return;
       setState(() => _actionEnCours = false);
@@ -278,17 +333,97 @@ class _AimesCommentairesState extends State<AimesCommentaires> {
     }
   }
 
+  /// Réaction en mode trois boutons : un toucher sur mon type
+  /// le retire, un toucher sur un autre type le remplace, une
+  /// seule réaction par membre, comme côté serveur.
+  Future<void> _basculerReaction(String type) async {
+    if (_actionEnCours) return;
+    setState(() => _actionEnCours = true);
+    try {
+      final compte = _monType == type
+          ? await api.retirerAime(widget.cibleType, widget.cibleId)
+          : await api.aimer(widget.cibleType, widget.cibleId, type: type);
+      if (!mounted) return;
+      _appliquerCompte(compte);
+      setState(() => _actionEnCours = false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _actionEnCours = false);
+      _message(context, _erreurLisible(e));
+    }
+  }
+
+  /// Mention en cours de frappe : le texte après le dernier
+  /// @, 3 caractères au moins, sans espace final, lance la
+  /// recherche des membres. La sélection remplace la frappe
+  /// par le nom complet et garde l'identifiant pour l'envoi.
+  void _surveillerMention() {
+    final texte = _texteControleur.text;
+    final arobase = texte.lastIndexOf('@');
+    if (arobase < 0) {
+      if (_suggestions.isNotEmpty) setState(() => _suggestions = []);
+      return;
+    }
+    final apres = texte.substring(arobase + 1);
+    if (apres.endsWith(' ') || apres.endsWith('\n') || apres.trim().length < 3) {
+      if (_suggestions.isNotEmpty) setState(() => _suggestions = []);
+      return;
+    }
+    unawaited(_chercherMembres(apres.trim()));
+  }
+
+  Future<void> _chercherMembres(String q) async {
+    if (q == _derniereRechercheMention) return;
+    _derniereRechercheMention = q;
+    try {
+      final bruts = await api.fetchMembresMessagerie(q: q);
+      if (!mounted || _derniereRechercheMention != q) return;
+      setState(() => _suggestions = bruts.where((m) => (m['id'] ?? '').toString().isNotEmpty).toList());
+    } catch (_) {
+      if (mounted && _derniereRechercheMention == q) setState(() => _suggestions = []);
+    }
+  }
+
+  void _choisirMention(Map<String, dynamic> m) {
+    final id = (m['id'] ?? '').toString();
+    final nom = (m['nom_complet'] ?? m['nom'] ?? '').toString();
+    if (id.isEmpty || nom.isEmpty) return;
+    final texte = _texteControleur.text;
+    final arobase = texte.lastIndexOf('@');
+    final avant = arobase >= 0 ? texte.substring(0, arobase) : texte;
+    final nouveau = '$avant@$nom ';
+    setState(() {
+      _texteControleur.text = nouveau;
+      _texteControleur.selection = TextSelection.collapsed(offset: nouveau.length);
+      if (!_mentions.any((x) => x['id'] == id)) _mentions.add({'id': id, 'nom': nom});
+      _suggestions = [];
+      _derniereRechercheMention = '';
+    });
+  }
+
   Future<void> _envoyerCommentaire() async {
     final texte = _texteControleur.text.trim();
     if (!texteCommentaireValide(texte) || _actionEnCours) return;
     setState(() => _actionEnCours = true);
     try {
-      final res = await api.posterCommentaire(widget.cibleType, widget.cibleId, texte);
+      // Seules les mentions encore écrites dans le texte
+      // partent : un nom effacé après la sélection ne part pas.
+      final mentions = _mentions.where((m) => texte.contains('@${m['nom']}')).map((m) => m['id']!).toList();
+      final res = await api.posterCommentaire(
+        widget.cibleType,
+        widget.cibleId,
+        texte,
+        parentId: _reponseA?.id,
+        mentions: mentions.isEmpty ? null : mentions,
+      );
       if (!mounted) return;
       final cree = (res['commentaire'] as Map<String, dynamic>?);
       setState(() {
         _actionEnCours = false;
         _texteControleur.clear();
+        _reponseA = null;
+        _mentions.clear();
+        _suggestions = [];
         if (cree != null) _commentaires = [..._commentaires, CommentaireMur.fromJson(cree)];
       });
     } catch (e) {
@@ -306,7 +441,10 @@ class _AimesCommentairesState extends State<AimesCommentaires> {
       if (!mounted) return;
       setState(() {
         _actionEnCours = false;
-        _commentaires = _commentaires.where((x) => x.id != c.id).toList();
+        // La suppression d'un commentaire retire aussi ses
+        // réponses, comme la cascade côté serveur.
+        _commentaires = _commentaires.where((x) => x.id != c.id && x.parentId != c.id).toList();
+        if (_reponseA?.id == c.id) _reponseA = null;
       });
     } catch (e) {
       if (!mounted) return;
@@ -315,32 +453,104 @@ class _AimesCommentairesState extends State<AimesCommentaires> {
     }
   }
 
+  /// Un bouton de réaction : icône et libellé, nombre quand il
+  /// y en a, couleur pleine quand c'est mon type.
+  Widget _boutonReaction(String type) {
+    final actif = _monType == type;
+    final nombre = _comptes[type] ?? 0;
+    final couleur = !actif ? _grisTexte : type == 'jaime' ? _rouge : type == 'amen' ? _or : _nuit;
+    final icone = type == 'jaime'
+        ? (actif ? Icons.favorite : Icons.favorite_border)
+        : type == 'amen'
+            ? (actif ? Icons.volunteer_activism : Icons.volunteer_activism_outlined)
+            : (actif ? Icons.self_improvement : Icons.self_improvement_outlined);
+    final libelle = type == 'jaime' ? tr('J’aime') : type == 'amen' ? tr('Amen') : tr('Prière');
+    return TextButton.icon(
+      onPressed: _actionEnCours ? null : () => _basculerReaction(type),
+      icon: Icon(icone, size: 20, color: couleur),
+      label: Text(
+        nombre == 0 ? libelle : '$libelle · $nombre',
+        style: TextStyle(color: couleur, fontWeight: FontWeight.w700),
+      ),
+      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
+    );
+  }
+
+  /// Une ligne de commentaire, décalée quand c'est une réponse.
+  /// Seul un commentaire de premier niveau peut être répondu.
+  Widget _ligneCommentaire(CommentaireMur c, {bool reponse = false}) {
+    return Padding(
+      padding: EdgeInsets.only(left: reponse ? 28 : 4, bottom: 8),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(
+              [c.auteurNom, dateCourteMur(c.creeLe)].where((s) => s.isNotEmpty).join(' · '),
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            ),
+            const SizedBox(height: 2),
+            Text(c.texte, style: const TextStyle(fontSize: 14)),
+            if (!reponse)
+              TextButton(
+                onPressed: _actionEnCours ? null : () => setState(() => _reponseA = c),
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(0, 28),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(tr('Répondre'), style: const TextStyle(color: _grisTexte, fontWeight: FontWeight.w700, fontSize: 13)),
+              ),
+          ]),
+        ),
+        if (c.estAuteur || _peutModerer)
+          IconButton(
+            tooltip: tr('Supprimer ce commentaire'),
+            onPressed: _actionEnCours ? null : () => _supprimerCommentaire(c),
+            icon: const Icon(Icons.delete_outline, size: 20),
+            color: _grisTexte,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+          ),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final racines = _commentaires.where((c) => c.parentId == null).toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        TextButton.icon(
-          onPressed: _actionEnCours ? null : _basculerAime,
-          icon: Icon(_aAime ? Icons.favorite : Icons.favorite_border, size: 20, color: _aAime ? _rouge : _grisTexte),
-          label: Text(
-            _nombre == 0 ? tr('J’aime') : '${tr('J’aime')} · $_nombre',
-            style: TextStyle(color: _aAime ? _rouge : _grisTexte, fontWeight: FontWeight.w700),
+      // En mode trois réactions, les boutons descendent sous
+      // la rangée au lieu de déborder sur petit écran.
+      Wrap(
+        spacing: 4,
+        runSpacing: 0,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          if (_reactions)
+            for (final t in widget.types) _boutonReaction(t)
+          else
+            TextButton.icon(
+              onPressed: _actionEnCours ? null : _basculerAime,
+              icon: Icon(_aAime ? Icons.favorite : Icons.favorite_border, size: 20, color: _aAime ? _rouge : _grisTexte),
+              label: Text(
+                _nombre == 0 ? tr('J’aime') : '${tr('J’aime')} · $_nombre',
+                style: TextStyle(color: _aAime ? _rouge : _grisTexte, fontWeight: FontWeight.w700),
+              ),
+              style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
+            ),
+          TextButton.icon(
+            onPressed: _basculerDeplie,
+            icon: const Icon(Icons.chat_bubble_outline, size: 20, color: _grisTexte),
+            label: Text(
+              !_commentairesCharges || _commentaires.isEmpty
+                  ? tr('Commenter')
+                  : '${_commentaires.length} ${_commentaires.length == 1 ? tr('commentaire') : tr('commentaires')}',
+              style: const TextStyle(color: _grisTexte, fontWeight: FontWeight.w700),
+            ),
+            style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
           ),
-          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
-        ),
-        const SizedBox(width: 4),
-        TextButton.icon(
-          onPressed: _basculerDeplie,
-          icon: const Icon(Icons.chat_bubble_outline, size: 20, color: _grisTexte),
-          label: Text(
-            !_commentairesCharges || _commentaires.isEmpty
-                ? tr('Commenter')
-                : '${_commentaires.length} ${_commentaires.length == 1 ? tr('commentaire') : tr('commentaires')}',
-            style: const TextStyle(color: _grisTexte, fontWeight: FontWeight.w700),
-          ),
-          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
-        ),
-      ]),
+        ],
+      ),
       if (_deplie) ...[
         if (!_commentairesCharges)
           const Padding(
@@ -352,32 +562,30 @@ class _AimesCommentairesState extends State<AimesCommentaires> {
             padding: const EdgeInsets.only(left: 4, bottom: 8),
             child: Text(tr('Aucun commentaire pour le moment.'), style: const TextStyle(color: _grisTexte)),
           ),
-        for (final c in _commentaires) ...[
+        for (final c in racines) ...[
+          _ligneCommentaire(c),
+          for (final r in _commentaires.where((x) => x.parentId == c.id)) _ligneCommentaire(r, reponse: true),
+        ],
+        if (_reponseA != null)
           Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 8),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            padding: const EdgeInsets.only(left: 4, bottom: 4),
+            child: Row(children: [
               Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(
-                    [c.auteurNom, dateCourteMur(c.creeLe)].where((s) => s.isNotEmpty).join(' · '),
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(c.texte, style: const TextStyle(fontSize: 14)),
-                ]),
-              ),
-              if (c.estAuteur || _peutModerer)
-                IconButton(
-                  tooltip: tr('Supprimer ce commentaire'),
-                  onPressed: _actionEnCours ? null : () => _supprimerCommentaire(c),
-                  icon: const Icon(Icons.delete_outline, size: 20),
-                  color: _grisTexte,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                child: Text(
+                  '${tr('Répondre à')} ${_reponseA!.auteurNom}',
+                  style: const TextStyle(color: _grisTexte, fontWeight: FontWeight.w700, fontSize: 13),
                 ),
+              ),
+              IconButton(
+                tooltip: tr('Annuler'),
+                onPressed: () => setState(() => _reponseA = null),
+                icon: const Icon(Icons.close, size: 20),
+                color: _grisTexte,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              ),
             ]),
           ),
-        ],
         Row(children: [
           Expanded(
             child: TextField(
@@ -390,7 +598,10 @@ class _AimesCommentairesState extends State<AimesCommentaires> {
                 border: const OutlineInputBorder(),
                 counterText: '',
               ),
-              onChanged: (_) => setState(() {}),
+              onChanged: (_) {
+                setState(() {});
+                _surveillerMention();
+              },
             ),
           ),
           const SizedBox(width: 8),
@@ -401,6 +612,29 @@ class _AimesCommentairesState extends State<AimesCommentaires> {
             color: _nuit,
           ),
         ]),
+        if (_suggestions.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: _grisTexte.withValues(alpha: 0.4)),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                children: [
+                  for (final m in _suggestions)
+                    ListTile(
+                      dense: true,
+                      title: Text((m['nom_complet'] ?? m['nom'] ?? '').toString()),
+                      subtitle: (m['etablissement'] ?? '').toString().isEmpty
+                          ? null
+                          : Text((m['etablissement'] ?? '').toString()),
+                      onTap: () => _choisirMention(m),
+                    ),
+                ],
+              ),
+            ),
+          ),
       ],
     ]);
   }

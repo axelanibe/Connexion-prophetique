@@ -78,6 +78,8 @@ import 'indicatif_pays.dart';
 import 'identifiant_connexion.dart';
 import 'carte_nouvelle.dart';
 import 'mur_membres.dart';
+import 'mur_detail.dart';
+import 'mur_profil.dart';
 import 'api.dart';
 import 'stockage_auth.dart';
 import 'verification_auth.dart';
@@ -6654,6 +6656,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         // ouvre l'écran d'appel entrant, qui vérifie que l'appel
         // sonne encore avant d'afficher accepter et refuser.
         _ouvrirAppelEntrant(data);
+      case 'mur_publication':
+      case 'mur_mention':
+        // Mur des membres v2, tranche 6 : toucher une notification
+        // du mur ouvre la publication, par sa page détail. Le
+        // lien_id est l'identifiant de la publication, pour un
+        // commentaire, une mention ou une réaction.
+        final pubId = (data['lien_id'] ?? '').toString();
+        if (pubId.isNotEmpty) go(context, MurDetailPage(publicationId: pubId));
+      case 'mur_profil':
+        // Nouveau suiveur : le lien_id est le suiveur, son profil
+        // s'ouvre.
+        final membreId = (data['lien_id'] ?? '').toString();
+        if (membreId.isNotEmpty) go(context, MurProfilPage(membreId: membreId));
       default:
         // Cible inconnue : on reste sur l'accueil, la cloche
         // rafraîchie ci-dessus montre l'entrée correspondante.
@@ -19851,6 +19866,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
         return Icons.play_circle_outlined;
       case 'nouvelle_actualite':
         return Icons.newspaper_outlined;
+      case 'mur_commentaire':
+      case 'mur_mention':
+      case 'mur_reaction':
+      case 'mur_suivi':
+        // Mur des membres v2, tranche 6 : même icône que
+        // l'entrée du mur dans le tiroir.
+        return Icons.people_outlined;
       default:
         return Icons.notifications_outlined;
     }
@@ -19873,6 +19895,15 @@ class _NotificationsPageState extends State<NotificationsPage> {
         return 'actualite';
       case 'cotisation_rappel':
         return 'cotisation';
+      case 'mur_commentaire':
+      case 'mur_mention':
+      case 'mur_reaction':
+        // Mention, commentaire ou réaction sans lien : la
+        // publication, par son identifiant, comme quand le lien
+        // est présent.
+        return 'mur_publication';
+      case 'mur_suivi':
+        return 'mur_profil';
       default:
         return '';
     }
@@ -19884,6 +19915,19 @@ class _NotificationsPageState extends State<NotificationsPage> {
     if (!c.mounted) return;
     final titre = (n['titre'] ?? '').toString();
     final message = (n['message'] ?? '').toString();
+    // Dialogue de repli, quand la destination n'a pas
+    // d'identifiant pour ouvrir sa page.
+    void dialogue() {
+      showDialog(
+        context: c,
+        builder: (ctx) => AlertDialog(
+          title: Text(titre),
+          content: Text(message),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Fermer')))],
+        ),
+      );
+    }
+
     switch (_cible(n)) {
       case 'paiement':
         go(c, const MyPurchasesPage());
@@ -19896,15 +19940,26 @@ class _NotificationsPageState extends State<NotificationsPage> {
       case 'actualite':
         app.requestHome();
         Navigator.of(c).popUntil((r) => r.isFirst);
+      case 'mur_publication':
+      case 'mur_mention':
+        // Mur des membres v2, tranche 6 : commentaire, mention
+        // ou réaction, la page détail de la publication.
+        final pubId = (n['lien_id'] ?? '').toString();
+        if (pubId.isNotEmpty) {
+          go(c, MurDetailPage(publicationId: pubId));
+        } else {
+          dialogue();
+        }
+      case 'mur_profil':
+        // Nouveau suiveur : le lien_id est le suiveur.
+        final membreId = (n['lien_id'] ?? '').toString();
+        if (membreId.isNotEmpty) {
+          go(c, MurProfilPage(membreId: membreId));
+        } else {
+          dialogue();
+        }
       default:
-        showDialog(
-          context: c,
-          builder: (ctx) => AlertDialog(
-            title: Text(titre),
-            content: Text(message),
-            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Fermer')))],
-          ),
-        );
+        dialogue();
     }
   }
 
@@ -19970,10 +20025,24 @@ class _NotificationsPageState extends State<NotificationsPage> {
         return tr('Nouvel enseignement');
       case 'nouvelle_actualite':
         return tr('Nouvelle actualité');
+      case 'mur:mentions':
+        // Mur des membres v2, tranche 6 : les mentions
+        // groupées, au lieu du type brut.
+        return tr('Mentions');
+      case 'mur:activite':
+        return tr('Activité du mur');
       default:
         return type;
     }
   }
+
+  // Groupes du mur dans le filtre, tranche 6 : les mentions
+  // d'un côté, le reste de l'activité du mur de l'autre, au
+  // lieu des quatre types bruts.
+  static const _groupesMur = {
+    'mur:mentions': ['mur_mention'],
+    'mur:activite': ['mur_commentaire', 'mur_reaction', 'mur_suivi'],
+  };
 
   // Types présents dans la liste, dans l'ordre canonique, pour le
   // déroulant de filtre. La liste complète sert de base, jamais la
@@ -19986,7 +20055,21 @@ class _NotificationsPageState extends State<NotificationsPage> {
     for (final n in app.notifications) {
       presents.add((n['type'] ?? '').toString());
     }
-    return [for (final t in ordre) if (presents.contains(t)) t];
+    return [
+      for (final t in ordre) if (presents.contains(t)) t,
+      for (final groupe in _groupesMur.entries)
+        if (groupe.value.any(presents.contains)) groupe.key,
+    ];
+  }
+
+  // Le filtre choisi correspond-il à ce type ?
+  bool _correspondFiltre(String type) {
+    if (_filtreType.isEmpty) return true;
+    if (_filtreType == 'mur:mentions') return type == 'mur_mention';
+    if (_filtreType == 'mur:activite') {
+      return type == 'mur_commentaire' || type == 'mur_reaction' || type == 'mur_suivi';
+    }
+    return type == _filtreType;
   }
 
   // Notifications visibles selon le filtre de type et la vue non
@@ -19995,7 +20078,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   List<Map<String, dynamic>> _visibles() {
     return [
       for (final n in app.notifications)
-        if ((_filtreType.isEmpty || (n['type'] ?? '').toString() == _filtreType) &&
+        if (_correspondFiltre((n['type'] ?? '').toString()) &&
             (!_nonLuesSeulement || n['lue'] != true) &&
             (NotifSettings.types.contains((n['type'] ?? '').toString()) == false || notifSettings.enabled((n['type'] ?? '').toString()))) n,
     ];

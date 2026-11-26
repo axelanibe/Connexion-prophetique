@@ -93,6 +93,7 @@ import {
   DUREE_URL_SIGNEE_SECONDES,
   TAILLE_MAX_PHOTO_OCTETS,
   TAILLE_MAX_VIDEO_OCTETS,
+  MIMES_VIDEO,
   configR2,
   cleStory,
   cleR2Valide,
@@ -124,11 +125,15 @@ import {
 // carte 176, 24 nov. 2026 : aides pures, sans accès base,
 // testées sans serveur, comme les témoignages.
 import {
+  CATEGORIES_MUR,
   LONGUEUR_MAX_TEXTE_MUR,
   TAILLE_MAX_PHOTO_MUR_OCTETS,
   LIMITE_MUR_PUBLICATIONS,
+  cleMurVideo,
   validerPublicationMur,
   formaterPublicationMur,
+  formaterProfilMur,
+  formaterMembreSuivi,
 } from './src/mur.js';
 
 // Chaîne de prière en direct, 21 nov. 2026, tranche 1 : aides
@@ -225,11 +230,14 @@ import {
 // accès base, testées sans serveur, comme les Amens.
 import {
   CIBLES_AIME,
+  TYPES_REACTION,
   LIMITE_PAR_KIND_MUR,
   LIMITE_MUR,
   validerTempsFort,
   validerAime,
   validerCommentaire,
+  normaliserMentions,
+  refusReponse,
   formaterTempsFort,
   formaterCompteAime,
   formaterCommentaire,
@@ -3016,6 +3024,27 @@ async function notifierMembre(membreId, type, titre, message, lienType, lienId, 
     app.log.error(e);
   }
 }
+
+// Notification par cloche seulement, mur v2 tranche 3 : même
+// insertion que notifierMembre, sans poussée FCM. Pour les
+// réactions et les nouveaux suiveurs, que l'auteur voit dans
+// l'application sans être dérangé sur son téléphone.
+async function notifierClocheSeule(membreId, type, titre, message, lienType, lienId, titreSansPrenom, messageSansPrenom) {
+  if (!membreId) return;
+  try {
+    const m = (await q('SELECT nom_complet FROM membres WHERE id = $1', [membreId])).rows[0];
+    const prenom = prenomDe(m?.nom_complet);
+    const titreFinal = prenom ? titre.replaceAll('{prenom}', prenom) : (titreSansPrenom ?? titre);
+    const messageFinal = prenom ? message.replaceAll('{prenom}', prenom) : (messageSansPrenom ?? message);
+    await q(
+      `INSERT INTO notifications (membre_id, type, titre, message, lien_type, lien_id) VALUES ($1,$2,$3,$4,$5,$6)`,
+      [membreId, type, titreFinal, messageFinal, lienType ?? null, lienId ?? null],
+    );
+    await taillerNotifications();
+  } catch (e) {
+    app.log.error(e);
+  }
+}
 // Notifications adressées à tous les membres, personnalisées une
 // par une. Les libellés peuvent contenir {prenom}, remplacé par le
 // prénom de chaque membre. Sans prénom, les libellés de repli sont
@@ -3066,6 +3095,12 @@ const TYPES_NOTIFICATIONS_CONNUS = [
   // dans tous les cas ; la poussée suit les catégories du jeton.
   'nouveau_message',
   'signalement_cloture',
+  // Mur des membres v2, tranche 6, 25 nov. 2026 : commentaire
+  // et mention du mur, cloche et poussée. 'mur_reaction' et
+  // 'mur_suivi' restent hors de cette liste, cloche seulement,
+  // ils ne sont jamais poussés.
+  'mur_commentaire',
+  'mur_mention',
   // Appels audio et vidéo, 16 nov. 2026 : un appel entrant
   // prévient l'appelé, cloche interne et poussée FCM.
   'appel_entrant',
@@ -8769,22 +8804,290 @@ app.delete('/temoignages/:id', { preHandler: membreG }, async (req) => {
 // les commentaires passent par les routes génériques, cible
 // 'mur'. Photo en base comme la photo de profil, 700 Ko au
 // plus, jamais de média R2.
+// Mur des membres v2, tranche 1, 25 nov. 2026 : colonnes d'une
+// publication, partagées par le fil et le détail. $1 est
+// l'identifiant du membre qui lit, pour mon type de réaction,
+// mes enregistrements et mon droit d'auteur.
+const COLONNES_PUBLICATION_MUR = `
+  p.id, p.auteur_id, p.texte, p.photo_donnees AS photo,
+  p.categorie, p.statut_moderation, p.cle_r2_video,
+  p.type_mime_video, p.taille_video_octets, p.cree_le,
+  m.nom_complet AS auteur_nom, e.nom AS etablissement_nom,
+  (SELECT COUNT(*) FILTER (WHERE type = 'jaime') FROM aimes WHERE cible_type = 'mur' AND cible_id = p.id) AS nb_jaime,
+  (SELECT COUNT(*) FILTER (WHERE type = 'amen') FROM aimes WHERE cible_type = 'mur' AND cible_id = p.id) AS nb_amen,
+  (SELECT COUNT(*) FILTER (WHERE type = 'priere') FROM aimes WHERE cible_type = 'mur' AND cible_id = p.id) AS nb_priere,
+  (SELECT type FROM aimes WHERE cible_type = 'mur' AND cible_id = p.id AND membre_id = $1) AS mon_type,
+  (SELECT COUNT(*) FROM commentaires WHERE cible_type = 'mur' AND cible_id = p.id) AS nb_commentaires,
+  EXISTS (SELECT 1 FROM mur_enregistrements WHERE membre_id = $1 AND publication_id = p.id) AS enregistre,
+  (p.auteur_id = $1) AS est_auteur`;
+const JOINTURES_PUBLICATION_MUR = `
+  FROM mur_publications p
+  LEFT JOIN membres m ON m.id = p.auteur_id
+  LEFT JOIN etablissements e ON e.id = p.etablissement_id`;
+
 app.get('/mur', { preHandler: membreG }, async (req) => {
+  const mid = req.user.mid ?? null;
+  const categorie = typeof req.query.categorie === 'string' ? req.query.categorie : null;
+  if (categorie != null && !CATEGORIES_MUR.includes(categorie)) throw httpError(400, 'Catégorie invalide.');
+  const saisie = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  if (saisie !== '' && saisie.length < 3) throw httpError(400, 'Saisissez au moins 3 caractères.');
+  const limiteBrute = Number.parseInt(req.query.limite ?? '', 10);
+  const limite = Number.isNaN(limiteBrute) ? 20 : Math.min(LIMITE_MUR_PUBLICATIONS, Math.max(1, limiteBrute));
+  const params = [mid];
+  const conditions = [`p.statut_moderation IN ('visible', 'en_examen')`];
+  if (categorie != null) {
+    params.push(categorie);
+    conditions.push(`p.categorie = $${params.length}`);
+  }
+  if (saisie !== '') {
+    const echappee = saisie.replace(/[%_\\]/g, (c) => `\\${c}`);
+    params.push(`%${echappee}%`);
+    conditions.push(`(p.texte ILIKE $${params.length} ESCAPE '\\' OR m.nom_complet ILIKE $${params.length} ESCAPE '\\')`);
+  }
+  const avant = typeof req.query.avant === 'string' ? req.query.avant : null;
+  if (avant != null) {
+    if (!UUID_RE.test(avant)) throw httpError(400, 'Curseur invalide.');
+    const curseur = (await q(`SELECT cree_le FROM mur_publications WHERE id = $1`, [avant])).rows[0];
+    if (!curseur) throw httpError(400, 'Curseur invalide.');
+    params.push(curseur.cree_le, avant);
+    conditions.push(`(p.cree_le, p.id) < ($${params.length - 1}, $${params.length})`);
+  }
+  params.push(limite + 1);
   const lignes = (await q(
-    `SELECT p.id, p.texte, p.photo_donnees AS photo, p.cree_le,
-            m.nom_complet AS auteur_nom, e.nom AS etablissement_nom,
-            (SELECT COUNT(*) FROM aimes WHERE cible_type = 'mur' AND cible_id = p.id) AS nb_jaime,
-            (SELECT COUNT(*) FROM commentaires WHERE cible_type = 'mur' AND cible_id = p.id) AS nb_commentaires,
-            EXISTS (SELECT 1 FROM aimes WHERE cible_type = 'mur' AND cible_id = p.id AND membre_id = $1) AS aime,
-            (p.auteur_id = $1) AS est_auteur
-     FROM mur_publications p
-     LEFT JOIN membres m ON m.id = p.auteur_id
-     LEFT JOIN etablissements e ON e.id = p.etablissement_id
-     ORDER BY p.cree_le DESC
-     LIMIT ${LIMITE_MUR_PUBLICATIONS}`,
-    [req.user.mid ?? null],
+    `SELECT ${COLONNES_PUBLICATION_MUR}
+     ${JOINTURES_PUBLICATION_MUR}
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY p.cree_le DESC, p.id DESC
+     LIMIT $${params.length}`,
+    params,
   )).rows;
-  return { publications: lignes.map(formaterPublicationMur) };
+  const suivante = lignes.length > limite ? lignes[limite - 1].id : null;
+  return { publications: lignes.slice(0, limite).map(formaterPublicationMur), suivante };
+});
+
+// Photos des auteurs du fil, en lot : un seul appel pour toute
+// la page, mise en cache côté application. Jamais de photo dans
+// les listes, même règle que la recherche messagerie : nom et
+// établissement seulement, sans aucune coordonnée de contact.
+app.get('/mur/auteurs-photos', { preHandler: membreG }, async (req) => {
+  const bruts = (req.query.ids ?? '').toString().split(',').map((s) => s.trim()).filter(Boolean);
+  if (bruts.length === 0 || bruts.length > 100) throw httpError(400, 'La liste des auteurs est invalide.');
+  const valides = bruts.filter((id) => UUID_RE.test(id));
+  if (valides.length === 0) return { photos: [] };
+  const lignes = (await q(
+    `SELECT id AS membre_id, photo_donnees AS photo FROM membres WHERE id = ANY($1::uuid[])`,
+    [valides],
+  )).rows;
+  const parId = new Map(lignes.map((l) => [l.membre_id, l.photo ?? null]));
+  return { photos: valides.map((id) => ({ membre_id: id, photo: parId.get(id) ?? null })) };
+});
+
+app.get('/mur/:id', { preHandler: membreG }, async (req) => {
+  const id = req.params.id;
+  if (!UUID_RE.test(id ?? '')) throw httpError(404, 'Publication introuvable.');
+  const ligne = (await q(
+    `SELECT ${COLONNES_PUBLICATION_MUR}
+     ${JOINTURES_PUBLICATION_MUR}
+     WHERE p.id = $2`,
+    [req.user.mid ?? null, id],
+  )).rows[0];
+  if (!ligne || ligne.statut_moderation === 'masque' || ligne.statut_moderation === 'retire') {
+    throw httpError(404, 'Publication introuvable.');
+  }
+  return { publication: formaterPublicationMur(ligne) };
+});
+
+// Mes enregistrements, mur v2 tranche 5, 25 nov. 2026 :
+// publications enregistrées, par date d'enregistrement,
+// même forme que le fil, curseur `avant`, limite 20.
+// Sans fiche membre, la liste est vide.
+app.get('/mur/enregistrements', { preHandler: membreG }, async (req) => {
+  const mid = req.user.mid ?? null;
+  if (!mid) return { publications: [], suivante: null };
+  const limiteBrute = Number.parseInt(req.query.limite ?? '', 10);
+  const limite = Number.isNaN(limiteBrute) ? 20 : Math.min(LIMITE_MUR_PUBLICATIONS, Math.max(1, limiteBrute));
+  const params = [mid];
+  const conditions = [`enr.membre_id = $1`, `p.statut_moderation IN ('visible', 'en_examen')`];
+  const avant = typeof req.query.avant === 'string' ? req.query.avant : null;
+  if (avant != null) {
+    if (!UUID_RE.test(avant)) throw httpError(400, 'Curseur invalide.');
+    const curseur = (await q(`SELECT cree_le FROM mur_enregistrements WHERE membre_id = $1 AND publication_id = $2`, [mid, avant])).rows[0];
+    if (!curseur) throw httpError(400, 'Curseur invalide.');
+    params.push(curseur.cree_le, avant);
+    conditions.push(`(enr.cree_le, p.id) < ($${params.length - 1}, $${params.length})`);
+  }
+  params.push(limite + 1);
+  const lignes = (await q(
+    `SELECT ${COLONNES_PUBLICATION_MUR}
+     ${JOINTURES_PUBLICATION_MUR}
+     JOIN mur_enregistrements enr ON enr.publication_id = p.id AND enr.membre_id = $1
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY enr.cree_le DESC, p.id DESC
+     LIMIT $${params.length}`,
+    params,
+  )).rows;
+  const suivante = lignes.length > limite ? lignes[limite - 1].id : null;
+  return { publications: lignes.slice(0, limite).map(formaterPublicationMur), suivante };
+});
+
+// Enregistrer une publication, idempotent : 200 quand elle
+// l'est déjà. Retirer un enregistrement, idempotent aussi.
+// Une publication masquée ou retirée ne s'enregistre plus.
+app.post('/mur/:id/enregistrer', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre.');
+  const id = req.params.id;
+  if (!UUID_RE.test(id ?? '')) throw httpError(404, 'Publication introuvable.');
+  const ligne = (await q(`SELECT id FROM mur_publications WHERE id = $1 AND statut_moderation IN ('visible', 'en_examen')`, [id])).rows[0];
+  if (!ligne) throw httpError(404, 'Publication introuvable.');
+  await q(
+    `INSERT INTO mur_enregistrements (membre_id, publication_id) VALUES ($1, $2)
+     ON CONFLICT (membre_id, publication_id) DO NOTHING`,
+    [req.user.mid, id],
+  );
+  return { enregistre: true };
+});
+
+app.delete('/mur/:id/enregistrer', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre.');
+  const id = req.params.id;
+  if (!UUID_RE.test(id ?? '')) throw httpError(404, 'Publication introuvable.');
+  const ligne = (await q(`SELECT id FROM mur_publications WHERE id = $1`, [id])).rows[0];
+  if (!ligne) throw httpError(404, 'Publication introuvable.');
+  await q(`DELETE FROM mur_enregistrements WHERE membre_id = $1 AND publication_id = $2`, [req.user.mid, id]);
+  return { enregistre: false };
+});
+
+// Profil public d'un membre du mur, mur v2 tranche 4,
+// 25 nov. 2026 : jamais le matricule, compteurs calculés
+// en lecture seule, publications visibles du membre avec
+// le même curseur que le fil, limite 20. Mon suivi est
+// faux quand je n'ai pas de fiche membre.
+app.get('/mur/membres/:id', { preHandler: membreG }, async (req) => {
+  const id = req.params.id;
+  if (!UUID_RE.test(id ?? '')) throw httpError(404, 'Membre introuvable.');
+  const mid = req.user.mid ?? null;
+  const membre = (await q(
+    `SELECT m.id, m.nom_complet, m.fonction, e.nom AS etablissement_nom,
+            m.photo_donnees AS photo, m.presentation, m.inscrit_le,
+            (SELECT COUNT(*) FROM mur_publications WHERE auteur_id = m.id AND statut_moderation IN ('visible', 'en_examen')) AS nb_publications,
+            (SELECT COUNT(*) FROM aimes a JOIN mur_publications p ON p.id = a.cible_id WHERE a.cible_type = 'mur' AND p.auteur_id = m.id AND p.statut_moderation IN ('visible', 'en_examen')) AS nb_reactions,
+            (SELECT COUNT(*) FROM mur_suivis WHERE suivi_id = m.id) AS nb_abonnes,
+            (SELECT COUNT(*) FROM mur_suivis WHERE suiveur_id = m.id) AS nb_abonnements,
+            EXISTS (SELECT 1 FROM mur_suivis WHERE suiveur_id = $2 AND suivi_id = m.id) AS suivi_par_moi,
+            (m.id = $2) AS est_moi
+     FROM membres m
+     LEFT JOIN etablissements e ON e.id = m.etablissement_id
+     WHERE m.id = $1`,
+    [id, mid],
+  )).rows[0];
+  if (!membre) throw httpError(404, 'Membre introuvable.');
+  const limiteBrute = Number.parseInt(req.query.limite ?? '', 10);
+  const limite = Number.isNaN(limiteBrute) ? 20 : Math.min(LIMITE_MUR_PUBLICATIONS, Math.max(1, limiteBrute));
+  const params = [mid, id];
+  const conditions = [`p.auteur_id = $2`, `p.statut_moderation IN ('visible', 'en_examen')`];
+  const avant = typeof req.query.avant === 'string' ? req.query.avant : null;
+  if (avant != null) {
+    if (!UUID_RE.test(avant)) throw httpError(400, 'Curseur invalide.');
+    const curseur = (await q(`SELECT cree_le FROM mur_publications WHERE id = $1`, [avant])).rows[0];
+    if (!curseur) throw httpError(400, 'Curseur invalide.');
+    params.push(curseur.cree_le, avant);
+    conditions.push(`(p.cree_le, p.id) < ($${params.length - 1}, $${params.length})`);
+  }
+  params.push(limite + 1);
+  const lignes = (await q(
+    `SELECT ${COLONNES_PUBLICATION_MUR}
+     ${JOINTURES_PUBLICATION_MUR}
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY p.cree_le DESC, p.id DESC
+     LIMIT $${params.length}`,
+    params,
+  )).rows;
+  const suivante = lignes.length > limite ? lignes[limite - 1].id : null;
+  return { membre: formaterProfilMur(membre), publications: lignes.slice(0, limite).map(formaterPublicationMur), suivante };
+});
+
+// Abonnés et abonnements d'un membre, 50 au plus : nom et
+// établissement seulement, sans photo en liste, même règle
+// que la recherche messagerie. 404 quand le membre n'existe
+// pas, pour ne pas distinguer un membre sans abonnés.
+app.get('/mur/membres/:id/abonnes', { preHandler: membreG }, async (req) => {
+  const id = req.params.id;
+  if (!UUID_RE.test(id ?? '')) throw httpError(404, 'Membre introuvable.');
+  const existe = (await q(`SELECT id FROM membres WHERE id = $1`, [id])).rows[0];
+  if (!existe) throw httpError(404, 'Membre introuvable.');
+  const lignes = (await q(
+    `SELECT m.id, m.nom_complet, e.nom AS etablissement_nom
+     FROM mur_suivis s
+     JOIN membres m ON m.id = s.suiveur_id
+     LEFT JOIN etablissements e ON e.id = m.etablissement_id
+     WHERE s.suivi_id = $1
+     ORDER BY s.cree_le DESC
+     LIMIT 50`,
+    [id],
+  )).rows;
+  return { membres: lignes.map(formaterMembreSuivi) };
+});
+
+app.get('/mur/membres/:id/abonnements', { preHandler: membreG }, async (req) => {
+  const id = req.params.id;
+  if (!UUID_RE.test(id ?? '')) throw httpError(404, 'Membre introuvable.');
+  const existe = (await q(`SELECT id FROM membres WHERE id = $1`, [id])).rows[0];
+  if (!existe) throw httpError(404, 'Membre introuvable.');
+  const lignes = (await q(
+    `SELECT m.id, m.nom_complet, e.nom AS etablissement_nom
+     FROM mur_suivis s
+     JOIN membres m ON m.id = s.suivi_id
+     LEFT JOIN etablissements e ON e.id = m.etablissement_id
+     WHERE s.suiveur_id = $1
+     ORDER BY s.cree_le DESC
+     LIMIT 50`,
+    [id],
+  )).rows;
+  return { membres: lignes.map(formaterMembreSuivi) };
+});
+
+// Suivre un membre, mur v2 tranche 4 : idempotent, 200
+// quand le suivi existe déjà, sans nouvelle notification.
+// 400 pour se suivre soi-même, 404 pour un membre
+// inexistant. Nouveau suiveur : cloche seulement, lien
+// vers le profil du suiveur, jamais de push.
+app.post('/mur/suivis', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour suivre.');
+  const suiviId = (req.body?.suivi_id ?? '').toString();
+  if (!UUID_RE.test(suiviId)) throw httpError(400, 'Membre invalide.');
+  if (suiviId === req.user.mid) throw httpError(400, 'Impossible de se suivre soi-même.');
+  const existe = (await q(`SELECT id FROM membres WHERE id = $1`, [suiviId])).rows[0];
+  if (!existe) throw httpError(404, 'Membre introuvable.');
+  const cree = (await q(
+    `INSERT INTO mur_suivis (suiveur_id, suivi_id) VALUES ($1, $2)
+     ON CONFLICT (suiveur_id, suivi_id) DO NOTHING RETURNING id`,
+    [req.user.mid, suiviId],
+  )).rows[0];
+  if (cree) {
+    await notifierClocheSeule(
+      suiviId,
+      'mur_suivi',
+      'Nouveau suiveur',
+      'Bonjour {prenom}, un membre a commencé à vous suivre.',
+      'mur_profil',
+      req.user.mid,
+      'Nouveau suiveur',
+      'Un membre a commencé à vous suivre.',
+    );
+  }
+  return { suivi: true };
+});
+
+app.delete('/mur/suivis/:id', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour suivre.');
+  const suiviId = req.params.id;
+  if (!UUID_RE.test(suiviId ?? '')) throw httpError(404, 'Suivi introuvable.');
+  const effacees = (await q(
+    `DELETE FROM mur_suivis WHERE suiveur_id = $1 AND suivi_id = $2`,
+    [req.user.mid, suiviId],
+  )).rowCount;
+  if (effacees === 0) throw httpError(404, 'Suivi introuvable.');
+  return { suivi: false };
 });
 
 app.post('/mur', { preHandler: membreG }, async (req, reply) => {
@@ -8797,39 +9100,135 @@ app.post('/mur', { preHandler: membreG }, async (req, reply) => {
     : req.user.eid;
   if (req.user.role === 'admin_etablissement' && !etablissementId) throw httpError(403, 'Accès refusé.');
   const body = req.body ?? {};
-  const refus = validerPublicationMur({ texte: body.texte, photo: body.photo });
+  const refus = validerPublicationMur({ texte: body.texte, photo: body.photo, categorie: body.categorie });
   if (refus) throw httpError(refus.statut, refus.message);
   const textePropre = String(body.texte ?? '').trim();
   const photo = typeof body.photo === 'string' && body.photo !== '' ? body.photo : null;
+  const categorie = typeof body.categorie === 'string' && CATEGORIES_MUR.includes(body.categorie) ? body.categorie : 'autre';
   const cree = (await q(
-    `INSERT INTO mur_publications (auteur_id, etablissement_id, texte, photo_donnees)
-     VALUES ($1,$2,$3,$4) RETURNING id, texte, photo_donnees AS photo, cree_le`,
-    [req.user.mid, etablissementId, textePropre, photo],
+    `INSERT INTO mur_publications (auteur_id, etablissement_id, texte, photo_donnees, categorie)
+     VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+    [req.user.mid, etablissementId, textePropre, photo, categorie],
   )).rows[0];
-  const noms = (await q(
-    `SELECT m.nom_complet AS auteur_nom, e.nom AS etablissement_nom
-     FROM (SELECT $1::uuid AS auteur_id, $2::uuid AS etablissement_id) x
-     LEFT JOIN membres m ON m.id = x.auteur_id
-     LEFT JOIN etablissements e ON e.id = x.etablissement_id`,
-    [req.user.mid, etablissementId],
+  const ligne = (await q(
+    `SELECT ${COLONNES_PUBLICATION_MUR}
+     ${JOINTURES_PUBLICATION_MUR}
+     WHERE p.id = $2`,
+    [req.user.mid ?? null, cree.id],
   )).rows[0];
-  return reply.code(201).send({
-    publication: formaterPublicationMur({
-      ...cree,
-      auteur_nom: noms?.auteur_nom ?? '',
-      etablissement_nom: noms?.etablissement_nom ?? '',
-      nb_jaime: 0,
-      nb_commentaires: 0,
-      aime: false,
-      est_auteur: true,
-    }),
-  });
+  return reply.code(201).send({ publication: formaterPublicationMur(ligne) });
+});
+
+// Vidéo d'une publication, mur v2 tranche 2, 25 nov. 2026 :
+// une seule vidéo par publication, 60 s côté application,
+// 25 Mo côté serveur comme les stories, sur R2. Lecture par
+// route même origine sans authentification, comme
+// /stories/:id/media : l'identifiant est un UUID non
+// devinable, la vidéo doit exister et la publication ne doit
+// pas être masquée ni retirée.
+app.post('/mur/:id/video', { preHandler: membreG }, async (req, reply) => {
+  const config = configR2();
+  // 503 explicite, comme les routes SMTP : le gestionnaire
+  // d'erreurs convertit un httpError(503) en 500, comme pour
+  // les stories, alors que la conception demande 503 ici.
+  if (!config) return reply.code(503).send({ erreur: 'Les vidéos du mur sont désactivées pour le moment.' });
+  const id = req.params.id;
+  if (!UUID_RE.test(id ?? '')) throw httpError(404, 'Publication introuvable.');
+  const ligne = (await q(
+    `SELECT id, auteur_id, statut_moderation, cle_r2_video FROM mur_publications WHERE id = $1`,
+    [id],
+  )).rows[0];
+  if (!ligne || ligne.statut_moderation === 'masque' || ligne.statut_moderation === 'retire') {
+    throw httpError(404, 'Publication introuvable.');
+  }
+  // Auteur seulement, 404 indistinct sinon.
+  if (req.user.mid == null || ligne.auteur_id !== req.user.mid) throw httpError(404, 'Publication introuvable.');
+  const part = await req.file();
+  if (!part) throw httpError(400, 'Aucune vidéo reçue.');
+  // Lecture en mémoire, avec plafond : une vidéo de mur est
+  // courte, jamais un gros fichier. Le flux est coupé dès le
+  // dépassement, comme pour les stories.
+  const morceaux = [];
+  let taille = 0;
+  for await (const morceau of part.file) {
+    taille += morceau.length;
+    if (taille > TAILLE_MAX_VIDEO_OCTETS) throw httpError(413, 'Vidéo trop volumineuse.');
+    morceaux.push(morceau);
+  }
+  const octets = Buffer.concat(morceaux);
+  if (octets.length === 0) throw httpError(400, 'Vidéo vide.');
+  // Le type est lu dans les octets, jamais d'après le nom ou
+  // l'en-tête envoyé, comme pour les stories.
+  const ft = await fileTypeFromBuffer(octets);
+  if (!ft || !MIMES_VIDEO.includes(ft.mime)) throw httpError(415, 'Type de vidéo non autorisé.');
+  const cle = cleMurVideo(ft.mime);
+  // Une seule vidéo par publication : l'ancien objet est
+  // effacé avant l'envoi du nouveau, jamais deux objets pour
+  // une même publication.
+  if (ligne.cle_r2_video) await supprimerObjetR2(config, ligne.cle_r2_video);
+  await envoyerObjetR2(config, cle, octets, ft.mime);
+  await q(
+    `UPDATE mur_publications SET cle_r2_video = $2, type_mime_video = $3, taille_video_octets = $4 WHERE id = $1`,
+    [id, cle, ft.mime, octets.length],
+  );
+  const publiee = (await q(
+    `SELECT ${COLONNES_PUBLICATION_MUR}
+     ${JOINTURES_PUBLICATION_MUR}
+     WHERE p.id = $2`,
+    [req.user.mid ?? null, id],
+  )).rows[0];
+  return reply.code(200).send({ publication: formaterPublicationMur(publiee) });
+});
+
+app.get('/mur/:id/video', async (req, reply) => {
+  const id = req.params.id;
+  if (!UUID_RE.test(id ?? '')) throw httpError(404, 'Vidéo introuvable.');
+  const config = configR2();
+  if (!config) throw httpError(404, 'Vidéo introuvable.');
+  const ligne = (await q(
+    `SELECT cle_r2_video, type_mime_video, statut_moderation FROM mur_publications WHERE id = $1`,
+    [id],
+  )).rows[0];
+  if (!ligne || !ligne.cle_r2_video || ligne.statut_moderation === 'masque' || ligne.statut_moderation === 'retire') {
+    throw httpError(404, 'Vidéo introuvable.');
+  }
+  let octets;
+  try {
+    octets = await lireObjetR2(config, ligne.cle_r2_video);
+  } catch {
+    throw httpError(502, 'Vidéo indisponible.');
+  }
+  reply.header('Cache-Control', 'private, max-age=600');
+  return sendBuffer(req, reply, octets, ligne.type_mime_video);
+});
+
+app.delete('/mur/:id/video', { preHandler: membreG }, async (req) => {
+  const id = req.params.id;
+  if (!UUID_RE.test(id ?? '')) throw httpError(404, 'Publication introuvable.');
+  const ligne = (await q(`SELECT id, auteur_id, etablissement_id, cle_r2_video FROM mur_publications WHERE id = $1`, [id])).rows[0];
+  if (!ligne) throw httpError(404, 'Publication introuvable.');
+  // Auteur ou structure, comme pour la publication : 404 dans
+  // les deux cas, sans révéler si la publication existe ou à
+  // qui elle appartient.
+  const estModerateur = req.user.role === 'admin_general' || req.user.role === 'admin_etablissement';
+  const estAuteur = req.user.mid != null && ligne.auteur_id === req.user.mid;
+  if (!estAuteur) {
+    if (!estModerateur) throw httpError(404, 'Publication introuvable.');
+    if (req.user.role === 'admin_etablissement' && req.user.eid !== ligne.etablissement_id) throw httpError(404, 'Publication introuvable.');
+  }
+  const config = configR2();
+  if (config && ligne.cle_r2_video) await supprimerObjetR2(config, ligne.cle_r2_video);
+  await q(
+    `UPDATE mur_publications SET cle_r2_video = NULL, type_mime_video = NULL, taille_video_octets = NULL WHERE id = $1`,
+    [id],
+  );
+  return { ok: true };
 });
 
 app.delete('/mur/:id', { preHandler: membreG }, async (req) => {
   const id = req.params.id;
   if (!UUID_RE.test(id ?? '')) throw httpError(404, 'Publication introuvable.');
-  const ligne = (await q(`SELECT id, auteur_id, etablissement_id FROM mur_publications WHERE id = $1`, [id])).rows[0];
+  const ligne = (await q(`SELECT id, auteur_id, etablissement_id, cle_r2_video FROM mur_publications WHERE id = $1`, [id])).rows[0];
   if (!ligne) throw httpError(404, 'Publication introuvable.');
   // Auteur ou structure, comme pour les témoignages : 404 dans
   // les deux cas, sans révéler si la publication existe ou à
@@ -8840,8 +9239,14 @@ app.delete('/mur/:id', { preHandler: membreG }, async (req) => {
     if (!estModerateur) throw httpError(404, 'Publication introuvable.');
     if (req.user.role === 'admin_etablissement' && req.user.eid !== ligne.etablissement_id) throw httpError(404, 'Publication introuvable.');
   }
+  // Mur v2 tranche 2 : la vidéo R2 part avec la publication,
+  // comme pour les témoignages. La suppression R2 ne lève
+  // jamais, un objet déjà absent ne bloque rien.
+  const config = configR2();
+  if (config && ligne.cle_r2_video) await supprimerObjetR2(config, ligne.cle_r2_video);
   await q(`DELETE FROM aimes WHERE cible_type = 'mur' AND cible_id = $1`, [id]);
   await q(`DELETE FROM commentaires WHERE cible_type = 'mur' AND cible_id = $1`, [id]);
+  await q(`DELETE FROM mur_enregistrements WHERE publication_id = $1`, [id]);
   await q(`DELETE FROM mur_publications WHERE id = $1`, [id]);
   return { ok: true };
 });
@@ -9874,11 +10279,15 @@ app.get('/aimes', { preHandler: membreG }, async (req) => {
   if (refus) throw httpError(refus.statut, refus.message);
   const compte = (await q(
     `SELECT COUNT(*) AS nombre,
+            COUNT(*) FILTER (WHERE type = 'jaime') AS nb_jaime,
+            COUNT(*) FILTER (WHERE type = 'amen') AS nb_amen,
+            COUNT(*) FILTER (WHERE type = 'priere') AS nb_priere,
+            (SELECT type FROM aimes WHERE cible_type = $1 AND cible_id = $2 AND membre_id = $3) AS mon_type,
             EXISTS (SELECT 1 FROM aimes WHERE cible_type = $1 AND cible_id = $2 AND membre_id = $3) AS a_aime
      FROM aimes WHERE cible_type = $1 AND cible_id = $2`,
     [cibleType, cibleId, req.user.mid],
   )).rows[0];
-  return formaterCompteAime({ cible_type: cibleType, cible_id: cibleId, nombre: compte.nombre, a_aime: compte.a_aime });
+  return formaterCompteAime({ cible_type: cibleType, cible_id: cibleId, ...compte });
 });
 
 // Comptes de plusieurs cibles d'un coup, pour une liste de
@@ -9893,6 +10302,10 @@ app.get('/aimes/comptes', { preHandler: membreG }, async (req) => {
   if (valides.length === 0) return { comptes: [] };
   const lignes = (await q(
     `SELECT cible_id, COUNT(*) AS nombre,
+            COUNT(*) FILTER (WHERE type = 'jaime') AS nb_jaime,
+            COUNT(*) FILTER (WHERE type = 'amen') AS nb_amen,
+            COUNT(*) FILTER (WHERE type = 'priere') AS nb_priere,
+            MAX(CASE WHEN membre_id = $2 THEN type END) AS mon_type,
             BOOL_OR(membre_id = $2) AS a_aime
      FROM aimes WHERE cible_type = $1 AND cible_id = ANY($3::uuid[])
      GROUP BY cible_id`,
@@ -9903,8 +10316,7 @@ app.get('/aimes/comptes', { preHandler: membreG }, async (req) => {
     comptes: valides.map((id) => formaterCompteAime({
       cible_type: cibleType,
       cible_id: id,
-      nombre: parId.get(id)?.nombre ?? 0,
-      a_aime: parId.get(id)?.a_aime ?? false,
+      ...(parId.get(id) ?? { nombre: 0, a_aime: false }),
     })),
   };
 });
@@ -9915,16 +10327,45 @@ app.post('/aimes', { preHandler: membreG }, async (req, reply) => {
   if (refus) throw httpError(refus.statut, refus.message);
   const b = req.body;
   if (!(await cibleAimeExiste(b.cible_type, b.cible_id))) throw httpError(404, 'Cible introuvable.');
-  await q(
-    `INSERT INTO aimes (membre_id, cible_type, cible_id) VALUES ($1, $2, $3)
-     ON CONFLICT (membre_id, cible_type, cible_id) DO NOTHING`,
+  const type = typeof b.type === 'string' && TYPES_REACTION.includes(b.type) ? b.type : 'jaime';
+  // Notification de réaction, mur seulement : seulement quand
+  // la réaction est nouvelle ou que son type change, pour ne
+  // pas déranger l'auteur à chaque toucher répété.
+  const precedent = (await q(
+    `SELECT type FROM aimes WHERE membre_id = $1 AND cible_type = $2 AND cible_id = $3`,
     [req.user.mid, b.cible_type, b.cible_id],
-  );
-  const compte = (await q(
-    `SELECT COUNT(*) AS nombre FROM aimes WHERE cible_type = $1 AND cible_id = $2`,
-    [b.cible_type, b.cible_id],
   )).rows[0];
-  return reply.code(201).send({ aime: formaterCompteAime({ cible_type: b.cible_type, cible_id: b.cible_id, nombre: compte.nombre, a_aime: true }) });
+  await q(
+    `INSERT INTO aimes (membre_id, cible_type, cible_id, type) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (membre_id, cible_type, cible_id) DO UPDATE SET type = EXCLUDED.type`,
+    [req.user.mid, b.cible_type, b.cible_id, type],
+  );
+  if (b.cible_type === 'mur' && (!precedent || precedent.type !== type)) {
+    const publication = (await q(`SELECT auteur_id FROM mur_publications WHERE id = $1`, [b.cible_id])).rows[0];
+    if (publication && publication.auteur_id !== req.user.mid) {
+      await notifierClocheSeule(
+        publication.auteur_id,
+        'mur_reaction',
+        'Nouvelle réaction sur votre publication',
+        'Bonjour {prenom}, un membre a réagi à votre publication.',
+        'mur_publication',
+        b.cible_id,
+        'Nouvelle réaction sur votre publication',
+        'Un membre a réagi à votre publication.',
+      );
+    }
+  }
+  const compte = (await q(
+    `SELECT COUNT(*) AS nombre,
+            COUNT(*) FILTER (WHERE type = 'jaime') AS nb_jaime,
+            COUNT(*) FILTER (WHERE type = 'amen') AS nb_amen,
+            COUNT(*) FILTER (WHERE type = 'priere') AS nb_priere,
+            (SELECT type FROM aimes WHERE cible_type = $1 AND cible_id = $2 AND membre_id = $3) AS mon_type,
+            EXISTS (SELECT 1 FROM aimes WHERE cible_type = $1 AND cible_id = $2 AND membre_id = $3) AS a_aime
+     FROM aimes WHERE cible_type = $1 AND cible_id = $2`,
+    [b.cible_type, b.cible_id, req.user.mid],
+  )).rows[0];
+  return reply.code(201).send({ aime: formaterCompteAime({ cible_type: b.cible_type, cible_id: b.cible_id, ...compte }) });
 });
 
 app.delete('/aimes/:cibleType/:cibleId', { preHandler: membreG }, async (req) => {
@@ -9939,10 +10380,16 @@ app.delete('/aimes/:cibleType/:cibleId', { preHandler: membreG }, async (req) =>
   )).rows[0];
   if (!supprime) throw httpError(404, 'Tu n’as pas aimé cette cible.');
   const compte = (await q(
-    `SELECT COUNT(*) AS nombre FROM aimes WHERE cible_type = $1 AND cible_id = $2`,
-    [cibleType, cibleId],
+    `SELECT COUNT(*) AS nombre,
+            COUNT(*) FILTER (WHERE type = 'jaime') AS nb_jaime,
+            COUNT(*) FILTER (WHERE type = 'amen') AS nb_amen,
+            COUNT(*) FILTER (WHERE type = 'priere') AS nb_priere,
+            (SELECT type FROM aimes WHERE cible_type = $1 AND cible_id = $2 AND membre_id = $3) AS mon_type,
+            EXISTS (SELECT 1 FROM aimes WHERE cible_type = $1 AND cible_id = $2 AND membre_id = $3) AS a_aime
+     FROM aimes WHERE cible_type = $1 AND cible_id = $2`,
+    [cibleType, cibleId, req.user.mid],
   )).rows[0];
-  return { aime: formaterCompteAime({ cible_type: cibleType, cible_id: cibleId, nombre: compte.nombre, a_aime: false }) };
+  return { aime: formaterCompteAime({ cible_type: cibleType, cible_id: cibleId, ...compte }) };
 });
 
 app.get('/commentaires', { preHandler: membreG }, async (req) => {
@@ -9951,11 +10398,12 @@ app.get('/commentaires', { preHandler: membreG }, async (req) => {
   const refus = validerAime({ cible_type: cibleType, cible_id: cibleId });
   if (refus) throw httpError(refus.statut, refus.message);
   const lignes = (await q(
-    `SELECT c.id, c.cible_type, c.cible_id, c.membre_id, c.texte, c.cree_le,
+    `SELECT c.id, c.cible_type, c.cible_id, c.parent_id, c.membre_id, c.texte, c.cree_le,
             m.nom_complet AS auteur_nom
      FROM commentaires c LEFT JOIN membres m ON m.id = c.membre_id
      WHERE c.cible_type = $1 AND c.cible_id = $2
-     ORDER BY c.cree_le ASC`,
+     ORDER BY c.cree_le ASC
+     LIMIT 100`,
     [cibleType, cibleId],
   )).rows;
   const peutModerer = req.user.role === 'admin_general' || req.user.role === 'admin_etablissement';
@@ -9971,13 +10419,80 @@ app.post('/commentaires', { preHandler: membreG }, async (req, reply) => {
   if (refus) throw httpError(refus.statut, refus.message);
   const b = req.body;
   if (!(await cibleAimeExiste(b.cible_type, b.cible_id))) throw httpError(404, 'Cible introuvable.');
+  // Réponse, mur v2 tranche 3 : le parent doit exister, viser
+  // la même cible et être de premier niveau.
+  let parent = null;
+  if (b.parent_id != null && b.parent_id !== '') {
+    if (!UUID_RE.test(b.parent_id)) throw httpError(400, 'Commentaire parent invalide.');
+    parent = (await q(
+      `SELECT id, cible_type, cible_id, parent_id, membre_id FROM commentaires WHERE id = $1`,
+      [b.parent_id],
+    )).rows[0];
+    const refusParent = refusReponse(parent, { cible_type: b.cible_type, cible_id: b.cible_id });
+    if (refusParent) throw httpError(refusParent.statut, refusParent.message);
+  }
+  // Mentions : 5 au plus, dédupliquées, existantes en base.
+  const { mentions, refus: refusMentions } = normaliserMentions(b.mentions);
+  if (refusMentions) throw httpError(refusMentions.statut, refusMentions.message);
+  if (mentions.length > 0) {
+    const existants = (await q(`SELECT id FROM membres WHERE id = ANY($1::uuid[])`, [mentions])).rows;
+    if (existants.length !== mentions.length) throw httpError(400, 'Mention invalide.');
+  }
   const cree = (await q(
-    `INSERT INTO commentaires (membre_id, cible_type, cible_id, texte)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id, cible_type, cible_id, membre_id, texte, cree_le`,
-    [req.user.mid, b.cible_type, b.cible_id, String(b.texte).trim()],
+    `INSERT INTO commentaires (membre_id, cible_type, cible_id, texte, parent_id)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, cible_type, cible_id, parent_id, membre_id, texte, cree_le`,
+    [req.user.mid, b.cible_type, b.cible_id, String(b.texte).trim(), parent?.id ?? null],
   )).rows[0];
   const auteur = (await q(`SELECT nom_complet AS auteur_nom FROM membres WHERE id = $1`, [req.user.mid])).rows[0];
+  // Notifications du mur, au mieux, sans jamais faire échouer
+  // le commentaire : l'auteur de la publication, l'auteur du
+  // commentaire parent quand c'est une réponse, et chaque
+  // membre mentionné, sauf soi-même, sans doublon par type.
+  if (b.cible_type === 'mur') {
+    const publication = (await q(`SELECT auteur_id FROM mur_publications WHERE id = $1`, [b.cible_id])).rows[0];
+    const auteurPub = publication?.auteur_id ?? null;
+    const notifies = new Set();
+    if (auteurPub && auteurPub !== req.user.mid) {
+      notifies.add(`commentaire:${auteurPub}`);
+      await notifierMembre(
+        auteurPub,
+        'mur_commentaire',
+        'Nouveau commentaire sur votre publication',
+        'Bonjour {prenom}, un membre a commenté votre publication.',
+        'mur_publication',
+        b.cible_id,
+        'Nouveau commentaire sur votre publication',
+        'Un membre a commenté votre publication.',
+      );
+    }
+    if (parent && parent.membre_id !== req.user.mid && !notifies.has(`commentaire:${parent.membre_id}`)) {
+      notifies.add(`commentaire:${parent.membre_id}`);
+      await notifierMembre(
+        parent.membre_id,
+        'mur_commentaire',
+        'Réponse à votre commentaire',
+        'Bonjour {prenom}, un membre a répondu à votre commentaire.',
+        'mur_publication',
+        b.cible_id,
+        'Réponse à votre commentaire',
+        'Un membre a répondu à votre commentaire.',
+      );
+    }
+    for (const mentionne of mentions) {
+      if (mentionne === req.user.mid) continue;
+      await notifierMembre(
+        mentionne,
+        'mur_mention',
+        'Vous êtes mentionné dans un commentaire',
+        'Bonjour {prenom}, un membre vous a mentionné dans un commentaire sur le mur.',
+        'mur_publication',
+        b.cible_id,
+        'Vous êtes mentionné dans un commentaire',
+        'Un membre vous a mentionné dans un commentaire sur le mur.',
+      );
+    }
+  }
   return reply.code(201).send({ commentaire: formaterCommentaire({ ...cree, auteur_nom: auteur?.auteur_nom ?? '', est_auteur: true }) });
 });
 
@@ -10065,7 +10580,7 @@ const MOTIFS_SIGNALEMENT_FR = {
   autre: 'other',
 };
 const normaliserMotifSignalement = (motif) => MOTIFS_SIGNALEMENT_FR[motif] ?? motif;
-const ACTIONS_MODERATION = ['rejeter', 'avertir', 'sourdine', 'suspendre', 'escalader'];
+const ACTIONS_MODERATION = ['rejeter', 'avertir', 'sourdine', 'suspendre', 'escalader', 'retirer', 'masquer'];
 const ACTIONS_CONTESTABLES = ['avertir', 'sourdine', 'suspendre'];
 const LIMITE_MSG_MINUTE = 30;
 const LIMITE_MSG_HEURE = 300;
@@ -10136,11 +10651,20 @@ function apercuMessage(contenu) {
 // Personne concernée par un signalement : cible directe, auteur
 // du message ciblé, ou créateur de la conversation ciblée. Sert
 // au contrôle de conflit d'intérêts et au droit de recours.
+// Mur v2 tranche 5 : auteur de la publication ou du commentaire.
 async function personneConcernee(signalement) {
   if (signalement.target_type === 'user') return signalement.target_id;
   if (signalement.target_type === 'message') {
     const r = await q(`SELECT sender_id FROM messages WHERE id = $1`, [signalement.target_id]);
     return r.rows[0]?.sender_id ?? null;
+  }
+  if (signalement.target_type === 'mur_publication') {
+    const r = await q(`SELECT auteur_id FROM mur_publications WHERE id = $1`, [signalement.target_id]);
+    return r.rows[0]?.auteur_id ?? null;
+  }
+  if (signalement.target_type === 'mur_commentaire') {
+    const r = await q(`SELECT membre_id FROM commentaires WHERE id = $1`, [signalement.target_id]);
+    return r.rows[0]?.membre_id ?? null;
   }
   const r = await q(`SELECT created_by FROM conversations WHERE id = $1`, [signalement.target_id]);
   return r.rows[0]?.created_by ?? null;
@@ -10644,7 +11168,7 @@ app.post('/messagerie/signalements', { preHandler: membreG }, async (req, reply)
   const corps = req.body ?? {};
   // L'application envoie la clé française, le serveur stocke l'anglaise.
   const b = z.object({
-    target_type: z.enum(['message', 'conversation', 'user']),
+    target_type: z.enum(['message', 'conversation', 'user', 'mur_publication', 'mur_commentaire']),
     target_id: z.string().uuid(),
     reason: z.enum(MOTIFS_SIGNALEMENT),
     description: z.string().trim().max(500).optional().nullable(),
@@ -10701,6 +11225,38 @@ app.post('/messagerie/signalements', { preHandler: membreG }, async (req, reply)
       )
     ).rows.reverse();
     snapshot = { cible: 'conversation', conversation: conv, derniers_messages: derniers };
+  } else if (b.target_type === 'mur_publication') {
+    // Mur v2 tranche 5 : cliché figé de la publication, la
+    // structure lit le contenu même si l'auteur le supprime.
+    // Une publication retirée ne se signale plus.
+    const pub = (
+      await q(
+        `SELECT p.id, p.auteur_id, m.nom_complet AS auteur_nom, p.texte, p.categorie, p.cree_le, p.etablissement_id, p.statut_moderation
+           FROM mur_publications p LEFT JOIN membres m ON m.id = p.auteur_id WHERE p.id = $1`,
+        [b.target_id],
+      )
+    ).rows[0];
+    if (!pub || pub.statut_moderation === 'retire') throw httpError(422, 'Contenu signalé introuvable.');
+    etablissementId = pub.etablissement_id ?? null;
+    snapshot = {
+      cible: 'mur_publication',
+      publication: { id: pub.id, auteur_id: pub.auteur_id, auteur_nom: pub.auteur_nom, texte: pub.texte, categorie: pub.categorie, cree_le: pub.cree_le, etablissement_id: pub.etablissement_id },
+    };
+  } else if (b.target_type === 'mur_commentaire') {
+    const com = (
+      await q(
+        `SELECT c.id, c.texte, c.membre_id AS auteur, c.cible_id AS publication_id, p.etablissement_id
+           FROM commentaires c LEFT JOIN mur_publications p ON p.id = c.cible_id
+          WHERE c.id = $1 AND c.cible_type = 'mur'`,
+        [b.target_id],
+      )
+    ).rows[0];
+    if (!com) throw httpError(422, 'Contenu signalé introuvable.');
+    etablissementId = com.etablissement_id ?? null;
+    snapshot = {
+      cible: 'mur_commentaire',
+      commentaire: { id: com.id, texte: com.texte, auteur: com.auteur, publication_id: com.publication_id },
+    };
   } else {
     const cible = (
       await q(
@@ -10731,6 +11287,11 @@ app.post('/messagerie/signalements', { preHandler: membreG }, async (req, reply)
     ).rows[0];
     if (b.target_type === 'message') {
       await c.query(`UPDATE messages SET is_reported = true WHERE id = $1`, [b.target_id]);
+    }
+    if (b.target_type === 'mur_publication') {
+      // Un signalement ne masque pas tout de suite : la
+      // publication passe en examen et reste visible.
+      await c.query(`UPDATE mur_publications SET statut_moderation = 'en_examen' WHERE id = $1 AND statut_moderation = 'visible'`, [b.target_id]);
     }
     await audit(c, req, 'signalement.cree', 'reports', r.id, { motif: b.reason, routed_to: routedTo, cible: b.target_type });
     return r;
@@ -10878,6 +11439,9 @@ app.post('/messagerie/moderation/:id/action', { preHandler: moderationG }, async
   if ((b.action === 'sourdine' || b.action === 'suspendre') && report.target_type === 'conversation') {
     throw httpError(422, 'La sourdine et la suspension visent une personne : signalez un message ou un membre pour les appliquer.');
   }
+  if ((b.action === 'retirer' || b.action === 'masquer') && report.target_type !== 'mur_publication') {
+    throw httpError(422, 'Le retrait et le masquage visent une publication du mur.');
+  }
   const sanctionne = (b.action === 'sourdine' || b.action === 'suspendre') ? concerne : null;
   const duree = b.duree_heures ?? (b.action === 'sourdine' ? 24 : 168);
   const sortie = await tx(async (c) => {
@@ -10896,6 +11460,11 @@ app.post('/messagerie/moderation/:id/action', { preHandler: moderationG }, async
     } else if (b.action === 'avertir' || b.action === 'sourdine' || b.action === 'suspendre') {
       statut = 'resolved';
       retention = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();
+    } else if (b.action === 'retirer' || b.action === 'masquer') {
+      // Mur v2 tranche 5 : le dossier se clôt, la ligne reste
+      // en base pour la traçabilité, à la différence de DELETE.
+      statut = 'resolved';
+      retention = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();
     } else if (b.action === 'escalader') {
       statut = 'escalated';
     }
@@ -10904,7 +11473,7 @@ app.post('/messagerie/moderation/:id/action', { preHandler: moderationG }, async
          resolution_notes = $3, retention_until = $4::timestamptz,
          routed_to = CASE WHEN $5 = 'escalader' THEN 'national' ELSE routed_to END
        WHERE id = $1`,
-      [id, statut, b.action === 'rejeter' || b.action === 'avertir' || b.action === 'sourdine' || b.action === 'suspendre' ? b.note : null, retention, b.action],
+      [id, statut, b.action === 'rejeter' || b.action === 'avertir' || b.action === 'sourdine' || b.action === 'suspendre' || b.action === 'retirer' || b.action === 'masquer' ? b.note : null, retention, b.action],
     );
     if (b.action === 'sourdine' && sanctionne) {
       // Sourdine : plus de notification dans les conversations
@@ -10926,6 +11495,14 @@ app.post('/messagerie/moderation/:id/action', { preHandler: moderationG }, async
     if (b.action === 'suspendre' && sanctionne) {
       const fin = new Date(Date.now() + duree * 3600 * 1000).toISOString();
       await c.query(`UPDATE membres SET messagerie_suspendu_jusquau = $2 WHERE id = $1`, [sanctionne, fin]);
+    }
+    if (b.action === 'retirer' && report.target_type === 'mur_publication') {
+      await c.query(`UPDATE mur_publications SET statut_moderation = 'retire' WHERE id = $1`, [report.target_id]);
+    } else if (b.action === 'masquer' && report.target_type === 'mur_publication') {
+      await c.query(`UPDATE mur_publications SET statut_moderation = 'masque' WHERE id = $1`, [report.target_id]);
+    } else if (b.action === 'rejeter' && report.target_type === 'mur_publication') {
+      // Rejet du signalement : la publication en examen redevient visible.
+      await c.query(`UPDATE mur_publications SET statut_moderation = 'visible' WHERE id = $1 AND statut_moderation = 'en_examen'`, [report.target_id]);
     }
     await audit(c, req, 'moderation.action', 'reports', id, { action: b.action, statut });
     return { action, statut };
@@ -13491,5 +14068,84 @@ try {
   await q(`ALTER TABLE reports DROP CONSTRAINT IF EXISTS reports_reason_check`);
   await q(`ALTER TABLE reports ADD CONSTRAINT reports_reason_check CHECK (reason IN ('harassment', 'hate_speech', 'threat', 'misinformation', 'spam', 'child_safety', 'doctrinal_error', 'influence_peddling', 'financial_mismanagement', 'other'))`);
 } catch (e) { app.log.warn({ err: e, migration: 'signalements nouveaux motifs' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Mur des membres v2, tranche 0, 25 nov. 2026 : migrations de
+// contrôle, serveur seul, aucun changement de comportement.
+// Élargissement des contraintes de cible aux publications du
+// mur, colonnes de catégorie et de modération, tables des
+// suivis et des enregistrements, réponses aux commentaires,
+// types de réaction, présentation du membre. Les contraintes
+// sont élargies par bloc DO, en cherchant le nom réel dans
+// pg_constraint : sur une base neuve, le nom est celui que
+// PostgreSQL donne à la contrainte en ligne, sur une base
+// ancienne, il peut différer. Jamais de modification de
+// schema.sql.
+try {
+  await q(`DO $$
+  DECLARE
+    nom_contrainte text;
+  BEGIN
+    IF to_regclass('aimes') IS NOT NULL THEN
+      SELECT conname INTO nom_contrainte FROM pg_constraint
+      WHERE conrelid = 'aimes'::regclass AND contype = 'c'
+        AND pg_get_constraintdef(oid) LIKE '%cible_type%';
+      IF nom_contrainte IS NOT NULL THEN
+        EXECUTE format('ALTER TABLE aimes DROP CONSTRAINT %I', nom_contrainte);
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'aimes'::regclass AND conname = 'aimes_cible_type_check') THEN
+        EXECUTE 'ALTER TABLE aimes ADD CONSTRAINT aimes_cible_type_check CHECK (cible_type IN (''temps_fort'', ''temoignage'', ''mur''))';
+      END IF;
+    END IF;
+    IF to_regclass('commentaires') IS NOT NULL THEN
+      SELECT conname INTO nom_contrainte FROM pg_constraint
+      WHERE conrelid = 'commentaires'::regclass AND contype = 'c'
+        AND pg_get_constraintdef(oid) LIKE '%cible_type%';
+      IF nom_contrainte IS NOT NULL THEN
+        EXECUTE format('ALTER TABLE commentaires DROP CONSTRAINT %I', nom_contrainte);
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'commentaires'::regclass AND conname = 'commentaires_cible_type_check') THEN
+        EXECUTE 'ALTER TABLE commentaires ADD CONSTRAINT commentaires_cible_type_check CHECK (cible_type IN (''temps_fort'', ''temoignage'', ''mur''))';
+      END IF;
+    END IF;
+    IF to_regclass('reports') IS NOT NULL THEN
+      SELECT conname INTO nom_contrainte FROM pg_constraint
+      WHERE conrelid = 'reports'::regclass AND contype = 'c'
+        AND pg_get_constraintdef(oid) LIKE '%target_type%';
+      IF nom_contrainte IS NOT NULL THEN
+        EXECUTE format('ALTER TABLE reports DROP CONSTRAINT %I', nom_contrainte);
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'reports'::regclass AND conname = 'reports_target_type_check') THEN
+        EXECUTE 'ALTER TABLE reports ADD CONSTRAINT reports_target_type_check CHECK (target_type IN (''message'', ''conversation'', ''user'', ''mur_publication'', ''mur_commentaire''))';
+      END IF;
+    END IF;
+  END $$`);
+  await q(`ALTER TABLE mur_publications ADD COLUMN IF NOT EXISTS categorie text NOT NULL DEFAULT 'autre' CHECK (categorie IN ('temoignage', 'priere', 'verset', 'encouragement', 'enseignement', 'autre'))`);
+  await q(`ALTER TABLE mur_publications ADD COLUMN IF NOT EXISTS statut_moderation text NOT NULL DEFAULT 'visible' CHECK (statut_moderation IN ('visible', 'en_examen', 'masque', 'retire'))`);
+  await q(`ALTER TABLE mur_publications ADD COLUMN IF NOT EXISTS cle_r2_video text`);
+  await q(`ALTER TABLE mur_publications ADD COLUMN IF NOT EXISTS type_mime_video text`);
+  await q(`ALTER TABLE mur_publications ADD COLUMN IF NOT EXISTS taille_video_octets integer CHECK (taille_video_octets > 0)`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_mur_publications_categorie ON mur_publications (categorie, cree_le DESC)`);
+  await q(`ALTER TABLE aimes ADD COLUMN IF NOT EXISTS type text NOT NULL DEFAULT 'jaime' CHECK (type IN ('jaime', 'amen', 'priere'))`);
+  await q(`ALTER TABLE commentaires ADD COLUMN IF NOT EXISTS parent_id uuid REFERENCES commentaires(id) ON DELETE CASCADE`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_commentaires_parent ON commentaires (parent_id)`);
+  await q(`CREATE TABLE IF NOT EXISTS mur_suivis (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    suiveur_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    suivi_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_mur_suivis_couple UNIQUE (suiveur_id, suivi_id),
+    CONSTRAINT ck_mur_suivis_distincts CHECK (suiveur_id <> suivi_id)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_mur_suivis_suivi ON mur_suivis (suivi_id, cree_le DESC)`);
+  await q(`CREATE TABLE IF NOT EXISTS mur_enregistrements (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    membre_id uuid NOT NULL REFERENCES membres(id) ON DELETE CASCADE,
+    publication_id uuid NOT NULL REFERENCES mur_publications(id) ON DELETE CASCADE,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_mur_enregistrements_couple UNIQUE (membre_id, publication_id)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_mur_enregistrements_membre ON mur_enregistrements (membre_id, cree_le DESC)`);
+  await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS presentation text`);
+} catch (e) { app.log.warn({ err: e, migration: 'mur v2 tranche 0' }, 'Échec de migration — poursuite du démarrage'); }
 
 app.listen({ port: CFG.port, host: '0.0.0.0' });

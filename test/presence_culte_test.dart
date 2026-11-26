@@ -86,7 +86,21 @@ void main() {
       expect(c.texte, 'Merci !');
       expect(c.estAuteur, isTrue);
       expect(c.creeLe, DateTime.utc(2026, 11, 21, 20));
+      expect(c.parentId, isNull);
       expect(CommentaireMur.fromJson({}).estAuteur, isFalse);
+    });
+
+    test('parent_id lu pour une réponse', () {
+      final c = CommentaireMur.fromJson({
+        'id': 'c2',
+        'parent_id': 'c1',
+        'auteur_nom': 'Grace L',
+        'texte': 'Amen',
+        'cree_le': '2026-11-21T20:00:00.000Z',
+        'est_auteur': false,
+      });
+      expect(c.parentId, 'c1');
+      expect(c.estAuteur, isFalse);
     });
   });
 
