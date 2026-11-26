@@ -30,7 +30,11 @@ class _FauxClient extends ApiClient {
   int appelsPublier = 0;
   String? dernierIdSupprime;
   final aimes = <String, int>{};
+  final monTypeParCible = <String, String?>{};
   final commentairesParCible = <String, List<Map<String, dynamic>>>{};
+  int _compteurCommentaires = 0;
+  String? dernierParentId;
+  List<String>? dernieresMentions;
 
   @override
   Future<Map<String, dynamic>> fetchMur({
@@ -95,16 +99,68 @@ class _FauxClient extends ApiClient {
     return {'ok': true};
   }
 
+  String? dernierIdVideoPubliee;
+  String? dernierIdVideoSupprimee;
+
   @override
-  Future<Map<String, dynamic>> aimer(String cibleType, String cibleId) async {
-    aimes[cibleId] = (aimes[cibleId] ?? 0) + 1;
-    return {'cible_type': cibleType, 'cible_id': cibleId, 'nombre': aimes[cibleId], 'a_aime': true};
+  Future<Map<String, dynamic>> publierVideoMur({required String id, required List<int> bytes, required String filename}) async {
+    dernierIdVideoPubliee = id;
+    final i = publications.indexWhere((p) => p['id'] == id);
+    if (i >= 0) {
+      publications[i]['video'] = {'url': '/mur/$id/video', 'type_mime': 'video/mp4', 'taille_octets': bytes.length};
+    }
+    return {'publication': i >= 0 ? publications[i] : {}};
+  }
+
+  @override
+  Future<Map<String, dynamic>> supprimerVideoMur(String id) async {
+    dernierIdVideoSupprimee = id;
+    final i = publications.indexWhere((p) => p['id'] == id);
+    if (i >= 0) publications[i].remove('video');
+    return {'ok': true};
+  }
+
+  @override
+  Future<Map<String, dynamic>> aimer(String cibleType, String cibleId, {String? type}) async {
+    final t = type ?? 'jaime';
+    monTypeParCible[cibleId] = t;
+    final pub = publications.firstWhere((p) => p['id'] == cibleId, orElse: () => <String, dynamic>{});
+    int base(String k) => (pub[k] as num?)?.toInt() ?? 0;
+    final comptes = {
+      'jaime': base('nb_jaime') + (t == 'jaime' ? 1 : 0),
+      'amen': base('nb_amen') + (t == 'amen' ? 1 : 0),
+      'priere': base('nb_priere') + (t == 'priere' ? 1 : 0),
+    };
+    aimes[cibleId] = comptes.values.reduce((a, b) => a + b);
+    return {
+      'cible_type': cibleType,
+      'cible_id': cibleId,
+      'nombre': aimes[cibleId],
+      'a_aime': true,
+      'nb_jaime': comptes['jaime'],
+      'nb_amen': comptes['amen'],
+      'nb_priere': comptes['priere'],
+      'mon_type': t,
+    };
   }
 
   @override
   Future<Map<String, dynamic>> retirerAime(String cibleType, String cibleId) async {
-    aimes[cibleId] = ((aimes[cibleId] ?? 1) - 1).clamp(0, 1 << 30);
-    return {'cible_type': cibleType, 'cible_id': cibleId, 'nombre': aimes[cibleId], 'a_aime': false};
+    monTypeParCible[cibleId] = null;
+    final pub = publications.firstWhere((p) => p['id'] == cibleId, orElse: () => <String, dynamic>{});
+    int base(String k) => (pub[k] as num?)?.toInt() ?? 0;
+    final comptes = {'jaime': base('nb_jaime'), 'amen': base('nb_amen'), 'priere': base('nb_priere')};
+    aimes[cibleId] = comptes.values.reduce((a, b) => a + b);
+    return {
+      'cible_type': cibleType,
+      'cible_id': cibleId,
+      'nombre': aimes[cibleId],
+      'a_aime': false,
+      'nb_jaime': comptes['jaime'],
+      'nb_amen': comptes['amen'],
+      'nb_priere': comptes['priere'],
+      'mon_type': null,
+    };
   }
 
   @override
@@ -113,11 +169,15 @@ class _FauxClient extends ApiClient {
   }
 
   @override
-  Future<Map<String, dynamic>> posterCommentaire(String cibleType, String cibleId, String texte) async {
+  Future<Map<String, dynamic>> posterCommentaire(String cibleType, String cibleId, String texte, {String? parentId, List<String>? mentions}) async {
+    dernierParentId = parentId;
+    dernieresMentions = mentions;
+    _compteurCommentaires++;
     final cree = {
-      'id': 'c1',
+      'id': 'c$_compteurCommentaires',
       'cible_type': cibleType,
       'cible_id': cibleId,
+      'parent_id': parentId,
       'auteur_nom': 'Moi Même',
       'texte': texte,
       'cree_le': '2026-11-24T11:00:00.000Z',
@@ -125,6 +185,81 @@ class _FauxClient extends ApiClient {
     };
     commentairesParCible[cibleId] = [...(commentairesParCible[cibleId] ?? []), cree];
     return {'commentaire': cree};
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchMembresMessagerie({String? q}) async {
+    const membres = [
+      {'id': 'm1', 'nom_complet': 'Marie K', 'etablissement': 'Céleste'},
+      {'id': 'm2', 'nom_complet': 'Grace L', 'etablissement': 'ISPAM'},
+    ];
+    if (q == null || q.trim().isEmpty) return membres;
+    return membres.where((m) => (m['nom_complet'] as String).toLowerCase().contains(q.toLowerCase())).toList();
+  }
+
+  @override
+  Future<Map<String, dynamic>> fetchProfilMur(String membreId, {String? avant}) async {
+    return {
+      'membre': {
+        'id': membreId,
+        'nom_complet': 'Marie K',
+        'fonction': 'Chantre',
+        'etablissement_nom': 'Céleste',
+        'photo': null,
+        'presentation': 'Membre depuis 2025.',
+        'inscrit_le': '2025-03-02T10:00:00.000Z',
+        'nb_publications': 1,
+        'nb_reactions': 0,
+        'nb_abonnes': 0,
+        'nb_abonnements': 0,
+        'suivi_par_moi': false,
+        'est_moi': false,
+      },
+      'publications': publications.where((p) => p['auteur_id'] == membreId).toList(),
+      'suivante': null,
+    };
+  }
+
+  final enregistrements = <String>{};
+  String? dernierSignaleType;
+  String? dernierSignaleId;
+  String? dernierSignaleMotif;
+
+  @override
+  Future<Map<String, dynamic>> enregistrerPublication(String id) async {
+    enregistrements.add(id);
+    for (final p in publications) {
+      if (p['id'] == id) p['enregistre'] = true;
+    }
+    return {'enregistre': true};
+  }
+
+  @override
+  Future<Map<String, dynamic>> retirerEnregistrement(String id) async {
+    enregistrements.remove(id);
+    for (final p in publications) {
+      if (p['id'] == id) p['enregistre'] = false;
+    }
+    return {'enregistre': false};
+  }
+
+  @override
+  Future<Map<String, dynamic>> fetchEnregistrements({String? avant}) async {
+    return {'publications': publications.where((p) => p['enregistre'] == true).toList(), 'suivante': null};
+  }
+
+  @override
+  Future<Map<String, dynamic>> signalerContenu({
+    required String cibleType,
+    required String cibleId,
+    required String motif,
+    String? description,
+    required String destinataire,
+  }) async {
+    dernierSignaleType = cibleType;
+    dernierSignaleId = cibleId;
+    dernierSignaleMotif = motif;
+    return {'id': 'r1'};
   }
 }
 
@@ -144,17 +279,21 @@ Map<String, dynamic> _publication({
   required String auteur,
   required String texte,
   String? photo,
+  String? videoUrl,
   String categorie = 'temoignage',
   int nbJaime = 0,
   bool aime = false,
   bool estAuteur = false,
+  String auteurId = '',
 }) =>
     {
       'id': id,
+      'auteur_id': auteurId,
       'auteur_nom': auteur,
       'etablissement_nom': 'Céleste',
       'texte': texte,
       'photo': photo,
+      if (videoUrl != null) 'video': {'url': videoUrl, 'type_mime': 'video/mp4', 'taille_octets': 100},
       'categorie': categorie,
       'nb_jaime': nbJaime,
       'nb_commentaires': 0,
@@ -206,6 +345,21 @@ void main() {
       expect(p.categorie, 'autre');
       expect(p.auteurNom, '');
     });
+
+    test('vidéo dans la forme publique, tranche 2', () {
+      final p = PublicationMur.fromJson({
+        'id': 'p9',
+        'video': {'url': '/mur/p9/video', 'type_mime': 'video/mp4', 'taille_octets': 100},
+      });
+      expect(p.videoUrl, '/mur/p9/video');
+      expect(PublicationMur.fromJson({'id': 'p10'}).videoUrl, isNull);
+    });
+  });
+
+  test('adresseVideoMur : relative résolue, absolue gardée', () {
+    expect(adresseVideoMur('/mur/p1/video'), '$kApiBaseUrl/mur/p1/video');
+    expect(adresseVideoMur('https://x/video.mp4'), 'https://x/video.mp4');
+    expect(adresseVideoMur(null), '');
   });
 
   group('octetsPhotoMur', () {
@@ -236,7 +390,7 @@ void main() {
       TiroirContexte.instance.definirPourTests(aEnfants: true, aResultats: true);
       AideCompteurs.instance.reinitialiserPourTests();
       faux = _FauxClient([
-        _publication(id: 'p1', auteur: 'Marie K', texte: 'Courage à tous', nbJaime: 3),
+        _publication(id: 'p1', auteur: 'Marie K', texte: 'Courage à tous', nbJaime: 3, auteurId: 'a1'),
         _publication(
           id: 'p2',
           auteur: 'Moi Même',
@@ -388,7 +542,57 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('J’aime : un toucher aime, le nombre monte', (tester) async {
+    testWidgets('réactions : Amen monte, puis Prière remplace Amen', (tester) async {
+    await _pomper(tester);
+    await tester.tap(find.text('Amen').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Amen · 1'), findsOneWidget);
+    expect(find.text('J’aime · 3'), findsOneWidget);
+    await tester.tap(find.text('Prière').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Prière · 1'), findsOneWidget);
+    expect(find.text('Amen'), findsNWidgets(2));
+    expect(faux.monTypeParCible['p1'], 'priere');
+  });
+
+  testWidgets('réponse : Répondre imbrique la réponse sous le commentaire', (tester) async {
+    await _pomper(tester);
+    await tester.tap(find.text('Commenter').first);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'Premier commentaire');
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.send_outlined));
+    await tester.pumpAndSettle();
+    expect(find.text('Premier commentaire'), findsOneWidget);
+    await tester.tap(find.text('Répondre'));
+    await tester.pumpAndSettle();
+    expect(find.text('Répondre à Moi Même'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).last, 'Ma réponse');
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.send_outlined));
+    await tester.pumpAndSettle();
+    expect(find.text('Ma réponse'), findsOneWidget);
+    expect(faux.dernierParentId, 'c1');
+  });
+
+  testWidgets('mention : @ propose un membre, la sélection l’ajoute à l’envoi', (tester) async {
+    await _pomper(tester);
+    await tester.tap(find.text('Commenter').first);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '@Mar');
+    await tester.pump();
+    await tester.pumpAndSettle();
+    final suggestion = find.descendant(of: find.byType(ListTile), matching: find.text('Marie K'));
+    expect(suggestion, findsOneWidget);
+    await tester.tap(suggestion);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(find.byType(TextField).last).controller?.text, '@Marie K ');
+    await tester.tap(find.byIcon(Icons.send_outlined));
+    await tester.pumpAndSettle();
+    expect(faux.dernieresMentions, ['m1']);
+  });
+
+  testWidgets('J’aime : un toucher aime, le nombre monte', (tester) async {
       await _pomper(tester);
       await tester.tap(find.text('J’aime · 3'));
       await tester.pumpAndSettle();
@@ -401,9 +605,38 @@ void main() {
       await tester.tap(find.text('Commenter').first);
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, 'Merci pour ce mot');
+      await tester.pump();
       await tester.tap(find.byIcon(Icons.send_outlined));
       await tester.pumpAndSettle();
       expect(find.text('Merci pour ce mot'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('compositeur : bouton Vidéo présent, tranche 2', (tester) async {
+      await _pomper(tester);
+      expect(find.text('Vidéo'), findsOneWidget);
+      expect(find.text('Photo'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('vidéo : lecture paresseuse et suppression pour l’auteur, tranche 2', (tester) async {
+      faux.publications = [
+        _publication(id: 'p1', auteur: 'Marie K', texte: 'Avec vidéo', videoUrl: '/mur/p1/video'),
+        _publication(id: 'p2', auteur: 'Moi Même', texte: 'Ma vidéo', videoUrl: '/mur/p2/video', estAuteur: true),
+      ];
+      await _pomper(tester);
+      // Lecture paresseuse : le bouton Lecture est là, rien
+      // n'est chargé tant qu'on ne le touche pas.
+      expect(find.byTooltip('Lire la vidéo'), findsNWidgets(2));
+      // Seul l'auteur voit la suppression de sa vidéo.
+      expect(find.text('Supprimer la vidéo'), findsOneWidget);
+      await tester.tap(find.text('Supprimer la vidéo'));
+      await tester.pumpAndSettle();
+      expect(find.text('Supprimer cette vidéo ?'), findsOneWidget);
+      await tester.tap(find.text('Supprimer').last);
+      await tester.pumpAndSettle();
+      expect(faux.dernierIdVideoSupprimee, 'p2');
+      expect(find.byTooltip('Lire la vidéo'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -416,6 +649,51 @@ void main() {
       await tester.pumpAndSettle();
       expect(faux.dernierIdSupprime, 'p2');
       expect(find.text('Photo du culte'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('profil : un toucher sur le nom de l’auteur ouvre le profil', (tester) async {
+      await _pomper(tester);
+      await tester.tap(find.text('Marie K'));
+      await tester.pumpAndSettle();
+      expect(find.text('Suivre'), findsOneWidget);
+      expect(find.text('Chantre · Céleste'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('marque-page : un toucher enregistre, l’icône se remplit', (tester) async {
+      await _pomper(tester);
+      await tester.tap(find.byTooltip('Enregistrer').first);
+      await tester.pumpAndSettle();
+      expect(faux.enregistrements, contains('p1'));
+      expect(find.byIcon(Icons.bookmark), findsOneWidget);
+      expect(find.byTooltip('Retirer des enregistrements'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('mes enregistrements : l’icône de l’en-tête ouvre la liste', (tester) async {
+      await _pomper(tester);
+      await tester.tap(find.byTooltip('Enregistrer').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Mes enregistrements'));
+      await tester.pumpAndSettle();
+      expect(find.text('Courage à tous'), findsOneWidget);
+      expect(find.text('Photo du culte'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('signaler : le menu propose Signaler, l’envoi part', (tester) async {
+      await _pomper(tester);
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      expect(find.text('Signaler'), findsOneWidget);
+      await tester.tap(find.text('Signaler'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Envoyer le signalement'));
+      await tester.pumpAndSettle();
+      expect(faux.dernierSignaleType, 'mur_publication');
+      expect(faux.dernierSignaleId, 'p1');
+      expect(faux.dernierSignaleMotif, 'harcelement');
       expect(tester.takeException(), isNull);
     });
 
