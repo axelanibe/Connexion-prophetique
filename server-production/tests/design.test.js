@@ -19,10 +19,10 @@ import {
 } from '../src/design.js';
 
 test('les défauts sont exactement les valeurs actuelles de l application', () => {
-  assert.equal(DEFAULT_DESIGN_CONFIG.bleuNuit, '#0F1C2E');
-  assert.equal(DEFAULT_DESIGN_CONFIG.or, '#E5C158');
-  assert.equal(DEFAULT_DESIGN_CONFIG.orFonce, '#B47B17');
-  assert.equal(DEFAULT_DESIGN_CONFIG.fond, '#F4F6F9');
+  assert.equal(DEFAULT_DESIGN_CONFIG.bleuNuit, '#0B1F3A');
+  assert.equal(DEFAULT_DESIGN_CONFIG.or, '#D4A72C');
+  assert.equal(DEFAULT_DESIGN_CONFIG.orFonce, '#8A6A12');
+  assert.equal(DEFAULT_DESIGN_CONFIG.fond, '#F5F6FA');
   assert.equal(DEFAULT_DESIGN_CONFIG.titreVieSpirituelle, 'Ma vie spirituelle');
   assert.equal(DEFAULT_DESIGN_CONFIG.titreExplorer, 'Explorer');
   assert.equal(DEFAULT_DESIGN_CONFIG.titreDecouvrir, 'Découvrir');
@@ -80,7 +80,7 @@ test('la fusion sur les défauts garde les valeurs valides et ignore le reste', 
   assert.equal(fusion.titreDecouvrir, 'À découvrir');
   assert.deepEqual(fusion.ordreSections, ['plus', 'temoignages', 'structure', 'librairie', 'bible', 'accueil']);
   assert.equal(fusion.inconnue, undefined);
-  assert.equal(fusion.bleuNuit, '#0F1C2E');
+  assert.equal(fusion.bleuNuit, '#0B1F3A');
   assert.equal(fusion.titreExplorer, 'Explorer');
 });
 
@@ -91,7 +91,7 @@ test('la fusion sans objet renvoie les défauts, sans erreur', () => {
   assert.deepEqual(mergeDesignConfig([]), DEFAULT_DESIGN_CONFIG);
   const fusion = mergeDesignConfig({ or: '#111111' });
   assert.equal(fusion.or, '#111111');
-  assert.equal(DEFAULT_DESIGN_CONFIG.or, '#E5C158');
+  assert.equal(DEFAULT_DESIGN_CONFIG.or, '#D4A72C');
 });
 
 test('la fusion avec un ordre invalide garde l ordre par défaut', () => {
@@ -130,16 +130,16 @@ test('la validation refuse un corps vide ou sans clé connue en 400', () => {
   assert.throws(() => validateDesignPatch([]), (e) => e.statusCode === 400);
 });
 
-// Migration palette du 18 nov. 2026 : la ligne design_config id 1,
-// créée avant avec l'ancienne palette, garde les anciennes couleurs,
+// Migration palette maquette, T17, 26 nov. 2026 : la ligne design_config id 1,
+// créée avec la palette du 18 nov. 2026, garde les anciennes couleurs,
 // et mergeDesignConfig les fait passer avant les nouveaux défauts.
 test('la migration remplace les 4 anciennes couleurs par les nouvelles', () => {
   const migree = migPaletteDesign({ ...ANCIENNE_PALETTE_DESIGN, titreDecouvrir: 'Explorer' });
   assert.deepEqual(migree, {
-    bleuNuit: '#0F1C2E',
-    or: '#E5C158',
-    orFonce: '#B47B17',
-    fond: '#F4F6F9',
+    bleuNuit: '#0B1F3A',
+    or: '#D4A72C',
+    orFonce: '#8A6A12',
+    fond: '#F5F6FA',
     titreDecouvrir: 'Explorer',
   });
 });
