@@ -24,16 +24,27 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:video_player/video_player.dart';
 
 import 'api.dart';
 import 'i18n.dart';
 import 'main.dart';
 import 'mur_detail.dart';
+import 'mur_enregistrements.dart';
+import 'mur_profil.dart';
 import 'presence_culte.dart';
 import 'tiroir_intelligent.dart';
 
+import 'messagerie_screens.dart' deferred as messagerie;
+
 /// Taille maximale d'une photo décodée, comme la photo de profil.
 const tailleMaxPhotoMur = 700 * 1024;
+
+/// Durée maximale d'une vidéo, 60 s, comme les stories.
+const dureeMaxVideoMur = Duration(seconds: 60);
+
+/// Taille maximale d'une vidéo, 25 Mo, comme côté serveur.
+const tailleMaxVideoMur = 25 * 1024 * 1024;
 
 /// Longueur maximale du texte, comme les témoignages.
 const longueurMaxTexteMur = 2000;
@@ -164,6 +175,32 @@ Future<bool> confirmerSuppressionMur(BuildContext context) async {
   return confirmer == true;
 }
 
+/// Adresse absolue d'une vidéo du mur : le serveur renvoie
+/// une adresse relative, même origine, à résoudre contre la
+/// base de l'API, comme pour les stories.
+String adresseVideoMur(String? url) {
+  if (url == null || url.isEmpty) return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  return '$kApiBaseUrl$url';
+}
+
+/// Confirmation de suppression d'une vidéo, partagée par le
+/// fil et la page détail.
+Future<bool> confirmerSuppressionVideoMur(BuildContext context) async {
+  final confirmer = await showDialog<bool>(
+    context: context,
+    builder: (c) => AlertDialog(
+      title: Text(tr('Supprimer cette vidéo ?')),
+      content: Text(tr('La vidéo disparaîtra de la publication.')),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(c).pop(false), child: Text(tr('Annuler'))),
+        TextButton(onPressed: () => Navigator.of(c).pop(true), child: Text(tr('Supprimer'))),
+      ],
+    ),
+  );
+  return confirmer == true;
+}
+
 /// Partage d'une publication par la feuille du système,
 /// partagé par le fil et la page détail.
 Future<void> partagerPublicationMur(BuildContext context, PublicationMur p) async {
@@ -205,6 +242,8 @@ class _MurMembresPageState extends State<MurMembresPage> {
   final _rechercheControleur = TextEditingController();
   String? _photoDonnees;
   Uint8List? _photoOctets;
+  String? _videoNom;
+  Uint8List? _videoOctets;
 
   /// Photos des auteurs, par identifiant de membre, null quand
   /// le membre n'a pas de photo, pour ne pas redemander.
@@ -321,6 +360,7 @@ class _MurMembresPageState extends State<MurMembresPage> {
 
   /// Photo du compositeur, réduite comme la photo de profil,
   /// 800 par 800 au plus, qualité 80, 700 Ko décodés au plus.
+  /// Photo et vidéo s'excluent : choisir l'une retire l'autre.
   Future<void> _choisirPhoto() async {
     try {
       final picked = await ImagePicker().pickImage(
@@ -338,6 +378,34 @@ class _MurMembresPageState extends State<MurMembresPage> {
       setState(() {
         _photoOctets = octets;
         _photoDonnees = 'data:image/jpeg;base64,${base64Encode(octets)}';
+        _videoNom = null;
+        _videoOctets = null;
+      });
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible de publier.'));
+    }
+  }
+
+  /// Vidéo du compositeur, 60 s au plus, 25 Mo au plus comme
+  /// côté serveur. Photo et vidéo s'excluent : choisir l'une
+  /// retire l'autre.
+  Future<void> _choisirVideo() async {
+    try {
+      final picked = await ImagePicker().pickVideo(
+        source: ImageSource.gallery,
+        maxDuration: dureeMaxVideoMur,
+      );
+      if (picked == null || !mounted) return;
+      final octets = await picked.readAsBytes();
+      if (octets.length > tailleMaxVideoMur) {
+        toast(context, tr('Vidéo trop volumineuse.'));
+        return;
+      }
+      setState(() {
+        _videoNom = picked.name;
+        _videoOctets = octets;
+        _photoDonnees = null;
+        _photoOctets = null;
       });
     } catch (_) {
       if (mounted) toast(context, tr('Impossible de publier.'));
@@ -349,20 +417,50 @@ class _MurMembresPageState extends State<MurMembresPage> {
     if (texte.isEmpty || _actionEnCours) return;
     setState(() => _actionEnCours = true);
     try {
-      await _client.publierMur(texte: texte, photo: _photoDonnees, categorie: _categorieChoisie);
+      // La vidéo part après la publication, sur son
+      // identifiant : un échec de la vidéo ne retire pas la
+      // publication, elle reste sans vidéo.
+      final data = await _client.publierMur(texte: texte, photo: _photoDonnees, categorie: _categorieChoisie);
+      var videoOk = true;
+      if (_videoOctets != null) {
+        final cree = data['publication'] as Map<String, dynamic>?;
+        final id = (cree?['id'] ?? '').toString();
+        if (id.isNotEmpty) {
+          try {
+            await _client.publierVideoMur(id: id, bytes: _videoOctets!, filename: _videoNom ?? 'video.mp4');
+          } catch (_) {
+            videoOk = false;
+          }
+        } else {
+          videoOk = false;
+        }
+      }
       if (!mounted) return;
       setState(() {
         _actionEnCours = false;
         _texteControleur.clear();
         _photoDonnees = null;
         _photoOctets = null;
+        _videoNom = null;
+        _videoOctets = null;
       });
       await _charger();
-      if (mounted) toast(context, tr('Publication publiée.'));
+      if (mounted) toast(context, videoOk ? tr('Publication publiée.') : tr('Impossible d’envoyer la vidéo.'));
     } catch (_) {
       if (!mounted) return;
       setState(() => _actionEnCours = false);
       toast(context, tr('Impossible de publier.'));
+    }
+  }
+
+  Future<void> _supprimerVideo(PublicationMur p) async {
+    if (!await confirmerSuppressionVideoMur(context) || !mounted) return;
+    try {
+      await _client.supprimerVideoMur(p.id);
+      await _charger();
+      if (mounted) toast(context, tr('Vidéo supprimée.'));
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible de supprimer la vidéo.'));
     }
   }
 
@@ -380,6 +478,53 @@ class _MurMembresPageState extends State<MurMembresPage> {
   Future<void> _ouvrirDetail(PublicationMur p) async {
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => MurDetailPage(publicationId: p.id, publicationInitiale: p, client: _client),
+    ));
+    if (!mounted) return;
+    await _charger();
+  }
+
+  Future<void> _ouvrirProfil(PublicationMur p) async {
+    if (p.auteurId.isEmpty) return;
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => MurProfilPage(membreId: p.auteurId, client: _client),
+    ));
+    if (!mounted) return;
+    await _charger();
+  }
+
+  /// Marque-page : enregistrer ou retirer, puis recharger le
+  /// fil pour que l'icône reflète l'état du serveur.
+  Future<void> _basculerEnregistrement(PublicationMur p) async {
+    try {
+      if (p.enregistre) {
+        await _client.retirerEnregistrement(p.id);
+      } else {
+        await _client.enregistrerPublication(p.id);
+      }
+      await _charger();
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible d’enregistrer.'));
+    }
+  }
+
+  /// Signaler une publication, par la modale réutilisée de la
+  /// messagerie : motif, description, destinataire, le contenu
+  /// visé est copié au moment du signalement.
+  Future<void> _signaler(PublicationMur p) async {
+    await messagerie.loadLibrary();
+    if (!mounted) return;
+    await messagerie.ouvrirFeuilleSignalement(
+      context,
+      apiClient: _client,
+      cibleType: 'mur_publication',
+      cibleId: p.id,
+      contenuFige: p.texte,
+    );
+  }
+
+  Future<void> _ouvrirEnregistrements() async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => MurEnregistrementsPage(client: _client),
     ));
     if (!mounted) return;
     await _charger();
@@ -413,6 +558,7 @@ class _MurMembresPageState extends State<MurMembresPage> {
       _CarteCompositeur(
         controleur: _texteControleur,
         photoOctets: _photoOctets,
+        videoNom: _videoNom,
         enCours: _actionEnCours,
         categorie: _categorieChoisie,
         onCategorie: (c) => setState(() => _categorieChoisie = c),
@@ -421,6 +567,11 @@ class _MurMembresPageState extends State<MurMembresPage> {
         onRetirerPhoto: () => setState(() {
           _photoDonnees = null;
           _photoOctets = null;
+        }),
+        onVideo: _choisirVideo,
+        onRetirerVideo: () => setState(() {
+          _videoNom = null;
+          _videoOctets = null;
         }),
         onPublier: _publier,
       ),
@@ -465,8 +616,12 @@ class _MurMembresPageState extends State<MurMembresPage> {
         publication: p,
         photoAuteur: _photosAuteurs[p.auteurId],
         onSupprimer: () => _supprimer(p),
+        onSupprimerVideo: () => _supprimerVideo(p),
         onPartager: () => partagerPublicationMur(context, p),
+        onBasculerEnregistrement: () => _basculerEnregistrement(p),
+        onSignaler: () => _signaler(p),
         onOuvrir: () => _ouvrirDetail(p),
+        onOuvrirProfil: () => _ouvrirProfil(p),
       ));
       enfants.add(const SizedBox(height: Cp.s1));
     }
@@ -481,7 +636,19 @@ class _MurMembresPageState extends State<MurMembresPage> {
               ),
       ));
     }
-    return basic(tr('Mur des membres'), enfants, fond: Container(color: Cp.card), onRefresh: _charger);
+    return basic(
+      tr('Mur des membres'),
+      enfants,
+      fond: Container(color: Cp.card),
+      onRefresh: _charger,
+      actions: [
+        IconButton(
+          tooltip: tr('Mes enregistrements'),
+          onPressed: _ouvrirEnregistrements,
+          icon: const Icon(Icons.bookmark_outlined),
+        ),
+      ],
+    );
   }
 }
 
@@ -550,31 +717,38 @@ class _FiltresMur extends StatelessWidget {
   }
 }
 
-/// Compositeur du mur : champ, catégorie, photo, Publier. Le
-/// texte est obligatoire côté application, la photo reste
-/// facultative. Quand la catégorie est Prières, la note
-/// rappelle que le mur ne prend que les sujets généraux.
+/// Compositeur du mur : champ, catégorie, photo, vidéo,
+/// Publier. Le texte est obligatoire côté application, la
+/// photo et la vidéo restent facultatives et s'excluent. Quand
+/// la catégorie est Prières, la note rappelle que le mur ne
+/// prend que les sujets généraux.
 class _CarteCompositeur extends StatelessWidget {
   const _CarteCompositeur({
     required this.controleur,
     required this.photoOctets,
+    required this.videoNom,
     required this.enCours,
     required this.categorie,
     required this.onCategorie,
     required this.onTexteChange,
     required this.onPhoto,
     required this.onRetirerPhoto,
+    required this.onVideo,
+    required this.onRetirerVideo,
     required this.onPublier,
   });
 
   final TextEditingController controleur;
   final Uint8List? photoOctets;
+  final String? videoNom;
   final bool enCours;
   final String categorie;
   final ValueChanged<String> onCategorie;
   final VoidCallback onTexteChange;
   final VoidCallback onPhoto;
   final VoidCallback onRetirerPhoto;
+  final VoidCallback onVideo;
+  final VoidCallback onRetirerVideo;
   final VoidCallback onPublier;
 
   @override
@@ -611,6 +785,19 @@ class _CarteCompositeur extends StatelessWidget {
               ),
             ]),
           ],
+          if (videoNom != null) ...[
+            const SizedBox(height: 8),
+            Row(children: [
+              const Icon(Icons.videocam_outlined),
+              const SizedBox(width: 8),
+              Expanded(child: Text(videoNom!, maxLines: 1, overflow: TextOverflow.ellipsis)),
+              IconButton(
+                tooltip: tr('Retirer la vidéo'),
+                onPressed: onRetirerVideo,
+                icon: const Icon(Icons.close),
+              ),
+            ]),
+          ],
           const SizedBox(height: 8),
           Row(children: [
             Text(tr('Catégorie'), style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
@@ -637,18 +824,32 @@ class _CarteCompositeur extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 8),
-          Row(children: [
-            TextButton.icon(
-              onPressed: enCours ? null : onPhoto,
-              icon: const Icon(Icons.photo_outlined),
-              label: Text(tr('Photo')),
-            ),
-            const Spacer(),
-            FilledButton(
-              onPressed: peutPublier ? onPublier : null,
-              child: Text(tr('Publier')),
-            ),
-          ]),
+          // Sur petit écran, Publier descend sous Photo et
+          // Vidéo au lieu de déborder, comme un humain.
+          Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                TextButton.icon(
+                  onPressed: enCours ? null : onPhoto,
+                  icon: const Icon(Icons.photo_outlined),
+                  label: Text(tr('Photo')),
+                ),
+                TextButton.icon(
+                  onPressed: enCours ? null : onVideo,
+                  icon: const Icon(Icons.videocam_outlined),
+                  label: Text(tr('Vidéo')),
+                ),
+              ]),
+              FilledButton(
+                onPressed: peutPublier ? onPublier : null,
+                child: Text(tr('Publier')),
+              ),
+            ],
+          ),
         ]),
       ),
     );
@@ -666,15 +867,28 @@ class CartePublicationMur extends StatelessWidget {
     required this.publication,
     required this.onSupprimer,
     required this.onPartager,
+    required this.onBasculerEnregistrement,
     this.photoAuteur,
     this.onOuvrir,
+    this.onOuvrirProfil,
+    this.onSupprimerVideo,
+    this.onSignaler,
   });
 
   final PublicationMur publication;
   final String? photoAuteur;
   final VoidCallback onSupprimer;
   final VoidCallback onPartager;
+  final VoidCallback onBasculerEnregistrement;
   final VoidCallback? onOuvrir;
+
+  /// Toucher sur l'auteur ouvre le profil ; sans lui, le
+  /// détail, comme avant.
+  final VoidCallback? onOuvrirProfil;
+  final VoidCallback? onSupprimerVideo;
+
+  /// Signaler la publication, par la modale réutilisée.
+  final VoidCallback? onSignaler;
 
   @override
   Widget build(BuildContext context) {
@@ -688,7 +902,7 @@ class CartePublicationMur extends StatelessWidget {
           Row(children: [
             Expanded(
               child: GestureDetector(
-                onTap: onOuvrir,
+                onTap: onOuvrirProfil ?? onOuvrir,
                 behavior: HitTestBehavior.opaque,
                 child: Row(children: [
                   photoAuteurOctets != null
@@ -722,6 +936,15 @@ class CartePublicationMur extends StatelessWidget {
                 tooltip: tr('Supprimer'),
                 onPressed: onSupprimer,
                 icon: const Icon(Icons.delete_outlined),
+              )
+            else if (onSignaler != null)
+              PopupMenuButton<String>(
+                tooltip: tr('Plus d’options'),
+                icon: const Icon(Icons.more_vert),
+                onSelected: (_) => onSignaler!(),
+                itemBuilder: (_) => [
+                  PopupMenuItem(value: 'signaler', child: Text(tr('Signaler'))),
+                ],
               ),
           ]),
           GestureDetector(
@@ -741,6 +964,15 @@ class CartePublicationMur extends StatelessWidget {
               ],
             ]),
           ),
+          // La vidéo reste hors de la zone tactile du détail :
+          // un toucher sur Lecture ne doit pas ouvrir la page.
+          if (p.videoUrl != null) ...[
+            const SizedBox(height: 8),
+            _LecteurVideoMur(
+              url: adresseVideoMur(p.videoUrl),
+              onSupprimerVideo: p.estAuteur ? onSupprimerVideo : null,
+            ),
+          ],
           const SizedBox(height: 4),
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(
@@ -749,6 +981,11 @@ class CartePublicationMur extends StatelessWidget {
                 cibleId: p.id,
                 nombreInitial: p.nbJaime,
                 aAimeInitial: p.aime,
+                types: const ['jaime', 'amen', 'priere'],
+                nbJaimeInitial: p.nbJaime,
+                nbAmenInitial: p.nbAmen,
+                nbPriereInitial: p.nbPriere,
+                monTypeInitial: p.monType,
               ),
             ),
             TextButton.icon(
@@ -757,9 +994,140 @@ class CartePublicationMur extends StatelessWidget {
               label: Text(tr('Partager'), style: const TextStyle(color: Cp.inkMuted, fontWeight: FontWeight.w700)),
               style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
             ),
+            IconButton(
+              tooltip: p.enregistre ? tr('Retirer des enregistrements') : tr('Enregistrer'),
+              onPressed: onBasculerEnregistrement,
+              icon: Icon(
+                p.enregistre ? Icons.bookmark : Icons.bookmark_outlined,
+                size: 20,
+                color: p.enregistre ? Cp.goldDeep : Cp.inkMuted,
+              ),
+            ),
           ]),
         ]),
       ),
     );
+  }
+}
+
+/// Lecteur vidéo paresseux d'une publication, mur v2 tranche 2 :
+/// rien n'est chargé tant qu'on ne touche pas Lecture. Minuteur
+/// de 8 s comme les stories, pour ne pas rester bloqué sur
+/// l'indicateur quand l'adresse ne répond pas. Un toucher sur
+/// la vidéo en pause la relance, en lecture la met en pause.
+/// La suppression, pour l'auteur seulement, passe par le parent.
+class _LecteurVideoMur extends StatefulWidget {
+  const _LecteurVideoMur({required this.url, this.onSupprimerVideo});
+
+  final String url;
+  final VoidCallback? onSupprimerVideo;
+
+  @override
+  State<_LecteurVideoMur> createState() => _LecteurVideoMurState();
+}
+
+class _LecteurVideoMurState extends State<_LecteurVideoMur> {
+  VideoPlayerController? _controleur;
+  Timer? _minuteurInit;
+  bool _erreur = false;
+  bool _demarre = false;
+
+  @override
+  void dispose() {
+    _minuteurInit?.cancel();
+    _controleur?.removeListener(_surveiller);
+    _controleur?.dispose();
+    super.dispose();
+  }
+
+  void _surveiller() {
+    final c = _controleur;
+    if (c == null || !c.value.isInitialized) return;
+    if (c.value.position >= c.value.duration && c.value.duration != Duration.zero) {
+      c.removeListener(_surveiller);
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _lire() async {
+    final c = _controleur;
+    if (c != null) {
+      if (c.value.isPlaying) {
+        c.pause();
+      } else {
+        c.play();
+      }
+      setState(() {});
+      return;
+    }
+    setState(() => _demarre = true);
+    _minuteurInit = Timer(const Duration(seconds: 8), () {
+      if (!mounted) return;
+      if (_controleur?.value.isInitialized != true) setState(() => _erreur = true);
+    });
+    final controleur = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+    _controleur = controleur;
+    try {
+      await controleur.initialize();
+      if (!mounted) return;
+      _minuteurInit?.cancel();
+      setState(() {});
+      controleur.play();
+      controleur.addListener(_surveiller);
+    } catch (_) {
+      if (!mounted) return;
+      _minuteurInit?.cancel();
+      setState(() => _erreur = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = _controleur;
+    final initialise = c?.value.isInitialized == true;
+    final enLecture = c?.value.isPlaying == true;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          color: Colors.black,
+          child: AspectRatio(
+            aspectRatio: initialise ? c!.value.aspectRatio : 16 / 9,
+            child: Stack(alignment: Alignment.center, children: [
+              if (initialise) VideoPlayer(c!),
+              if (_erreur)
+                const Icon(Icons.videocam_off_outlined, color: Colors.white54, size: 48)
+              else if (!initialise && _demarre)
+                const CircularProgressIndicator(color: Colors.white)
+              else
+                IconButton(
+                  tooltip: tr('Lire la vidéo'),
+                  onPressed: _lire,
+                  icon: const Icon(Icons.play_circle_filled, color: Colors.white, size: 56),
+                ),
+              if (initialise)
+                Positioned.fill(
+                  child: GestureDetector(
+                    onTap: _lire,
+                    behavior: HitTestBehavior.opaque,
+                    child: enLecture
+                        ? const SizedBox.shrink()
+                        : const Center(child: Icon(Icons.play_circle_filled, color: Colors.white70, size: 56)),
+                  ),
+                ),
+            ]),
+          ),
+        ),
+      ),
+      if (widget.onSupprimerVideo != null)
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: widget.onSupprimerVideo,
+            icon: const Icon(Icons.delete_outlined, size: 20),
+            label: Text(tr('Supprimer la vidéo')),
+          ),
+        ),
+    ]);
   }
 }

@@ -9,6 +9,9 @@ import 'api.dart';
 import 'i18n.dart';
 import 'main.dart';
 import 'mur_membres.dart';
+import 'mur_profil.dart';
+
+import 'messagerie_screens.dart' deferred as messagerie;
 
 /// Page détail d'une publication : la carte du fil, seule,
 /// avec ses J'aime et ses commentaires. La publication
@@ -91,6 +94,42 @@ class _MurDetailPageState extends State<MurDetailPage> {
     }
   }
 
+  Future<void> _supprimerVideo(PublicationMur p) async {
+    if (!await confirmerSuppressionVideoMur(context) || !mounted) return;
+    try {
+      await _client.supprimerVideoMur(p.id);
+      await _charger();
+      if (mounted) toast(context, tr('Vidéo supprimée.'));
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible de supprimer la vidéo.'));
+    }
+  }
+
+  Future<void> _basculerEnregistrement(PublicationMur p) async {
+    try {
+      if (p.enregistre) {
+        await _client.retirerEnregistrement(p.id);
+      } else {
+        await _client.enregistrerPublication(p.id);
+      }
+      await _charger();
+    } catch (_) {
+      if (mounted) toast(context, tr('Impossible d’enregistrer.'));
+    }
+  }
+
+  Future<void> _signaler(PublicationMur p) async {
+    await messagerie.loadLibrary();
+    if (!mounted) return;
+    await messagerie.ouvrirFeuilleSignalement(
+      context,
+      apiClient: _client,
+      cibleType: 'mur_publication',
+      cibleId: p.id,
+      contenuFige: p.texte,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_charge) {
@@ -120,7 +159,15 @@ class _MurDetailPageState extends State<MurDetailPage> {
           publication: p,
           photoAuteur: _photoAuteur,
           onSupprimer: () => _supprimer(p),
+          onSupprimerVideo: () => _supprimerVideo(p),
           onPartager: () => partagerPublicationMur(context, p),
+          onBasculerEnregistrement: () => _basculerEnregistrement(p),
+          onSignaler: () => _signaler(p),
+          onOuvrirProfil: p.auteurId.isEmpty
+              ? null
+              : () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => MurProfilPage(membreId: p.auteurId, client: _client),
+                  )),
         ),
       ],
       fond: Container(color: Cp.card),

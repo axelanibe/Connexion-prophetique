@@ -954,6 +954,45 @@ class ApiClient {
     return const {'photos': []};
   }
 
+  /// Profil public d'un membre du mur, tranche 4 : membre,
+  /// publications visibles et curseur de suite.
+  Future<Map<String, dynamic>> fetchProfilMur(String membreId, {String? avant}) async {
+    final adresse = avant == null
+        ? '/mur/membres/${Uri.encodeComponent(membreId)}'
+        : '/mur/membres/${Uri.encodeComponent(membreId)}?avant=${Uri.encodeComponent(avant)}';
+    final data = await _get(adresse);
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Abonnés ou abonnements d'un membre, 50 au plus : nom et
+  /// établissement seulement, sans photo en liste.
+  Future<Map<String, dynamic>> fetchAbonnes(String membreId) async {
+    final data = await _get('/mur/membres/${Uri.encodeComponent(membreId)}/abonnes');
+    if (data is Map<String, dynamic>) return data;
+    return const {'membres': []};
+  }
+
+  Future<Map<String, dynamic>> fetchAbonnements(String membreId) async {
+    final data = await _get('/mur/membres/${Uri.encodeComponent(membreId)}/abonnements');
+    if (data is Map<String, dynamic>) return data;
+    return const {'membres': []};
+  }
+
+  /// Suivre un membre du mur, idempotent côté serveur.
+  Future<Map<String, dynamic>> suivreMembre(String membreId) async {
+    final data = await _post('/mur/suivis', {'suivi_id': membreId});
+    if (data is Map<String, dynamic>) return data;
+    return const {'suivi': true};
+  }
+
+  /// Ne plus suivre un membre du mur.
+  Future<Map<String, dynamic>> nePlusSuivre(String membreId) async {
+    final data = await _delete('/mur/suivis/${Uri.encodeComponent(membreId)}');
+    if (data is Map<String, dynamic>) return data;
+    return const {'suivi': false};
+  }
+
   /// Publication sur le mur, POST /mur en JSON : texte seul,
   /// photo seule, ou les deux. La photo est une adresse de
   /// données, réduite côté application comme la photo de profil.
@@ -966,6 +1005,46 @@ class ApiClient {
   /// son auteur, ou le Bureau dans son périmètre, le serveur
   /// vérifie. Les J'aime et commentaires partent avec elle.
   Future<Map<String, dynamic>> supprimerPublicationMur(String id) => _delete('/mur/$id');
+
+  /// Envoi de la vidéo d'une publication du mur, mur v2 tranche 2,
+  /// POST /mur/:id/video en multipart, comme publierStory. 60 s au
+  /// plus côté application, 25 Mo au plus côté serveur.
+  Future<Map<String, dynamic>> publierVideoMur({required String id, required List<int> bytes, required String filename}) async {
+    Future<http.StreamedResponse> send(String? token) async {
+      final req = http.MultipartRequest('POST', Uri.parse('$kApiBaseUrl/mur/$id/video'));
+      if (token != null) req.headers['Authorization'] = 'Bearer $token';
+      req.files.add(http.MultipartFile.fromBytes('fichier', bytes, filename: filename));
+      return req.send().timeout(const Duration(seconds: 120));
+    }
+    var res = await send(_accessToken);
+    if (res.statusCode == 401 && _refreshToken != null && await refreshAccess()) {
+      res = await send(_accessToken);
+    }
+    final body = await res.stream.bytesToString();
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body, entetes: res.headers);
+    final data = jsonDecode(body);
+    if (data is Map<String, dynamic>) return data;
+    return {'data': data};
+  }
+
+  /// Suppression de la vidéo d'une publication du mur,
+  /// DELETE /mur/:id/video : son auteur, ou le Bureau dans
+  /// son périmètre, le serveur vérifie.
+  Future<Map<String, dynamic>> supprimerVideoMur(String id) => _delete('/mur/$id/video');
+
+  /// Enregistrer une publication du mur, idempotent.
+  /// Retirer un enregistrement, idempotent aussi.
+  Future<Map<String, dynamic>> enregistrerPublication(String id) => _post('/mur/$id/enregistrer', {});
+
+  Future<Map<String, dynamic>> retirerEnregistrement(String id) => _delete('/mur/$id/enregistrer');
+
+  /// Mes publications enregistrées, par date
+  /// d'enregistrement, curseur `avant`, limite 20.
+  Future<Map<String, dynamic>> fetchEnregistrements({String? avant}) async {
+    final data = await _get(avant == null ? '/mur/enregistrements' : '/mur/enregistrements?avant=${Uri.encodeComponent(avant)}');
+    if (data is Map<String, dynamic>) return data;
+    return const {'publications': []};
+  }
 
   /// Chaîne de prière en direct, 21 nov. 2026, tranche 1,
   /// refonte d'après la maquette : la chaîne d'un jour, 24
@@ -1193,9 +1272,11 @@ class ApiClient {
   }
 
   /// Aimer une cible, temps fort ou témoignage. Idempotent :
-  /// un deuxième J'aime renvoie le compte, sans doublon.
-  Future<Map<String, dynamic>> aimer(String cibleType, String cibleId) async {
-    final data = await _post('/aimes', {'cible_type': cibleType, 'cible_id': cibleId});
+  /// un deuxième J'aime renvoie le compte, sans doublon. Le
+  /// type, mur v2 tranche 3, est l'un des trois, 'jaime' par
+  /// défaut côté serveur ; changer de type remplace la réaction.
+  Future<Map<String, dynamic>> aimer(String cibleType, String cibleId, {String? type}) async {
+    final data = await _post('/aimes', {'cible_type': cibleType, 'cible_id': cibleId, if (type != null) 'type': type});
     return (data['aime'] as Map<String, dynamic>?) ?? const {};
   }
 
@@ -1213,9 +1294,17 @@ class ApiClient {
     return const {};
   }
 
-  /// Poster un commentaire, 1 à 1000 caractères.
-  Future<Map<String, dynamic>> posterCommentaire(String cibleType, String cibleId, String texte) =>
-      _post('/commentaires', {'cible_type': cibleType, 'cible_id': cibleId, 'texte': texte});
+  /// Poster un commentaire, 1 à 1000 caractères. Mur v2
+  /// tranche 3 : parent_id pour une réponse à un commentaire,
+  /// mentions pour les identifiants mentionnés par @.
+  Future<Map<String, dynamic>> posterCommentaire(String cibleType, String cibleId, String texte, {String? parentId, List<String>? mentions}) =>
+      _post('/commentaires', {
+        'cible_type': cibleType,
+        'cible_id': cibleId,
+        'texte': texte,
+        if (parentId != null) 'parent_id': parentId,
+        if (mentions != null) 'mentions': mentions,
+      });
 
   /// Supprimer un commentaire, le sien ou, pour la structure,
   /// n'importe lequel.

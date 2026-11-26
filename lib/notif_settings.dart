@@ -37,6 +37,12 @@ class NotifSettings extends ChangeNotifier {
     // émises elles aussi, ont leur interrupteur.
     'nouveau_message',
     'signalement_cloture',
+    // Mur des membres v2, tranche 6, 25 nov. 2026 : commentaire
+    // et mention du mur, cloche et poussée. 'mur_reaction' et
+    // 'mur_suivi' restent hors de cette liste, cloche seulement,
+    // ils ne sont jamais poussés et n'ont pas d'interrupteur.
+    'mur_commentaire',
+    'mur_mention',
     // Appels audio et vidéo, 16 nov. 2026 : notification d'appel
     // entrant, pour réveiller l'appelé.
     'appel_entrant',
@@ -76,6 +82,11 @@ class NotifSettings extends ChangeNotifier {
       // Carte 1, 21 nov. 2026 : clôture d'un signalement.
       case 'signalement_cloture':
         return tr('Signalement traité');
+      // Mur des membres v2, tranche 6, 25 nov. 2026.
+      case 'mur_commentaire':
+        return tr('Commentaires du mur');
+      case 'mur_mention':
+        return tr('Mentions du mur');
       // Appels audio et vidéo, 16 nov. 2026.
       case 'appel_entrant':
         return tr('Appels');
