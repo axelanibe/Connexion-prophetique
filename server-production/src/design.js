@@ -8,10 +8,10 @@
 // Module pur, sans base : il est testé sans PostgreSQL, et server.js
 // l'importe pour les routes GET /config/design et PUT /admin/design.
 export const DEFAULT_DESIGN_CONFIG = {
-  bleuNuit: '#0F1C2E',
-  or: '#E5C158',
-  orFonce: '#B47B17',
-  fond: '#F4F6F9',
+  bleuNuit: '#0B1F3A',
+  or: '#D4A72C',
+  orFonce: '#8A6A12',
+  fond: '#F5F6FA',
   titreVieSpirituelle: 'Ma vie spirituelle',
   titreExplorer: 'Explorer',
   titreDecouvrir: 'Découvrir',
@@ -111,19 +111,19 @@ export function validateDesignPatch(body) {
   return updates;
 }
 
-// Palette du 18 nov. 2026 : la ligne design_config id 1, créée
-// avant avec l'ancienne palette, garde les anciennes couleurs, et
-// mergeDesignConfig les fait passer avant les nouveaux défauts.
+// Palette maquette, T17, 26 nov. 2026 : la ligne design_config id 1,
+// créée avec la palette du 18 nov. 2026, garde les anciennes couleurs,
+// et mergeDesignConfig les fait passer avant les nouveaux défauts.
 // Si les 4 couleurs sont exactement les anciennes, on les remplace
 // par les nouvelles, sans toucher aux autres clés. Si une seule
 // couleur diffère, la palette a été personnalisée, on ne touche à
 // rien. Renvoie l'objet migré, ou null sans changement. Idempotente :
 // après migration, les couleurs ne sont plus les anciennes.
 export const ANCIENNE_PALETTE_DESIGN = {
-  bleuNuit: '#0B1F3A',
-  or: '#D4A72C',
-  orFonce: '#8A6A12',
-  fond: '#F5F6FA',
+  bleuNuit: '#0F1C2E',
+  or: '#E5C158',
+  orFonce: '#B47B17',
+  fond: '#F4F6F9',
 };
 
 export function migPaletteDesign(valeur) {
