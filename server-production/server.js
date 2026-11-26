@@ -12611,8 +12611,8 @@ try {
     [JSON.stringify(DEFAULT_DESIGN_CONFIG)],
   );
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS design_config (' }, 'Échec de migration — poursuite du démarrage'); }
-// Palette du 18 nov. 2026 : la ligne id 1, créée avant avec
-// l'ancienne palette, garde les anciennes couleurs, et
+// Palette maquette, T17, 26 nov. 2026 : la ligne id 1, créée avec
+// la palette du 18 nov. 2026, garde les anciennes couleurs, et
 // mergeDesignConfig les fait passer avant les nouveaux défauts.
 // Si les 4 couleurs sont exactement les anciennes, on les remplace
 // par les nouvelles, sans toucher aux autres clés. Idempotente :
@@ -12626,7 +12626,7 @@ try {
       await q('UPDATE design_config SET valeur = $1::jsonb, modifie_le = now() WHERE id = 1', [JSON.stringify(migree)]);
     }
   }
-} catch (e) { app.log.warn({ err: e, migration: 'Palette design 18 nov. 2026' }, 'Échec de migration — poursuite du démarrage'); }
+} catch (e) { app.log.warn({ err: e, migration: 'Palette design T17' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TYPE mode_confirmation ADD VALUE IF NOT EXISTS 'paypal'`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TYPE mode_confirmation ADD VALUE IF NOT EXISTS \'paypal\'' }, 'Échec de migration — poursuite du démarrage'); }
