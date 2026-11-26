@@ -189,16 +189,16 @@ Future<void> main() async {
 // ═══════════════════════════════════════════════════════════════════
 class Cp {
   Cp._();
-  static const navy = Color(0xFF0F1C2E);
-  static const gold = Color(0xFFE5C158); // or, 18 nov. 2026, sur fond bleu nuit uniquement
-  static const goldDeep = Color(0xFFB47B17); // bronze ambré, 18 nov. 2026, textes or sur fond blanc
-  static const paper = Color(0xFFF4F6F9);
+  static const navy = Color(0xFF0B1F3A);
+  static const gold = Color(0xFFD4A72C); // or, palette maquette, sur fond bleu nuit uniquement
+  static const goldDeep = Color(0xFF8A6A12); // or foncé, palette maquette, textes or sur fond blanc
+  static const paper = Color(0xFFF5F6FA);
   static const card = Color(0xFFFFFFFF);
-  static const ink = Color(0xFF0F1C2E);
+  static const ink = Color(0xFF0B1F3A);
   static const inkMuted = Color(0xFF5E687C);
   static const line = Color(0xFFE4E7EF);
   static const verseTint = Color(0xFFFDF4D8);
-  static const verseLine = Color(0xFFE5C158);
+  static const verseLine = Color(0xFFD4A72C);
   static const ok = Color(0xFF1B6B3A);
   static const danger = Color(0xFFB3261E);
 

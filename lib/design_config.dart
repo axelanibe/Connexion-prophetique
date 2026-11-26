@@ -30,10 +30,10 @@ const Map<String, int> designNavIndex = {
 };
 
 const Map<String, dynamic> designConfigDefaults = {
-  'bleuNuit': '#0F1C2E',
-  'or': '#E5C158',
-  'orFonce': '#B47B17',
-  'fond': '#F4F6F9',
+  'bleuNuit': '#0B1F3A',
+  'or': '#D4A72C',
+  'orFonce': '#8A6A12',
+  'fond': '#F5F6FA',
   'titreVieSpirituelle': 'Ma vie spirituelle',
   'titreExplorer': 'Explorer',
   'titreDecouvrir': 'Découvrir',
