@@ -15,6 +15,8 @@
 // sans accès base, pour être testé sans serveur ni base, comme
 // src/temoignages.js. Les routes vivent dans server.js.
 
+import crypto from 'node:crypto';
+
 /// Catégories d'une publication, dans l'ordre du fil. La
 // prière ne concerne que les sujets généraux, comme prions
 // pour une nation ; le sujet personnel reste par e-mail.
@@ -28,6 +30,16 @@ export const TAILLE_MAX_PHOTO_MUR_OCTETS = 700 * 1024;
 
 /// Nombre de publications renvoyées, les plus récentes.
 export const LIMITE_MUR_PUBLICATIONS = 50;
+
+/// Clé R2 d'une vidéo de publication, mur v2 tranche 2 :
+/// dossier mur-videos, identifiant aléatoire, extension du
+/// type réel. Une seule vidéo par publication, le nouvel
+/// envoi remplace l'ancien objet. Aucune donnée membre dans
+/// la clé, rien qui permette de deviner le contenu.
+export function cleMurVideo(mime) {
+  const ext = mime === 'video/quicktime' ? 'mov' : mime === 'video/webm' ? 'webm' : 'mp4';
+  return `mur-videos/${crypto.randomUUID()}.${ext}`;
+}
 
 /// Vrai quand les octets sont une image JPEG, PNG ou WebP,
 // d'après leurs premiers octets, comme pour /moi/photo.
@@ -71,6 +83,43 @@ export function validerPublicationMur({ texte, photo, categorie }) {
   }
   if (!estImageAutorisee(octets)) return { statut: 415, message: 'Type de photo non autorisé.' };
   return null;
+}
+
+/// Profil public d'un membre du mur, mur v2 tranche 4 :
+/// jamais le matricule, seulement le nom, la fonction,
+/// l'établissement, la photo, la présentation, les compteurs
+/// et mon suivi. La photo est l'adresse de données, comme
+/// dans la route batch des auteurs.
+export function formaterProfilMur(ligne) {
+  const l = ligne ?? {};
+  const nombre = (v) => (typeof v === 'number' ? v : Number.parseInt(v ?? '0', 10) || 0);
+  return {
+    id: l.id,
+    nom_complet: l.nom_complet ?? '',
+    fonction: l.fonction ?? '',
+    etablissement_nom: l.etablissement_nom ?? '',
+    photo: l.photo ?? null,
+    presentation: l.presentation ?? '',
+    inscrit_le: l.inscrit_le instanceof Date ? l.inscrit_le.toISOString() : (l.inscrit_le ?? null),
+    nb_publications: nombre(l.nb_publications),
+    nb_reactions: nombre(l.nb_reactions),
+    nb_abonnes: nombre(l.nb_abonnes),
+    nb_abonnements: nombre(l.nb_abonnements),
+    suivi_par_moi: l.suivi_par_moi === true,
+    est_moi: l.est_moi === true,
+  };
+}
+
+/// Un membre d'une liste d'abonnés ou d'abonnements : nom
+/// et établissement seulement, sans photo en liste, même
+/// règle que la recherche messagerie.
+export function formaterMembreSuivi(ligne) {
+  const l = ligne ?? {};
+  return {
+    id: l.id,
+    nom_complet: l.nom_complet ?? '',
+    etablissement_nom: l.etablissement_nom ?? '',
+  };
 }
 
 /// Publication publique, telle que renvoyée par les routes :
