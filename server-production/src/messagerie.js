@@ -23,6 +23,7 @@
 /// nulles. Le paramètre $1 est l'identifiant du membre connecté.
 export const SQL_CONVERSATIONS_LISTE = `SELECT c.id, c.type, c.title, c.created_at, c.last_message_at, c.replies_disabled, c.ephemere, c.aide_statut, c.aide_motif,
        cp.est_favori AS est_favori,
+       (SELECT COUNT(*) FROM conversation_participants cp3 WHERE cp3.conversation_id = c.id AND cp3.is_active) AS nb_membres,
        a.nom_complet AS autre_nom, a.matricule AS autre_matricule
   FROM conversations c JOIN conversation_participants cp ON cp.conversation_id = c.id
   LEFT JOIN conversation_participants cp2 ON cp2.conversation_id = c.id AND cp2.member_id <> $1 AND cp2.is_active AND c.type = 'directe'
@@ -53,10 +54,13 @@ export function autreParticipantDeLigne(ligne) {
 /// Ligne de la liste telle que renvoyée au client : les colonnes
 /// de la requête, plus l'objet `autre` (ou null). Les colonnes
 /// plates autre_* sont retirées, le client ne lit que `autre`.
+/// `nb_membres` est un nombre : COUNT(*) arrive en chaîne depuis
+/// la base, tranche T4, 26 nov. 2026, pour le nombre affiché des
+/// groupes.
 export function formaterConversationListe(ligne) {
   if (!ligne) return ligne;
-  const { autre_nom: _autreNom, autre_matricule: _autreMatricule, autre_photo: _autrePhoto, ...reste } = ligne;
-  return { ...reste, autre: autreParticipantDeLigne(ligne) };
+  const { autre_nom: _autreNom, autre_matricule: _autreMatricule, autre_photo: _autrePhoto, nb_membres: nbMembres, ...reste } = ligne;
+  return { ...reste, nb_membres: nbMembres == null ? null : Number(nbMembres), autre: autreParticipantDeLigne(ligne) };
 }
 
 // ── Messages vocaux, 18 nov. 2026 ─────────────────────────────
