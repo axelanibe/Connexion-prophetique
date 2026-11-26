@@ -13,6 +13,7 @@ const racine = path.join(dossier, '..');
 const serveur = fs.readFileSync(path.join(racine, 'server.js'), 'utf8');
 const application = fs.readFileSync(path.join(racine, '..', 'lib', 'main.dart'), 'utf8');
 const modeles = fs.readFileSync(path.join(racine, '..', 'lib', 'app_models.dart'), 'utf8');
+const profil = fs.readFileSync(path.join(racine, '..', 'lib', 'nouveau', 'page_profil.dart'), 'utf8');
 
 test('Carte 127, liste : 13 pays, Côte d’Ivoire en premier', () => {
   assert.equal(PAYS_RESIDENCE.length, 13);
@@ -44,5 +45,7 @@ test('Carte 127, serveur : colonne, route et inscription branchées', () => {
 test('Carte 127, application : valeur serveur ramenée au canonique', () => {
   assert.ok(modeles.includes('String paysResidenceCanonique(String v)'), 'aide canonique');
   assert.ok(application.includes('paysResidence = paysResidenceCanonique(paysServeur);'), 'synchronisation');
-  assert.ok(application.includes('if (_pays != null && _pays!.isNotEmpty && !kPaysResidence.contains(_pays)) DropdownMenuItem(value: _pays,'), 'valeur gardée dans le menu');
+  // La nouvelle page Mon profil garde la valeur du serveur dans
+  // le menu même si elle n'est pas dans la liste.
+  assert.ok(profil.includes('if (_pays != null && _pays!.isNotEmpty) _pays!,'), 'valeur gardée dans le menu');
 });

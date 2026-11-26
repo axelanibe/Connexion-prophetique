@@ -123,6 +123,18 @@ export function appelObsolete(appel, maintenant) {
   return false;
 }
 
+/// Vrai si l'appel est manqué pour [monId] : je suis l'appelé,
+/// jamais l'appelant, et l'appel s'est terminé sans réponse
+/// (refus, annulation, expiration en sonnerie). Un appel répondu,
+/// ou expiré après sa réponse, n'est jamais manqué. Tranche T4,
+/// 26 nov. 2026 : l'historique d'appels et son badge rouge.
+/// [appel] porte statut, appelant_id et repondu_le.
+export function estAppelManque(appel, monId) {
+  if (!appel || appel.appelant_id === monId) return false;
+  if (appel.repondu_le) return false;
+  return appel.statut === 'termine' || appel.statut === 'expire';
+}
+
 /// Vrai si le contenu d'un signal est un objet (jamais null, jamais
 /// une chaîne, jamais un tableau), pour refuser les contenus
 /// malformés avant tout stockage.

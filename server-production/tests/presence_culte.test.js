@@ -36,8 +36,8 @@ const UUID_A = '11111111-1111-4111-8111-111111111111';
 const UUID_B = '22222222-2222-4222-8222-222222222222';
 
 // ── Cibles et uuid ─────────────────────────────────────────────
-test('cibles : temps_fort et temoignage seulement, jamais enseignement ni méditation', () => {
-  assert.deepEqual(CIBLES_AIME, ['temps_fort', 'temoignage']);
+test('cibles : temps_fort, temoignage et mur, jamais enseignement ni méditation', () => {
+  assert.deepEqual(CIBLES_AIME, ['temps_fort', 'temoignage', 'mur']);
   assert.equal(CIBLES_AIME.includes('enseignement'), false);
   assert.equal(CIBLES_AIME.includes('méditation'), false);
   assert.equal(uuidValide(UUID_A), true);

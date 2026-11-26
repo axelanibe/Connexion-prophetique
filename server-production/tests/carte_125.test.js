@@ -15,9 +15,8 @@ import { genererCartePdf, validerDonneesCarte } from '../src/generer_carte_pdf.j
 const dossier = path.dirname(fileURLToPath(import.meta.url));
 const racine = path.join(dossier, '..');
 const serveur = fs.readFileSync(path.join(racine, 'server.js'), 'utf8');
-const pageCarte = fs.readFileSync(path.join(racine, '..', 'lib', 'carte_nouvelle.dart'), 'utf8');
+const pageCarte = fs.readFileSync(path.join(racine, '..', 'lib', 'nouveau', 'page_carte.dart'), 'utf8');
 const application = fs.readFileSync(path.join(racine, '..', 'lib', 'main.dart'), 'utf8');
-const admin = fs.readFileSync(path.join(racine, '..', 'lib', 'admin_pages.dart'), 'utf8');
 
 test('Carte 125, aide : casse mixte, accents et espaces', () => {
   assert.equal(nomCompletMajuscules('Axel Anibe'), 'AXEL ANIBE');
@@ -117,9 +116,13 @@ function extraireTextePdf(buffer) {
   return textes.join('');
 }
 
-test('Carte 125, application : inscription, correction et page Carte', () => {
+test('Carte 125, application : inscription et page Carte', () => {
   assert.ok(application.includes('nomCompletMajuscules(_name.text)'), 'inscription normalisée');
   assert.ok(application.includes('TextCapitalization.characters'), 'clavier en majuscules');
-  assert.ok(admin.includes('nomCompletMajuscules(_nomCtrl.text)'), 'correction normalisée');
-  assert.ok(pageCarte.includes('Text(m.name.toUpperCase()'), 'carte affichée en majuscules');
+  // La page Carte affiche le nom tel que le serveur l'a enregistré,
+  // en majuscules depuis l'inscription (normalisation serveur,
+  // vérifiée plus haut) et depuis la route /moi/nom (T11).
+  // La page de correction admin n'existe pas dans la nouvelle
+  // application (T11).
+  assert.ok(pageCarte.includes('m.name'), 'carte affiche le nom du membre');
 });

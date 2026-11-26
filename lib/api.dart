@@ -386,7 +386,20 @@ class ApiClient {
     return null;
   }
   Future<List<Map<String, dynamic>>> fetchLivres() => _list('/livres');
+
+  /// Mes livres achetés, GET /moi/achats, tranche T7 :
+  /// la route existe côté serveur, elle renvoie id, titre,
+  /// auteur, description et format des livres débloqués.
+  /// Sans elle, la pastille Mes achats ne peut pas se
+  /// remplir sans relire les demandes locales.
+  Future<List<Map<String, dynamic>>> fetchMesAchats() =>
+      _list('/moi/achats');
   Future<List<Map<String, dynamic>>> fetchEnseignements() => _list('/enseignements');
+
+  /// Sélections audio de Parole vivante, GET /selections-audio,
+  /// tranche T13 : catalogue public en lecture seule.
+  Future<List<Map<String, dynamic>>> fetchSelectionsAudio() =>
+      _list('/selections-audio');
 
   /// Documents institutionnels, 1er nov. 2026, version 1 : liste
   /// filtrée côté serveur selon l'établissement du membre.
@@ -819,6 +832,53 @@ class ApiClient {
     }
   }
 
+  /// Nom complet du membre, T11, 26 nov. 2026 : POST /moi/nom,
+  /// même patron que la fonction. Renvoie faux si le serveur le
+  /// refuse, sans jamais lever d'exception pour l'interface.
+  Future<bool> updateNom(String nomComplet) async {
+    try {
+      await _post('/moi/nom', {'nom_complet': nomComplet});
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Ville du membre, T11, 26 nov. 2026 : POST /moi/ville, même
+  /// patron que le nom. Renvoie faux si le serveur la refuse,
+  /// sans jamais lever d'exception pour l'interface.
+  Future<bool> updateVille(String ville) async {
+    try {
+      await _post('/moi/ville', {'ville': ville});
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Changement d'e-mail, T11, 26 nov. 2026 : le code est envoyé
+  /// à la nouvelle adresse avant le changement, puis confirmé.
+  /// La demande répond faux sans SMTP (503) ou sur un e-mail déjà
+  /// pris (409) ; la confirmation répond faux sur un code
+  /// invalide ou expiré. Jamais d'exception pour l'interface.
+  Future<bool> demanderChangementEmail(String email) async {
+    try {
+      await _post('/moi/email/demander', {'email': email});
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> confirmerChangementEmail(String email, String code) async {
+    try {
+      await _post('/moi/email/confirmer', {'email': email, 'code': code});
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<Map<String, dynamic>> fetchMoi() async {
     final data = await _get('/moi');
     return data as Map<String, dynamic>;
@@ -923,17 +983,184 @@ class ApiClient {
   /// les plus récentes d'abord, avec leurs nombres de J'aime et
   /// de commentaires et mon J'aime. Lecture seule, jamais
   /// d'écriture sur un GET.
-  Future<Map<String, dynamic>> fetchMur() async {
-    final data = await _get('/mur');
+  /// Nouvelle Connexion, tranche T3, 26 nov. 2026 : catégorie,
+  /// recherche (3 caractères au moins) et curseur de pagination,
+  /// selon la conception du mur v2, section 3.
+  Future<Map<String, dynamic>> fetchMur({
+    String? categorie,
+    String? q,
+    String? avant,
+    int limite = 20,
+  }) async {
+    final params = <String, String>{'limite': '$limite'};
+    if (categorie != null && categorie.isNotEmpty) params['categorie'] = categorie;
+    if (q != null && q.trim().isNotEmpty) params['q'] = q.trim();
+    if (avant != null && avant.isNotEmpty) params['avant'] = avant;
+    final query = Uri(queryParameters: params).query;
+    final data = await _get('/mur?$query');
     if (data is Map<String, dynamic>) return data;
     return const {};
+  }
+
+  /// Détail d'une publication du mur, GET /mur/:id.
+  /// La publication est sous la clé 'publication'.
+  Future<Map<String, dynamic>> fetchMurDetail(String id) async {
+    final data = await _get('/mur/${Uri.encodeComponent(id)}');
+    if (data is Map<String, dynamic>) {
+      final publication = data['publication'];
+      if (publication is Map<String, dynamic>) return publication;
+      return data;
+    }
+    return const {};
+  }
+
+  /// Photos des auteurs du fil, en lot : un seul appel pour
+  /// toute la page, mise en cache côté application.
+  Future<Map<String, dynamic>> fetchPhotosAuteurs(List<String> ids) async {
+    if (ids.isEmpty) return const {'photos': []};
+    final data = await _get(
+      '/mur/auteurs-photos?ids=${ids.map(Uri.encodeComponent).join(',')}',
+    );
+    if (data is Map<String, dynamic>) return data;
+    return const {'photos': []};
   }
 
   /// Publication sur le mur, POST /mur en JSON : texte seul,
   /// photo seule, ou les deux. La photo est une adresse de
   /// données, réduite côté application comme la photo de profil.
-  Future<Map<String, dynamic>> publierMur({String? texte, String? photo}) =>
-      _post('/mur', {'texte': texte ?? '', if (photo != null) 'photo': photo});
+  /// Tranche T3 : catégorie obligatoire côté application, le
+  /// texte aussi ; le serveur garde 'autre' par défaut pour
+  /// ne pas casser l'ancienne application.
+  Future<Map<String, dynamic>> publierMur({String? texte, String? photo, String? categorie}) =>
+      _post('/mur', {
+        'texte': texte ?? '',
+        if (photo != null) 'photo': photo,
+        if (categorie != null && categorie.isNotEmpty) 'categorie': categorie,
+      });
+
+  /// Vidéo courte d'une publication, POST /mur/:id/video en
+  /// multipart, sur le modèle de publierStory : 60 s au plus
+  /// côté application, 25 Mo côté serveur, une seule vidéo
+  /// par publication.
+  Future<Map<String, dynamic>> publierVideoMur(
+    String id, {
+    required List<int> bytes,
+    required String filename,
+  }) async {
+    Future<http.StreamedResponse> send(String? token) async {
+      final req = http.MultipartRequest(
+        'POST',
+        Uri.parse('$kApiBaseUrl/mur/${Uri.encodeComponent(id)}/video'),
+      );
+      if (token != null) req.headers['Authorization'] = 'Bearer $token';
+      req.files.add(http.MultipartFile.fromBytes('fichier', bytes, filename: filename));
+      return req.send().timeout(const Duration(seconds: 120));
+    }
+    var res = await send(_accessToken);
+    if (res.statusCode == 401 && _refreshToken != null && await refreshAccess()) {
+      res = await send(_accessToken);
+    }
+    final body = await res.stream.bytesToString();
+    if (res.statusCode < 200 || res.statusCode >= 300) throw _error(res.statusCode, body, entetes: res.headers);
+    final data = jsonDecode(body);
+    if (data is Map<String, dynamic>) return data;
+    return {'data': data};
+  }
+
+  /// Retrait de la vidéo d'une publication, auteur ou structure.
+  Future<Map<String, dynamic>> supprimerVideoMur(String id) =>
+      _delete('/mur/${Uri.encodeComponent(id)}/video');
+
+  /// Suivre un membre, POST /mur/suivis, idempotent.
+  Future<Map<String, dynamic>> suivreMembre(String membreId) =>
+      _post('/mur/suivis', {'suivi_id': membreId});
+
+  /// Ne plus suivre un membre, DELETE /mur/suivis/:id.
+  Future<Map<String, dynamic>> nePlusSuivre(String membreId) =>
+      _delete('/mur/suivis/${Uri.encodeComponent(membreId)}');
+
+  /// Profil public d'un membre du mur : sa fiche et ses
+  /// publications visibles, curseur de pagination.
+  Future<Map<String, dynamic>> fetchProfilMur(
+    String membreId, {
+    String? avant,
+    int limite = 20,
+  }) async {
+    final params = <String, String>{'limite': '$limite'};
+    if (avant != null && avant.isNotEmpty) params['avant'] = avant;
+    final query = Uri(queryParameters: params).query;
+    final data = await _get('/mur/membres/${Uri.encodeComponent(membreId)}?$query');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Abonnés d'un membre, 50 au plus : nom et établissement
+  /// seulement, sans photo en liste.
+  Future<List<Map<String, dynamic>>> fetchAbonnes(String membreId) async {
+    final data = await _get('/mur/membres/${Uri.encodeComponent(membreId)}/abonnes');
+    if (data is Map<String, dynamic> && data['membres'] is List) {
+      return (data['membres'] as List).cast<Map<String, dynamic>>();
+    }
+    return const [];
+  }
+
+  /// Abonnements d'un membre, 50 au plus, même forme.
+  Future<List<Map<String, dynamic>>> fetchAbonnements(String membreId) async {
+    final data = await _get('/mur/membres/${Uri.encodeComponent(membreId)}/abonnements');
+    if (data is Map<String, dynamic> && data['membres'] is List) {
+      return (data['membres'] as List).cast<Map<String, dynamic>>();
+    }
+    return const [];
+  }
+
+  /// Enregistrer une publication, POST /mur/:id/enregistrer,
+  /// idempotent.
+  Future<Map<String, dynamic>> enregistrerPublication(String id) =>
+      _post('/mur/${Uri.encodeComponent(id)}/enregistrer', {});
+
+  /// Retirer une publication de mes enregistrements.
+  Future<Map<String, dynamic>> retirerEnregistrement(String id) =>
+      _delete('/mur/${Uri.encodeComponent(id)}/enregistrer');
+
+  /// Mes publications enregistrées, les plus récentes d'abord,
+  /// curseur de pagination.
+  Future<Map<String, dynamic>> fetchEnregistrements({String? avant, int limite = 20}) async {
+    final params = <String, String>{'limite': '$limite'};
+    if (avant != null && avant.isNotEmpty) params['avant'] = avant;
+    final query = Uri(queryParameters: params).query;
+    final data = await _get('/mur/enregistrements?$query');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
+  }
+
+  /// Réagir à une cible, avec le type : 'jaime', 'amen' ou
+  /// 'priere'. Une seule réaction par membre et par cible,
+  /// changeable : un nouvel envoi remplace le type.
+  Future<Map<String, dynamic>> publierAime(
+    String cibleType,
+    String cibleId, {
+    String type = 'jaime',
+  }) async {
+    final data = await _post('/aimes', {'cible_type': cibleType, 'cible_id': cibleId, 'type': type});
+    return (data['aime'] as Map<String, dynamic>?) ?? const {};
+  }
+
+  /// Poster un commentaire, 1 à 1000 caractères, avec réponse
+  /// à un niveau (parentId) et mentions (5 au plus).
+  Future<Map<String, dynamic>> publierCommentaire(
+    String cibleType,
+    String cibleId,
+    String texte, {
+    String? parentId,
+    List<String>? mentions,
+  }) =>
+      _post('/commentaires', {
+        'cible_type': cibleType,
+        'cible_id': cibleId,
+        'texte': texte,
+        if (parentId != null && parentId.isNotEmpty) 'parent_id': parentId,
+        if (mentions != null && mentions.isNotEmpty) 'mentions': mentions,
+      });
 
   /// Suppression d'une publication du mur, DELETE /mur/:id :
   /// son auteur, ou le Bureau dans son périmètre, le serveur
@@ -1582,6 +1809,21 @@ class ApiClient {
     return res.bodyBytes;
   }
 
+  /// Octets d'un fichier public, GET /fichiers/:id, tranche T13 :
+  /// couvertures, photos et audios des enseignements. La route est
+  /// publique pour ces fichiers, sans en-tête d'autorisation, comme
+  /// le client les charge en URL d'image. Sert aux téléchargements
+  /// hors ligne de Parole vivante.
+  Future<List<int>> fetchFichierOctets(String fichierId) async {
+    final res = await _client
+        .get(Uri.parse('$kApiBaseUrl/fichiers/$fichierId'))
+        .timeout(const Duration(seconds: 180));
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw _error(res.statusCode, res.body, entetes: res.headers);
+    }
+    return res.bodyBytes;
+  }
+
   /// Téléversement d'un audio vers le serveur, POST
   /// /admin/fichiers?type=audio. Le serveur n'accepte que MP3,
   /// M4A, AAC, OGG et WAV, 100 Mo max, type lu dans les octets.
@@ -1660,7 +1902,7 @@ class ApiClient {
   /// téléversé côté serveur), pas un simple lien audio : l'appelant
   /// doit donc expliquer un refus en ce sens, et conserver l'ajout
   /// en local. _post est privé à ce fichier, d'où ce relais public.
-  Future<Map<String, dynamic>> createEnseignement({required String titre, String? orateur, String? audioId, String? lienAudio, String? description, String? thematique, String? format, String? duree, String? dateTexte}) async {
+  Future<Map<String, dynamic>> createEnseignement({required String titre, String? orateur, String? audioId, String? lienAudio, String? description, String? thematique, String? format, String? categorie, String? duree, String? dateTexte}) async {
     return _post('/admin/enseignements', {
       'titre': titre,
       if (orateur != null && orateur.isNotEmpty) 'orateur': orateur,
@@ -1669,6 +1911,7 @@ class ApiClient {
       if (description != null && description.isNotEmpty) 'description': description,
       if (thematique != null && thematique.isNotEmpty) 'thematique': thematique,
       if (format != null && format.isNotEmpty) 'format': format,
+      if (categorie != null && categorie.isNotEmpty) 'categorie': categorie,
       if (duree != null && duree.isNotEmpty) 'duree': duree,
       if (dateTexte != null && dateTexte.isNotEmpty) 'date_texte': dateTexte,
     });
@@ -1831,6 +2074,7 @@ class ApiClient {
     required int prixFcfa,
     String? description,
     String? format,
+    String? categorie,
     String? couvertureId,
     String? fichierId,
   }) async {
@@ -1840,6 +2084,7 @@ class ApiClient {
       'prix_fcfa': prixFcfa,
       if (description != null && description.isNotEmpty) 'description': description,
       if (format != null && format.isNotEmpty) 'format': format,
+      if (categorie != null && categorie.isNotEmpty) 'categorie': categorie,
       if (couvertureId != null && couvertureId.isNotEmpty) 'couverture_id': couvertureId,
       if (fichierId != null && fichierId.isNotEmpty) 'fichier_id': fichierId,
       'publie': true,
@@ -1887,6 +2132,7 @@ class ApiClient {
     int? prixFcfa,
     String? description,
     String? format,
+    String? categorie,
     String? couvertureId,
     String? fichierId,
     bool? publie,
@@ -1897,6 +2143,7 @@ class ApiClient {
       if (prixFcfa != null) 'prix_fcfa': prixFcfa,
       if (description != null) 'description': description,
       if (format != null) 'format': format,
+      if (categorie != null) 'categorie': categorie,
       if (couvertureId != null && couvertureId.isNotEmpty) 'couverture_id': couvertureId,
       if (fichierId != null && fichierId.isNotEmpty) 'fichier_id': fichierId,
       if (publie != null) 'publie': publie,
@@ -1912,6 +2159,7 @@ class ApiClient {
     String? description,
     String? thematique,
     String? format,
+    String? categorie,
     String? duree,
     String? dateTexte,
   }) async {
@@ -1923,9 +2171,46 @@ class ApiClient {
       if (description != null && description.isNotEmpty) 'description': description,
       if (thematique != null && thematique.isNotEmpty) 'thematique': thematique,
       if (format != null && format.isNotEmpty) 'format': format,
+      if (categorie != null && categorie.isNotEmpty) 'categorie': categorie,
       if (duree != null && duree.isNotEmpty) 'duree': duree,
       if (dateTexte != null && dateTexte.isNotEmpty) 'date_texte': dateTexte,
     });
+  }
+
+  /// Création, modification et retrait d'une sélection audio,
+  /// POST, PUT et DELETE /admin/selections-audio, tranche T13.
+  /// Réservé à l'administrateur général côté serveur.
+  Future<Map<String, dynamic>> createSelectionAudio({
+    required String titre,
+    String? description,
+    List<String>? audioIds,
+    int? ordre,
+  }) async {
+    return _post('/admin/selections-audio', {
+      'titre': titre,
+      if (description != null && description.isNotEmpty) 'description': description,
+      if (audioIds != null) 'audio_ids': audioIds,
+      if (ordre != null) 'ordre': ordre,
+    });
+  }
+
+  Future<Map<String, dynamic>> updateSelectionAudio(
+    String id, {
+    String? titre,
+    String? description,
+    List<String>? audioIds,
+    int? ordre,
+  }) async {
+    return _put('/admin/selections-audio/$id', {
+      if (titre != null) 'titre': titre,
+      if (description != null) 'description': description,
+      if (audioIds != null) 'audio_ids': audioIds,
+      if (ordre != null) 'ordre': ordre,
+    });
+  }
+
+  Future<void> deleteSelectionAudio(String id) async {
+    await _delete('/admin/selections-audio/$id');
   }
 
   Future<void> deleteActualite(String id) async {
@@ -1961,6 +2246,26 @@ class ApiClient {
 
   Future<Map<String, dynamic>> createCarte(int montantFcfa) async {
     return _post('/paiements/carte', {'montant_fcfa': montantFcfa});
+  }
+
+  // Moyens de paiement, T16, 26 nov. 2026 : la liste vient du
+  // serveur, selon la configuration. Un moyen sans identifiants
+  // n'est pas proposé comme disponible.
+  Future<List<Map<String, dynamic>>> fetchMoyensPaiement() =>
+      _list('/paiements/moyens');
+
+  // Crée le paiement chez le prestataire choisi pour une demande
+  // en attente, et retourne l'URL à ouvrir. Pour MTN, pas d'URL :
+  // le membre autorise sur son téléphone.
+  Future<Map<String, dynamic>> payerPaiement(
+          String reference, String moyen) async =>
+      _post('/paiements/$reference/payer', {'moyen': moyen});
+
+  // État d'une demande, avec vérification chez le prestataire
+  // quand elle est en attente.
+  Future<Map<String, dynamic>> fetchEtatPaiement(String reference) async {
+    final data = await _get('/paiements/$reference/etat');
+    return Map<String, dynamic>.from(data as Map);
   }
 
   // Abonnement Plateforme, carte 83, 7 nov. 2026 : 100 000 FCFA
@@ -2830,6 +3135,13 @@ Future<Map<String, dynamic>> fetchAdminMembreDetail(String membreId) async {
   /// de l'accueil : un appel instantané même hors Messagerie.
   Future<List<Map<String, dynamic>>> fetchAppelsEntrants() =>
       _list('/messagerie/appels/entrants');
+
+  /// Historique de mes appels, tranche T4, 26 nov. 2026 : les
+  /// 50 derniers terminés ou expirés, du plus récent au plus
+  /// ancien, avec l'autre membre et `manque` (appelé sans
+  /// réponse). Lecture seule, pour le volet Appels.
+  Future<List<Map<String, dynamic>>> fetchHistoriqueAppels() =>
+      _list('/messagerie/appels');
 
   /// Présence de l'autre membre d'une conversation directe :
   /// vrai quand il a signalé son activité dans les 10 dernières

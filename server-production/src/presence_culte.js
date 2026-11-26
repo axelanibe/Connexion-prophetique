@@ -23,6 +23,14 @@
 /// Cibles possibles d'un J'aime ou d'un commentaire.
 export const CIBLES_AIME = Object.freeze(['temps_fort', 'temoignage', 'mur']);
 
+/// Types de réaction, mur v2 tranche 3 : un seul type par
+/// membre et par cible, changeable. 'jaime' est le défaut,
+/// pour les temps forts et les témoignages comme avant.
+export const TYPES_REACTION = Object.freeze(['jaime', 'amen', 'priere']);
+
+/// Mentions dans un commentaire, 5 au plus, mur v2 tranche 3.
+export const NOMBRE_MAX_MENTIONS = 5;
+
 /// Longueurs maximales des textes.
 export const LONGUEUR_MAX_TITRE_TEMPS_FORT = 200;
 export const LONGUEUR_MAX_TEXTE_TEMPS_FORT = 2000;
@@ -55,10 +63,41 @@ export function validerTempsFort({ titre, texte, image_id }) {
   return null;
 }
 
-/// Refus d'un J'aime, null quand tout est bon.
-export function validerAime({ cible_type, cible_id }) {
+/// Refus d'un J'aime, null quand tout est bon. Le type, quand
+/// il est donné, est l'un des trois, sinon 'jaime'.
+export function validerAime({ cible_type, cible_id, type }) {
   if (!CIBLES_AIME.includes(cible_type)) return { statut: 400, message: 'La cible du J’aime est invalide.' };
   if (!uuidValide(cible_id)) return { statut: 400, message: 'La cible du J’aime est invalide.' };
+  if (type != null && type !== '' && !TYPES_REACTION.includes(type)) return { statut: 400, message: 'Type de réaction invalide.' };
+  return null;
+}
+
+/// Mentions normalisées, mur v2 tranche 3 : tableau de 5
+/// identifiants au plus, dédupliqués, tous des uuid. Renvoie
+/// {mentions} quand tout est bon, {refus} sinon. L'existence
+/// en base est vérifiée par la route, pas ici.
+export function normaliserMentions(mentions) {
+  if (mentions == null) return { mentions: [] };
+  if (!Array.isArray(mentions)) return { refus: { statut: 400, message: 'Mentions invalides.' } };
+  if (mentions.length > NOMBRE_MAX_MENTIONS) return { refus: { statut: 400, message: '5 mentions au plus.' } };
+  const uniques = [];
+  for (const m of mentions) {
+    if (!uuidValide(m)) return { refus: { statut: 400, message: 'Mention invalide.' } };
+    if (!uniques.includes(m)) uniques.push(m);
+  }
+  return { mentions: uniques };
+}
+
+/// Refus d'une réponse à un commentaire, null quand tout est
+/// bon. Le parent doit exister, viser la même cible et être
+/// de premier niveau : une réponse ne peut pas avoir de
+/// réponse, un seul niveau, comme décidé.
+export function refusReponse(parent, { cible_type, cible_id }) {
+  if (!parent) return { statut: 404, message: 'Commentaire parent introuvable.' };
+  if (parent.cible_type !== cible_type || parent.cible_id !== cible_id) {
+    return { statut: 400, message: 'Le commentaire parent vise une autre cible.' };
+  }
+  if (parent.parent_id != null) return { statut: 400, message: 'Une réponse ne peut pas avoir de réponse.' };
   return null;
 }
 
@@ -86,25 +125,35 @@ export function formaterTempsFort(row) {
   };
 }
 
-/// Compte de J'aime d'une cible, avec mon J'aime ou non.
-export function formaterCompteAime({ cible_type, cible_id, nombre, a_aime }) {
+/// Compte de réactions d'une cible, par type, avec mon type
+/// ou non. 'nombre' et 'a_aime' sont gardés tels quels pour
+/// les temps forts, les témoignages et l'ancienne application.
+export function formaterCompteAime({ cible_type, cible_id, nombre, a_aime, nb_jaime, nb_amen, nb_priere, mon_type }) {
+  const n = (v) => (typeof v === 'number' ? v : Number.parseInt(v ?? '0', 10) || 0);
   return {
     cible_type,
     cible_id,
-    nombre: typeof nombre === 'number' ? nombre : Number.parseInt(nombre ?? '0', 10) || 0,
+    nombre: n(nombre),
     a_aime: a_aime === true,
+    nb_jaime: n(nb_jaime),
+    nb_amen: n(nb_amen),
+    nb_priere: n(nb_priere),
+    mon_type: mon_type ?? null,
   };
 }
 
 /// Commentaire public, avec son auteur et mon droit de
 /// suppression : auteur ou structure, jamais la liste des
-/// J'aime, qui reste un simple nombre.
+/// J'aime, qui reste un simple nombre. 'parent_id' est nul
+/// pour un commentaire de premier niveau, renseigné pour une
+/// réponse, mur v2 tranche 3.
 export function formaterCommentaire(row) {
   const r = row ?? {};
   return {
     id: r.id,
     cible_type: r.cible_type,
     cible_id: r.cible_id,
+    parent_id: r.parent_id ?? null,
     auteur_nom: r.auteur_nom ?? '',
     texte: r.texte ?? '',
     cree_le: r.cree_le instanceof Date ? r.cree_le.toISOString() : (r.cree_le ?? null),

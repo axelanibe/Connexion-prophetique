@@ -63,6 +63,32 @@ test('groupe événement : annulation, le membre sort du groupe sans effacement'
   assert.match(SQL_RETIRER_PARTICIPANT_GROUPE, /UPDATE conversation_participants SET is_active = false WHERE conversation_id = \$1 AND member_id = \$2/);
 });
 
+// ── Nombre de membres des groupes, tranche T4 ───────────────
+// La liste compte les participants actifs de chaque conversation,
+// pour le nombre affiché des groupes. COUNT(*) arrive en chaîne
+// depuis la base, le formateur le rend en nombre.
+test('liste : le nombre de participants actifs est renvoyé', () => {
+  assert.match(SQL_CONVERSATIONS_LISTE, /\(SELECT COUNT\(\*\) FROM conversation_participants cp3 WHERE cp3\.conversation_id = c\.id AND cp3\.is_active\) AS nb_membres/);
+});
+
+test('liste : la ligne formatée garde le nombre en nombre', () => {
+  const ligne = {
+    id: 'c1',
+    type: 'groupe_structure',
+    title: 'Groupe de test',
+    est_favori: false,
+    nb_membres: '12',
+    autre_nom: null,
+    autre_matricule: null,
+    autre_photo: null,
+  };
+  const formatee = formaterConversationListe(ligne);
+  assert.equal(formatee.nb_membres, 12);
+  assert.equal(typeof formatee.nb_membres, 'number');
+  const sansNombre = formaterConversationListe({ ...ligne, nb_membres: undefined });
+  assert.equal(sansNombre.nb_membres, null);
+});
+
 // ── Favoris ──────────────────────────────────────────────────
 test('liste : le favori de l’appelant est renvoyé', () => {
   assert.match(SQL_CONVERSATIONS_LISTE, /cp\.est_favori AS est_favori/);

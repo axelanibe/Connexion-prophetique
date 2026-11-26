@@ -11,7 +11,8 @@ import { fileURLToPath } from 'node:url';
 const dossier = path.dirname(fileURLToPath(import.meta.url));
 const racine = path.join(dossier, '..');
 const serveur = fs.readFileSync(path.join(racine, 'server.js'), 'utf8');
-const page = fs.readFileSync(path.join(racine, '..', 'lib', 'carte_nouvelle.dart'), 'utf8');
+const page = fs.readFileSync(path.join(racine, '..', 'lib', 'nouveau', 'page_profil.dart'), 'utf8');
+const service = fs.readFileSync(path.join(racine, '..', 'lib', 'nouveau', 'service_profil.dart'), 'utf8');
 const api = fs.readFileSync(path.join(racine, '..', 'lib', 'api.dart'), 'utf8');
 
 test('Carte 129, bureau national : inséré au démarrage, sans toucher à schema.sql', () => {
@@ -53,20 +54,19 @@ test('Carte 129, serveur : la fonction passe par la route existante, liste ferm�
   assert.ok(serveur.includes('e.nom AS etablissement'), 'renvoyé par /moi');
 });
 
-test('Carte 129, application : les deux menus sont dans NouvelleModifierInfosPage', () => {
-  assert.ok(page.includes('class NouvelleModifierInfosPage'), 'nouvelle page');
-  assert.ok(page.includes("Text(tr('Fonction')"), 'menu fonction');
-  assert.ok(page.includes('for (final f in kFonctions) DropdownMenuItem(value: f,'), 'fonctions de la liste');
-  assert.ok(page.includes("Text(tr('Établissement')"), 'menu établissement');
-  assert.ok(page.includes('for (final e in app.etabs) DropdownMenuItem(value: e.name,'), 'établissements du serveur');
-  assert.ok(page.includes("DropdownMenuItem(value: 'Autre', child: Text(tr('Autre')"), 'choix Autre');
-  assert.ok(page.includes('api.updateFonction(nouvelleFonction)'), 'envoi fonction');
-  assert.ok(page.includes('api.updateMonEtablissement('), 'envoi établissement');
-  assert.ok(page.includes('unawaited(app.syncServerProfile())'), 'Profil et carte resynchronisés');
+test('Carte 129, application : les deux menus sont dans PageMonProfilNouvelle', () => {
+  assert.ok(page.includes('class PageMonProfilNouvelle'), 'nouvelle page');
+  assert.ok(page.includes("          'Fonction',"), 'menu fonction');
+  assert.ok(page.includes('for (final f in fonctionItems)'), 'fonctions de la liste');
+  assert.ok(page.includes("          'Établissement',"), 'menu établissement');
+  assert.ok(page.includes('for (final e in etabs)'), 'établissements du serveur');
+  assert.ok(page.includes("      'Bureau national',"), 'Bureau national proposé');
+  assert.ok(page.includes("      'Autre',"), 'choix Autre');
+  assert.ok(service.includes('await _api.updateFonction(modifs.fonction)'), 'envoi fonction');
+  assert.ok(service.includes('await _api.updateMonEtablissement('), 'envoi établissement');
 });
 
 test('Carte 129, application : envoi au serveur sans jamais bloquer', () => {
   assert.ok(api.includes("await _post('/moi/etablissement', {'etablissement': etablissement})"), 'route appelée');
-  assert.ok(page.includes('Établissement gardé sur cet appareil seulement'), 'message en cas d’échec');
-  assert.ok(page.includes('Fonction gardée sur cet appareil seulement'), 'message en cas d’échec');
+  assert.ok(page.includes('Certains champs n’ont pas pu être envoyés au serveur.'), 'message en cas d’échec');
 });
