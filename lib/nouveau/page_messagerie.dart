@@ -509,7 +509,7 @@ class _VoletDiscussions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
       children: [
         Wrap(
           spacing: 8,
@@ -770,7 +770,9 @@ class _VoletAppels extends StatelessWidget {
       );
     }
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
+      // T17 : bas ramené de 96 à 16, la coquille ajoute
+      // déjà 80 px, sinon 176 px de vide en bas de liste.
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
       itemCount: appels.length,
       itemBuilder: (_, i) {
         final appel = appels[i];

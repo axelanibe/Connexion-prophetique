@@ -332,38 +332,44 @@ class _CartePriere extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
+                  flex: 1,
                   child: TextButton.icon(
                     onPressed: onEcouter,
+                    style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
                     icon: Icon(
                       enEcoute ? Icons.stop_outlined : Icons.volume_up_outlined,
-                      size: 20,
+                      size: 16,
                       color: PaletteNouvelle.bleuNuit,
                     ),
                     label: Text(
                       enEcoute ? 'Arrêter' : 'Écouter',
-                      style: const TextStyle(color: PaletteNouvelle.bleuNuit, fontSize: 13, fontWeight: FontWeight.w700),
+                      style: const TextStyle(color: PaletteNouvelle.bleuNuit, fontSize: 12, fontWeight: FontWeight.w700),
                     ),
                   ),
                 ),
                 Expanded(
+                  flex: 1,
                   child: TextButton.icon(
                     onPressed: onPartager,
-                    icon: const Icon(Icons.share_outlined, size: 20, color: PaletteNouvelle.bleuNuit),
+                    style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
+                    icon: const Icon(Icons.share_outlined, size: 16, color: PaletteNouvelle.bleuNuit),
                     label: const Text(
                       'Partager',
-                      style: TextStyle(color: PaletteNouvelle.bleuNuit, fontSize: 13, fontWeight: FontWeight.w700),
+                      style: TextStyle(color: PaletteNouvelle.bleuNuit, fontSize: 12, fontWeight: FontWeight.w700),
                     ),
                   ),
                 ),
                 Expanded(
+                  flex: 2,
                   child: TextButton.icon(
                     onPressed: onOuvrirBible,
-                    icon: const Icon(Icons.menu_book_outlined, size: 20, color: PaletteNouvelle.bleuNuit),
+                    style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
+                    icon: const Icon(Icons.menu_book_outlined, size: 16, color: PaletteNouvelle.bleuNuit),
                     label: const Text(
                       'Ouvrir dans la Bible',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: PaletteNouvelle.bleuNuit, fontSize: 13, fontWeight: FontWeight.w700),
+                      style: TextStyle(color: PaletteNouvelle.bleuNuit, fontSize: 12, fontWeight: FontWeight.w700),
                     ),
                   ),
                 ),

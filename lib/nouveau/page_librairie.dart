@@ -77,7 +77,7 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
     final choisi = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFFF4F6F9),
+      backgroundColor: PaletteNouvelle.papier,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {

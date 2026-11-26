@@ -448,7 +448,10 @@ class NouvelleCoquilleState extends State<NouvelleCoquille> {
                 ),
               ],
             ),
-      body: _corps,
+      // T17, 26 nov. 2026 : marge basse de 80 px, le bouton
+      // flottant Assistant occupe une bande de 64 px en bas
+      // du corps, les listes s'arrêtent au-dessus de lui.
+      body: Padding(padding: const EdgeInsets.only(bottom: 80), child: _corps),
       // Sur Parole vivante le bouton flottant Assistant est
       // masqué : il recouvrirait le mini-lecteur, tranche T13.
       floatingActionButton:
