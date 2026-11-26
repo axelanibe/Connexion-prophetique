@@ -362,6 +362,11 @@ class ConversationMessagerie {
   /// null quand il est désactivé. Jamais sur un groupe.
   final int? ephemere;
 
+  /// Nombre de participants actifs, tranche T4, 26 nov. 2026 :
+  /// affiché pour les groupes, null quand le serveur ne le
+  /// renvoie pas. Jamais pour une directe.
+  final int? nbMembres;
+
   /// Aide de la structure, 21 nov. 2026, carte 4 : statut de la
   /// demande, ouvert, en cours ou résolu, et son motif, problème
   /// ou abus. Null quand la conversation n'est pas une demande.
@@ -384,6 +389,7 @@ class ConversationMessagerie {
     this.autrePhoto,
     this.estFavori = false,
     this.ephemere,
+    this.nbMembres,
     this.aideStatut,
     this.aideMotif,
   });
@@ -411,6 +417,7 @@ class ConversationMessagerie {
       autrePhoto: (json['autre'] is Map ? json['autre']['photo'] : json['autre_photo']) as String?,
       estFavori: json['est_favori'] as bool? ?? false,
       ephemere: (json['ephemere'] as num?)?.toInt(),
+      nbMembres: (json['nb_membres'] as num?)?.toInt(),
       aideStatut: (json['aide_statut'] ?? json['statut']) as String?,
       aideMotif: (json['aide_motif'] ?? json['motif']) as String?,
     );
@@ -427,6 +434,7 @@ class ConversationMessagerie {
     String? autrePhoto,
     bool? estFavori,
     int? ephemere,
+    int? nbMembres,
     String? aideStatut,
     String? aideMotif,
   }) {
@@ -447,6 +455,7 @@ class ConversationMessagerie {
       autrePhoto: autrePhoto ?? this.autrePhoto,
       estFavori: estFavori ?? this.estFavori,
       ephemere: ephemere ?? this.ephemere,
+      nbMembres: nbMembres ?? this.nbMembres,
       aideStatut: aideStatut ?? this.aideStatut,
       aideMotif: aideMotif ?? this.aideMotif,
     );

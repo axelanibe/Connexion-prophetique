@@ -12,8 +12,13 @@ import 'i18n.dart';
 
 class Member {
   Member(this.name, this.matricule, this.etab, this.since,
-      {this.fonction = '', this.ministere = '', this.photoPath = '', this.photoData = '', this.validUntilOverride, this.dateNaissance, this.telephone = '', this.anneeAdhesion, this.statutAdhesion = ''});
+      {this.fonction = '', this.ministere = '', this.photoPath = '', this.photoData = '', this.validUntilOverride, this.dateNaissance, this.telephone = '', this.anneeAdhesion, this.statutAdhesion = '', this.ville = '', this.email = ''});
   final String name, matricule, etab, fonction, ministere, photoPath, telephone;
+  // Ville et e-mail du membre, T11, 26 nov. 2026 : désormais
+  // persistés côté serveur et renvoyés par /moi, comme la
+  // fonction ou le pays de résidence. Vides pour un ancien
+  // compte non encore synchronisé.
+  final String ville, email;
   // Date de naissance facultative, 29 oct. 2026 : elle ne sert qu'à
   // la carte d'anniversaire du membre lui-même et à la notification
   // locale Android. Seuls le mois et le jour sont comparés, jamais
@@ -41,9 +46,9 @@ class Member {
   // donne droit au certificat d'adhésion en PDF.
   final String statutAdhesion;
   Member withPhoto(String path) => Member(name, matricule, etab, since,
-      fonction: fonction, ministere: ministere, photoPath: path, photoData: photoData, validUntilOverride: validUntilOverride, dateNaissance: dateNaissance, telephone: telephone, anneeAdhesion: anneeAdhesion, statutAdhesion: statutAdhesion);
+      fonction: fonction, ministere: ministere, photoPath: path, photoData: photoData, validUntilOverride: validUntilOverride, dateNaissance: dateNaissance, telephone: telephone, anneeAdhesion: anneeAdhesion, statutAdhesion: statutAdhesion, ville: ville, email: email);
   Member withServerPhoto(String dataUrl) => Member(name, matricule, etab, since,
-      fonction: fonction, ministere: ministere, photoPath: photoPath, photoData: dataUrl, validUntilOverride: validUntilOverride, dateNaissance: dateNaissance, telephone: telephone, anneeAdhesion: anneeAdhesion, statutAdhesion: statutAdhesion);
+      fonction: fonction, ministere: ministere, photoPath: photoPath, photoData: dataUrl, validUntilOverride: validUntilOverride, dateNaissance: dateNaissance, telephone: telephone, anneeAdhesion: anneeAdhesion, statutAdhesion: statutAdhesion, ville: ville, email: email);
   bool get hasPhoto => photoData.isNotEmpty || photoPath.isNotEmpty;
 }
 
@@ -118,7 +123,7 @@ String birthIso(DateTime d) =>
 
 class Book {
   Book({required this.id, required this.title, required this.author, required this.price,
-      this.description = '', this.format = '', this.fileUrl = '', this.serverId = '', this.imagePath = '', this.imageUrl = '', this.fichierId = '', this.creeLe});
+      this.description = '', this.format = '', this.fileUrl = '', this.serverId = '', this.imagePath = '', this.imageUrl = '', this.fichierId = '', this.creeLe, this.categorie = ''});
   final int id;
   // Date de création côté serveur, pour les nouveautés de la
   // Librairie, 19 nov. 2026 : un livre est nouveau moins de
@@ -132,6 +137,10 @@ class Book {
   // appareils, au lieu de rester un livre local sans identifiant.
   String serverId;
   String title, author, description, format, fileUrl;
+  // Catégorie du livre, T11, 26 nov. 2026 : liste fermée côté
+  // serveur, la Librairie regroupe ses sections par catégorie.
+  // Vide pour un ancien livre non encore synchronisé.
+  String categorie;
   // Identifiant du fichier PDF ou EPUB téléversé au serveur à la
   // publication. Les membres, eux, ouvrent le livre par la route
   // /livres/:id/fichier, jamais par cet identifiant direct.

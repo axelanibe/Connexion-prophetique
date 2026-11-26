@@ -33,7 +33,23 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:just_audio/just_audio.dart';
 
+import 'i18n.dart';
+
 export 'package:just_audio/just_audio.dart' show AudioPlayer, PlayerState, ProcessingState;
+
+/// Synthèse vocale partagée de la Bible, une seule instance pour
+/// l'application : la Prière du jour comme la page Bible.
+///
+/// Message d'échec audio selon la raison renvoyée par VerseTts :
+/// aucune voix de la langue installée, ou échec de la synthèse.
+/// Jamais un bouton Arrêter sans son et sans explication.
+final verseTts = VerseTts();
+
+String audioFailureMessage() {
+  if (verseTts.lastErrorKey == 'no_voice_en') return tr('Aucune voix anglaise n’est installée sur cet appareil. Installez une voix anglaise dans les paramètres de synthèse vocale, puis réessayez.');
+  if (verseTts.lastErrorKey == 'no_voice_fr') return tr('Aucune voix française n’est installée sur cet appareil. Installez une voix française dans les paramètres de synthèse vocale, puis réessayez.');
+  return tr('La synthèse vocale de votre appareil est indisponible. Vérifiez le volume et la voix installée, puis réessayez.');
+}
 
 /// Réglages Bible audio, recommandés le 27 oct. 2026 et appliqués
 /// ici, verset du jour comme chapitre, même voix, même débit :

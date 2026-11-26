@@ -245,7 +245,7 @@ class _TemoignagesPageState extends State<TemoignagesPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_charge) return basic(tr('Témoignages'), [const Center(child: CircularProgressIndicator())], tabIndex: 4, controller: widget.scrollController);
+    if (!_charge) return basic(tr('Témoignages'), [const Center(child: CircularProgressIndicator())]);
     if (_erreur) {
       return basic(
         tr('Témoignages'),
@@ -257,9 +257,6 @@ class _TemoignagesPageState extends State<TemoignagesPage> {
             ),
           ),
         ],
-        tabIndex: 4,
-        controller: widget.scrollController,
-        onRefresh: _charger,
       );
     }
     final enfants = <Widget>[];
@@ -388,7 +385,7 @@ class _TemoignagesPageState extends State<TemoignagesPage> {
       );
       enfants.add(const SizedBox(height: Cp.s1));
     }
-    return basic(tr('Témoignages'), enfants, tabIndex: 4, controller: widget.scrollController, onRefresh: _charger);
+    return basic(tr('Témoignages'), enfants);
   }
 }
 
