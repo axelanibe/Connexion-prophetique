@@ -95,3 +95,26 @@ test('un jeton déjà stocké avec messagerie reçoit les nouveaux messages', ()
   const gardees = filtreServeur(['messagerie'], typesConnus);
   assert.deepEqual(gardees, ['nouveau_message']);
 });
+
+// Mur des membres v2, tranche 6, 25 nov. 2026 : commentaire
+// et mention du mur, cloche et poussée ; réaction et suivi
+// restent cloche seulement, sans interrupteur ni poussée.
+// Trajet complet rétabli en T3 : lib/notif_settings.dart
+// envoie mur_commentaire et mur_mention.
+test('le mur : commentaire et mention sont des types connus, réaction et suivi restent cloche seulement', () => {
+  const typesConnus = extraireListe(serveur, 'const TYPES_NOTIFICATIONS_CONNUS = [');
+  const typesClient = extraireListe(reglagesClient, 'static const types = [');
+  assert.ok(typesConnus.includes('mur_commentaire'), 'mur_commentaire est un type connu');
+  assert.ok(typesConnus.includes('mur_mention'), 'mur_mention est un type connu');
+  assert.ok(!typesConnus.includes('mur_reaction'), 'mur_reaction reste cloche seulement');
+  assert.ok(!typesConnus.includes('mur_suivi'), 'mur_suivi reste cloche seulement');
+  assert.ok(typesClient.includes('mur_commentaire'), 'le client envoie mur_commentaire');
+  assert.ok(typesClient.includes('mur_mention'), 'le client envoie mur_mention');
+  assert.ok(!typesClient.includes('mur_reaction'), 'le client n’envoie pas mur_reaction');
+  assert.ok(!typesClient.includes('mur_suivi'), 'le client n’envoie pas mur_suivi');
+  const gardees = filtreServeur(typesClient, typesConnus);
+  assert.ok(gardees.includes('mur_commentaire'), 'mur_commentaire passe le filtre serveur');
+  assert.ok(gardees.includes('mur_mention'), 'mur_mention passe le filtre serveur');
+  assert.ok(!gardees.includes('mur_reaction'), 'mur_reaction ne passe pas le filtre serveur');
+  assert.ok(!gardees.includes('mur_suivi'), 'mur_suivi ne passe pas le filtre serveur');
+});

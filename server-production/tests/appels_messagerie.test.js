@@ -30,6 +30,7 @@ import {
   statutApresSignal,
   appelExpire,
   appelObsolete,
+  estAppelManque,
   configIce,
   normaliserContenuSignal,
 } from '../src/appels.js';
@@ -70,6 +71,22 @@ test('statutApresSignal : acceptation, refus, annulation et fin', () => {
   assert.equal(statutApresSignal('en_cours', 'accepte'), null);
   assert.equal(statutApresSignal('termine', 'termine'), null);
   assert.equal(statutApresSignal('expire', 'accepte'), null);
+});
+
+// ── Appel manqué, tranche T4 ──────────────────────────────────
+// Manqué : je suis l'appelé, jamais l'appelant, et l'appel s'est
+// terminé sans réponse. Un appel répondu, ou expiré après sa
+// réponse, n'est jamais manqué.
+test('estAppelManque : appelé sans réponse seulement', () => {
+  const appele = 'b';
+  assert.equal(estAppelManque({ appelant_id: 'a', statut: 'termine', repondu_le: null }, appele), true, 'refusé par l’appelé');
+  assert.equal(estAppelManque({ appelant_id: 'a', statut: 'expire', repondu_le: null }, appele), true, 'expiré en sonnerie');
+  assert.equal(estAppelManque({ appelant_id: 'a', statut: 'termine', repondu_le: '2026-11-26T07:00:00.000Z' }, appele), false, 'répondu puis terminé');
+  assert.equal(estAppelManque({ appelant_id: 'a', statut: 'expire', repondu_le: '2026-11-26T07:00:00.000Z' }, appele), false, 'expiré après réponse');
+  assert.equal(estAppelManque({ appelant_id: 'b', statut: 'termine', repondu_le: null }, appele), false, 'appelant : jamais manqué pour lui');
+  assert.equal(estAppelManque({ appelant_id: 'a', statut: 'sonne', repondu_le: null }, appele), false, 'en sonnerie : pas encore manqué');
+  assert.equal(estAppelManque({ appelant_id: 'a', statut: 'en_cours', repondu_le: null }, appele), false, 'en cours : pas manqué');
+  assert.equal(estAppelManque(null, appele), false, 'sans appel : jamais manqué');
 });
 
 // ── Expiration de la sonnerie ────────────────────────────────
@@ -187,12 +204,13 @@ test('RegistreSocketsAppels : une socket fermée ou en échec est retirée', () 
 });
 
 // ── Routes présentes dans server.js (statique) ───────────────
-test('routes : les 8 routes HTTP et la route WebSocket existent', () => {
+test('routes : les 9 routes HTTP et la route WebSocket existent', () => {
   const serveur = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'server.js'), 'utf8');
   for (const route of [
     "app.post('/messagerie/conversations/:id/appels'",
     "app.get('/messagerie/conversations/:id/appel_actif'",
     "app.get('/messagerie/conversations/:id/presence'",
+    "app.get('/messagerie/appels'",
     "app.get('/messagerie/appels/entrants'",
     "app.get('/messagerie/appels/ice'",
     "app.get('/messagerie/appels/:id'",
@@ -441,6 +459,31 @@ test('appels entrants : visibles par l’appelé seul, et présence', async () =
   assert.equal(refuse.statut, 201, 'refus pour nettoyer');
   const entrantsApres = await get('/messagerie/appels/entrants', comptes.jetonB);
   assert.equal(entrantsApres.data.some((a) => a.id === cree.data.id), false, 'appel refusé : plus d’entrant');
+});
+
+test('historique des appels : mes appels seulement, manqués marqués, tranche T4', async () => {
+  // À ce point : un appel répondu, puis deux refusés, tous de A
+  // vers B dans la même conversation directe.
+  const histoB = await get('/messagerie/appels', comptes.jetonB);
+  assert.equal(histoB.statut, 200);
+  assert.ok(Array.isArray(histoB.data), 'la route renvoie une liste');
+  assert.equal(histoB.data.length, 3, 'trois appels terminés pour l’appelé');
+  for (const a of histoB.data) {
+    assert.equal(a.autre_nom, 'Appel A Test', 'l’autre membre est nommé');
+    assert.equal(a.appelant_id, comptes.a.membreId, 'l’appelant est A');
+  }
+  const manquesB = histoB.data.filter((a) => a.manque);
+  assert.equal(manquesB.length, 2, 'deux refusés manqués pour l’appelé');
+  const repondusB = histoB.data.filter((a) => !a.manque);
+  assert.equal(repondusB.length, 1, 'un seul appel répondu');
+  assert.ok(repondusB[0].repondu_le, 'l’appel répondu porte sa date de réponse');
+  assert.ok(new Date(histoB.data[0].cree_le) >= new Date(histoB.data.at(-1).cree_le), 'du plus récent au plus ancien');
+  const histoA = await get('/messagerie/appels', comptes.jetonA);
+  assert.equal(histoA.data.length, 3, 'l’appelant voit les mêmes appels');
+  assert.equal(histoA.data.filter((a) => a.manque).length, 0, 'aucun manqué côté appelant');
+  assert.equal(histoA.data[0].autre_nom, 'Appel B Test', 'l’autre membre vu par l’appelant est B');
+  const histoC = await get('/messagerie/appels', comptes.jetonC);
+  assert.equal(histoC.data.length, 0, 'non participant : historique vide');
 });
 
 test('limite levée : 6 appels d’affilée sans 429', async () => {

@@ -8,10 +8,11 @@
 // notifierPaiementValide, appelée par les quatre chemins de
 // confirmation (validation structure, rapprochement Wave, webhook
 // Wave, PayPal), au mieux et sans attendre, pour ne jamais bloquer
-// la validation ni ralentir le webhook. Le reçu reste
-// téléchargeable dans l'historique de paiement (InvoicePage) et la
-// carte visible sur la page Carte : ces deux canaux existent déjà,
-// ils sont vérifiés ici par lecture du code de l'application.
+// la validation ni ralentir le webhook. La carte est visible sur
+// la nouvelle page Carte (lib/nouveau/page_carte.dart). Le
+// téléchargement du reçu dans l'historique des paiements n'existe
+// pas dans la nouvelle application (T11) : le reçu part par
+// courriel, c'est le canal vérifié ici.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -24,8 +25,7 @@ import { envoyerRecuParEmail, envoyerCarteParEmail } from '../src/email.js';
 const dossier = path.dirname(fileURLToPath(import.meta.url));
 const racine = path.join(dossier, '..');
 const serveur = fs.readFileSync(path.join(racine, 'server.js'), 'utf8');
-const application = fs.readFileSync(path.join(racine, '..', 'lib', 'differe_membre.dart'), 'utf8');
-const pageCarte = fs.readFileSync(path.join(racine, '..', 'lib', 'carte_nouvelle.dart'), 'utf8');
+const pageCarte = fs.readFileSync(path.join(racine, '..', 'lib', 'nouveau', 'page_carte.dart'), 'utf8');
 
 // Le texte d'un PDF pdfkit est écrit en hexadécimal, découpé
 // par mots : on décode les chaînes <...> des flux de contenu
@@ -169,10 +169,7 @@ test('carte 122 : l’envoi est accroché à notifierPaiementValide, un seul poi
   assert.ok(serveur.includes("WHERE id = $1 AND statut = 'en_attente' RETURNING *"), 'confirmation inchangée');
 });
 
-test('carte 122 : le reçu reste téléchargeable dans l’historique et la carte visible sur la page Carte', () => {
-  assert.ok(application.includes('api.downloadFacture(r.ref)'), 'téléchargement de la facture PDF du serveur');
-  assert.ok(application.includes("saveToDownloads(bytes, 'facture-${r.ref}.pdf')"), 'facture en Téléchargements');
+test('carte 122 : la carte est visible sur la nouvelle page Carte', () => {
   assert.ok(pageCarte.includes('QrImageView(data: m.matricule'), 'QR de la carte sur le matricule seul');
   assert.ok(pageCarte.includes('Membre depuis'), 'Membre depuis sur la carte');
-  assert.ok(pageCarte.includes('Scannez pour la présence'), 'bloc Scannez pour la présence sur la carte');
 });
