@@ -39,8 +39,8 @@ Future<void> _pomperAccueil(WidgetTester tester) async {
   // Charge la vraie police : sans elle, le test mesure avec
   // la police de repli, deux fois plus large, et le libellé
   // ne tient jamais, même corrigé.
-  final chargeur = FontLoader('Plus Jakarta Sans');
-  chargeur.addFont(rootBundle.load('assets/fonts/PlusJakartaSans-700.ttf'));
+  final chargeur = FontLoader('Public Sans');
+  chargeur.addFont(rootBundle.load('assets/fonts/PublicSans-700.ttf'));
   await chargeur.load();
   await tester.pump();
   // Largeur téléphone 390 px, hauteur 2400 px : la ListView
@@ -51,12 +51,12 @@ Future<void> _pomperAccueil(WidgetTester tester) async {
   addTearDown(tester.view.resetPhysicalSize);
   await tester.pumpWidget(MaterialApp(
     // Thème réel de l'application : le libellé hérite de
-    // Plus Jakarta Sans par labelLarge, comme en production
+    // Public Sans par labelLarge, comme en production
     // où buildTheme le fixe par Ux.body.
     theme: ThemeData(
       textTheme: const TextTheme(
-        bodyMedium: TextStyle(fontFamily: 'Plus Jakarta Sans'),
-        labelLarge: TextStyle(fontFamily: 'Plus Jakarta Sans'),
+        bodyMedium: TextStyle(fontFamily: 'Public Sans'),
+        labelLarge: TextStyle(fontFamily: 'Public Sans'),
       ),
     ),
     home: Scaffold(

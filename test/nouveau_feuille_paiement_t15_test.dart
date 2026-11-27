@@ -6,6 +6,7 @@
 // insécable U+202F entre les milliers.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:connexion_prophetique/nouveau/paiement_carte.dart';
 
@@ -111,7 +112,7 @@ void main() {
   testWidgets('fermeture : aucun moyen choisi', (tester) async {
     String? result = 'non appelé';
     await _ouvrirFeuille(tester, (r) => result = r);
-    await tester.tap(find.byIcon(Icons.close));
+    await tester.tap(find.byIcon(LucideIcons.x));
     await tester.pumpAndSettle();
     expect(find.text('Créer ma carte membre'), findsNothing);
     expect(result, isNull);

@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:connexion_prophetique/api.dart';
@@ -205,15 +206,15 @@ void main() {
     testWidgets('retour système : une destination revient à l’onglet',
         (tester) async {
       await pomper(tester);
-      await tester.tap(find.byIcon(Icons.grid_view_outlined));
+      await tester.tap(find.byIcon(LucideIcons.ellipsis));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Mes documents'));
       await tester.pumpAndSettle();
-      expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+      expect(find.byIcon(LucideIcons.chevronLeft), findsOneWidget);
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
-      expect(find.byIcon(Icons.arrow_back), findsNothing);
-      expect(find.byIcon(Icons.menu), findsOneWidget);
+      expect(find.byIcon(LucideIcons.chevronLeft), findsNothing);
+      expect(find.byIcon(LucideIcons.menu), findsOneWidget);
       expect(find.text('Mes documents'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -221,7 +222,7 @@ void main() {
     testWidgets('retour système : un onglet revient à l’accueil',
         (tester) async {
       await pomper(tester);
-      await tester.tap(find.byIcon(Icons.menu_book_outlined));
+      await tester.tap(find.byIcon(LucideIcons.bookOpen));
       await tester.pumpAndSettle();
       expect(find.text('Bible'), findsNWidgets(2));
       await tester.binding.handlePopRoute();

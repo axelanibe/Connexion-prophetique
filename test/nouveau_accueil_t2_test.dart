@@ -3,6 +3,7 @@
 // les vraies données d'Axel.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:connexion_prophetique/app_models.dart';
 import 'package:connexion_prophetique/nouveau/carte_quiz.dart';
@@ -251,11 +252,11 @@ void main() {
       ));
       await tester.pumpAndSettle();
       expect(find.text('Accueil de test'), findsOneWidget);
-      await tester.tap(find.byIcon(Icons.menu_book_outlined));
+      await tester.tap(find.byIcon(LucideIcons.bookOpen));
       await tester.pumpAndSettle();
       expect(find.text('Accueil de test'), findsNothing);
       expect(find.text('Bible'), findsWidgets);
-      await tester.tap(find.byIcon(Icons.home_outlined));
+      await tester.tap(find.byIcon(LucideIcons.home));
       await tester.pumpAndSettle();
       expect(find.text('Accueil de test'), findsOneWidget);
       expect(tester.takeException(), isNull);

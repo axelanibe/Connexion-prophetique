@@ -5,6 +5,7 @@
 // de test, un chapitre partout ailleurs.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:connexion_prophetique/bible.dart';
 import 'package:connexion_prophetique/littre.dart';
@@ -255,7 +256,7 @@ void main() {
     await tester.enterText(find.byType(TextField), 'test');
     await tester.pumpAndSettle();
     expect(find.text('Livre test 1 1:1'), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.tap(find.byIcon(LucideIcons.chevronLeft));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Dictionnaire'));
     await tester.pumpAndSettle();
@@ -264,7 +265,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('TEST'), findsOneWidget);
     expect(find.text('Définition de test.'), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.tap(find.byIcon(LucideIcons.chevronLeft));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Favoris'));
     await tester.pumpAndSettle();
@@ -293,7 +294,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Livre test 1 1'), findsOneWidget);
     expect(find.byKey(const ValueKey('verset_1')), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.tap(find.byIcon(LucideIcons.chevronLeft));
     await tester.pumpAndSettle();
     await tester.drag(find.byType(ListView), const Offset(0, -400));
     await tester.pumpAndSettle();

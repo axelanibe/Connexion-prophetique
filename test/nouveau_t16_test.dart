@@ -5,6 +5,7 @@
 // repli quand le serveur ne répond pas.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:connexion_prophetique/nouveau/paiement_carte.dart';
 
@@ -15,17 +16,17 @@ void main() {
     expect(wave.id, 'wave');
     expect(wave.label, 'Wave');
     expect(wave.disponible, isTrue);
-    expect(wave.icone, Icons.waves);
+    expect(wave.icone, LucideIcons.waves);
     final mtn = MoyenPaiementCarte.depuisServeur(
         {'id': 'mtn', 'label': 'MTN MoMo', 'disponible': true});
-    expect(mtn.icone, Icons.smartphone);
+    expect(mtn.icone, LucideIcons.smartphone);
     final orange = MoyenPaiementCarte.depuisServeur(
         {'id': 'orange', 'label': 'Orange Money', 'disponible': false});
-    expect(orange.icone, Icons.account_balance_wallet);
+    expect(orange.icone, LucideIcons.wallet);
     expect(orange.disponible, isFalse);
     final carte = MoyenPaiementCarte.depuisServeur(
         {'id': 'cinetpay', 'label': 'Carte bancaire', 'disponible': false});
-    expect(carte.icone, Icons.credit_card);
+    expect(carte.icone, LucideIcons.creditCard);
   });
 
   test('depuisServeur : identifiant inconnu, icône Wave, sans libellé', () {
@@ -33,7 +34,7 @@ void main() {
         MoyenPaiementCarte.depuisServeur({'id': 'bidon', 'disponible': true});
     expect(inconnu.id, 'bidon');
     expect(inconnu.label, 'bidon');
-    expect(inconnu.icone, Icons.waves);
+    expect(inconnu.icone, LucideIcons.waves);
   });
 
   test('listeDepuisServeur : ne garde que les moyens avec identifiant', () {

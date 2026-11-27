@@ -4,6 +4,7 @@
 // T1 et T2 avec leurs rappels injectés.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:connexion_prophetique/app_models.dart';
 import 'package:connexion_prophetique/nouveau/coquille.dart';
@@ -460,7 +461,8 @@ void main() {
       for (final filtre in ['Tous', 'Témoignages', 'Prières', 'Versets']) {
         expect(find.text(filtre), findsOneWidget);
       }
-      expect(find.text('Actualité de la structure'), findsOneWidget);
+      expect(find.text('Actualité de la structure · Épinglée'),
+          findsOneWidget);
       expect(find.text('Actualité de test'), findsOneWidget);
       expect(find.text('Témoignage de test.'), findsOneWidget);
       expect(find.text('Prière de test.'), findsOneWidget);
@@ -631,7 +633,7 @@ void main() {
         (tester) async {
       final service = _FauxService();
       await _pomperConnexion(tester, service);
-      await tester.tap(find.byIcon(Icons.more_vert).first);
+      await tester.tap(find.byIcon(LucideIcons.ellipsisVertical).first);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Signaler'));
       await tester.pumpAndSettle();
@@ -680,7 +682,7 @@ void main() {
         (tester) async {
       final service = _FauxService();
       await _pomperConnexion(tester, service);
-      await tester.tap(find.byIcon(Icons.comment_outlined).first);
+      await tester.tap(find.byIcon(LucideIcons.messageCircle).first);
       await tester.pumpAndSettle();
       expect(find.text('Publication'), findsOneWidget);
       expect(find.text('Commentaire de test.'), findsOneWidget);
@@ -691,7 +693,7 @@ void main() {
       expect(find.text('Test Mention'), findsOneWidget);
       await tester.tap(find.text('Test Mention'));
       await tester.pump();
-      await tester.tap(find.byIcon(Icons.send_outlined));
+      await tester.tap(find.byIcon(LucideIcons.send));
       await tester.pumpAndSettle();
       expect(service.dernieresMentions, ['m1']);
       expect(find.textContaining('Test Mention'), findsWidgets);
@@ -701,7 +703,7 @@ void main() {
     testWidgets('détail : Répondre envoie avec le parent', (tester) async {
       final service = _FauxService();
       await _pomperConnexion(tester, service);
-      await tester.tap(find.byIcon(Icons.comment_outlined).first);
+      await tester.tap(find.byIcon(LucideIcons.messageCircle).first);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Répondre'));
       await tester.pump();
@@ -709,7 +711,7 @@ void main() {
       await tester.enterText(
           find.byType(TextField).last, 'Réponse envoyée en test.');
       await tester.pump();
-      await tester.tap(find.byIcon(Icons.send_outlined));
+      await tester.tap(find.byIcon(LucideIcons.send));
       await tester.pumpAndSettle();
       expect(service.derniereReponseA, 'c1');
       expect(find.text('Réponse envoyée en test.'), findsOneWidget);
@@ -782,7 +784,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
       expect(find.byType(BottomNavigationBar), findsOneWidget);
-      await tester.tap(find.byIcon(Icons.groups_outlined));
+      await tester.tap(find.byIcon(LucideIcons.users));
       await tester.pumpAndSettle();
       expect(find.text('Connexion'), findsOneWidget);
       expect(find.byType(BottomNavigationBar), findsNothing);

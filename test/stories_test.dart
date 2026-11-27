@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:connexion_prophetique/api.dart';
 import 'package:connexion_prophetique/stories.dart';
@@ -186,7 +187,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
       expect(find.text('Publier'), findsOneWidget);
-      expect(find.byIcon(Icons.add_outlined), findsOneWidget);
+      expect(find.byIcon(LucideIcons.plus), findsOneWidget);
     });
 
     testWidgets('membre sans story, bande cachée', (tester) async {

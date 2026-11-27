@@ -3,6 +3,7 @@
 // jamais les vraies données d'Axel.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:connexion_prophetique/app_models.dart';
 import 'package:connexion_prophetique/nouveau/coquille.dart';
@@ -35,7 +36,7 @@ Future<void> _pomper(
 }
 
 Future<void> _ouvrirTiroir(WidgetTester tester) async {
-  await tester.tap(find.byIcon(Icons.menu));
+  await tester.tap(find.byIcon(LucideIcons.menu));
   await tester.pumpAndSettle();
 }
 
@@ -53,13 +54,13 @@ void main() {
       for (final label in ['Accueil', 'Bible', 'Connexion', 'Librairie', 'Plus']) {
         expect(find.text(label), findsWidgets);
       }
-      await tester.tap(find.byIcon(Icons.menu_book_outlined));
+      await tester.tap(find.byIcon(LucideIcons.bookOpen));
       await tester.pumpAndSettle();
       expect(find.text('Bible'), findsNWidgets(2));
-      await tester.tap(find.byIcon(Icons.grid_view_outlined));
+      await tester.tap(find.byIcon(LucideIcons.ellipsis));
       await tester.pumpAndSettle();
       expect(find.text('Croissance spirituelle'), findsOneWidget);
-      await tester.tap(find.byIcon(Icons.home_outlined));
+      await tester.tap(find.byIcon(LucideIcons.home));
       await tester.pumpAndSettle();
       expect(find.text('Accueil'), findsNWidgets(2));
       expect(tester.takeException(), isNull);
@@ -96,7 +97,7 @@ void main() {
 
     testWidgets('page Plus : 8 entrées dans l’ordre de la maquette', (tester) async {
       await _pomper(tester);
-      await tester.tap(find.byIcon(Icons.grid_view_outlined));
+      await tester.tap(find.byIcon(LucideIcons.ellipsis));
       await tester.pumpAndSettle();
       const ordre = [
         'Croissance spirituelle',
@@ -122,7 +123,7 @@ void main() {
       var suppressions = 0;
       await _pomper(tester, onSupprimer: () => suppressions++);
       await _ouvrirTiroir(tester);
-      await tester.tap(find.byIcon(Icons.settings_outlined));
+      await tester.tap(find.byIcon(LucideIcons.settings));
       await tester.pumpAndSettle();
       expect(find.text('Supprimer son compte'), findsOneWidget);
       await tester.tap(find.text('Supprimer son compte'));
@@ -142,7 +143,7 @@ void main() {
       var suppressions = 0;
       await _pomper(tester, onSupprimer: () => suppressions++);
       await _ouvrirTiroir(tester);
-      await tester.tap(find.byIcon(Icons.settings_outlined));
+      await tester.tap(find.byIcon(LucideIcons.settings));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Supprimer son compte'));
       await tester.pumpAndSettle();
@@ -154,10 +155,10 @@ void main() {
 
     testWidgets('cloche et photo ouvrent Notifications et Mon profil', (tester) async {
       await _pomper(tester);
-      await tester.tap(find.byIcon(Icons.notifications_outlined));
+      await tester.tap(find.byIcon(LucideIcons.bell));
       await tester.pumpAndSettle();
       expect(find.text('Notifications'), findsOneWidget);
-      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.tap(find.byIcon(LucideIcons.chevronLeft));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('avatarEntete')));
       await tester.pumpAndSettle();

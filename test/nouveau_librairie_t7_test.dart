@@ -4,6 +4,7 @@
 // un récent, un acheté.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:connexion_prophetique/app_models.dart';
 import 'package:connexion_prophetique/nouveau/page_librairie.dart';
@@ -155,7 +156,7 @@ void main() {
     expect(find.text('Tous'), findsOneWidget);
     expect(find.text('Nouveautés'), findsOneWidget);
     expect(find.text('Mes achats'), findsOneWidget);
-    expect(find.text('Ajouter'), findsOneWidget);
+    expect(find.text('+ Ajouter'), findsOneWidget);
     expect(find.text('3 ouvrages disponibles'), findsOneWidget);
     expect(find.text('Prière (2)'), findsOneWidget);
     expect(find.text('Livre test trois'), findsOneWidget);
@@ -244,7 +245,7 @@ void main() {
   testWidgets('menu trois points et partage', (tester) async {
     final service = _FauxServiceLibrairie();
     await _pomper(tester, service);
-    await tester.tap(find.byIcon(Icons.more_vert).first);
+    await tester.tap(find.byIcon(LucideIcons.ellipsisVertical).first);
     await tester.pumpAndSettle();
     expect(find.text('Partager'), findsOneWidget);
     expect(find.text('Modifier'), findsOneWidget);
