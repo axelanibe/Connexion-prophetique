@@ -3,6 +3,7 @@
 // les vraies données d'Axel. Faux service, comme les tests
 // T1, T2 et T3 avec leurs rappels injectés.
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:connexion_prophetique/messagerie.dart';
@@ -203,10 +204,15 @@ class _FauxServiceMessagerie implements ServiceMessagerie {
       _conversationsTest.first;
 
   @override
-  Future<void> appeler(String conversationId,
+  Future<Map<String, dynamic>> appeler(String conversationId,
       {required String type}) async {
     appelsLances.add((conversationId, type));
+    return {'id': 'appel-test', 'type': type};
   }
+
+  @override
+  Future<Map<String, dynamic>?> appelActif(String conversationId) async =>
+      null;
 
   @override
   Future<void> signaler(
@@ -279,7 +285,28 @@ void main() {
 
   testWidgets('T4 : volet Appels, badge 2 et manqués en rouge',
       (tester) async {
-    await _ouvrirMessagerie(tester);
+    // Micro accordé, sinon demanderAutorisationsAppel refuse
+    // en test, sans canal natif, et l'appel ne part pas.
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('flutter.baseflow.com/permissions/methods'),
+      (call) async {
+        if (call.method == 'requestPermissions') return {7: 1};
+        return null;
+      },
+    );
+    final service = _FauxServiceMessagerie();
+    final ecransOuverts = <Widget>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PageMessagerie(
+          service: service,
+          onOuvrirAppelEnCours: (context, page) =>
+              ecransOuverts.add(page),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('badgeAppelsManques')),
         findsOneWidget);
     expect(find.text('2'), findsWidgets);
@@ -294,7 +321,8 @@ void main() {
     expect(find.byKey(const ValueKey('rappeler-ap1')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('rappeler-ap1')));
     await tester.pumpAndSettle();
-    expect(find.text('Appel lancé.'), findsOneWidget);
+    expect(service.appelsLances, contains(('c-a', 'audio')));
+    expect(ecransOuverts, hasLength(1));
   });
 
   testWidgets('T4 : détail, modération, barre blanche et envoi',
