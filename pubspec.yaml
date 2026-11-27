@@ -161,6 +161,28 @@ flutter:
           weight: 700
         - asset: assets/fonts/PlusJakartaSans-800.ttf
           weight: 800
+    # T19, 26 nov. 2026 : Public Sans, police du corps de la
+    # maquette, TTF statiques latin, google-webfonts-helper,
+    # licence OFL. Remplace Plus Jakarta Sans pour le corps,
+    # fichiers Jakarta gardés dans le dépôt.
+    - family: Public Sans
+      fonts:
+        - asset: assets/fonts/PublicSans-400.ttf
+          weight: 400
+        - asset: assets/fonts/PublicSans-500.ttf
+          weight: 500
+        - asset: assets/fonts/PublicSans-600.ttf
+          weight: 600
+        - asset: assets/fonts/PublicSans-700.ttf
+          weight: 700
+        - asset: assets/fonts/PublicSans-800.ttf
+          weight: 800
+        - asset: assets/fonts/PublicSans-400-Italic.ttf
+          weight: 400
+          style: italic
+        - asset: assets/fonts/PublicSans-700-Italic.ttf
+          weight: 700
+          style: italic
     - family: Lora
       fonts:
         - asset: assets/fonts/Lora-400.ttf
