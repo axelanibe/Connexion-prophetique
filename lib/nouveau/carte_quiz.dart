@@ -5,6 +5,7 @@
 // Les réponses partent par les rappels, l'état du jeu reste
 // dans l'application, comme avant.
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'palette.dart';
 
@@ -107,7 +108,7 @@ class _CarteQuizAccueilState extends State<CarteQuizAccueil> {
                   color: PaletteNouvelle.bleuNuit,
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(Icons.quiz_outlined, color: PaletteNouvelle.or, size: 24),
+                child: const Icon(LucideIcons.circleHelp, color: PaletteNouvelle.or, size: 24),
               ),
               const SizedBox(width: 12),
               const Expanded(
@@ -139,7 +140,16 @@ class _CarteQuizAccueilState extends State<CarteQuizAccueil> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
               ),
               onPressed: () => setState(() => _commence = true),
-              child: const Text('Commencer', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Commencer',
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                  SizedBox(width: 8),
+                  Icon(LucideIcons.arrowRight, size: 16),
+                ],
+              ),
             ),
           ),
         ],

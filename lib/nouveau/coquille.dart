@@ -10,6 +10,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../app_models.dart' show Member;
 import 'avatar_membre.dart';
@@ -215,11 +216,11 @@ class NouvelleCoquilleState extends State<NouvelleCoquille> {
   ];
 
   static const _iconesOnglets = [
-    Icons.home_outlined,
-    Icons.menu_book_outlined,
-    Icons.groups_outlined,
-    Icons.local_library_outlined,
-    Icons.grid_view_outlined,
+    LucideIcons.home,
+    LucideIcons.bookOpen,
+    LucideIcons.users,
+    LucideIcons.shoppingBag,
+    LucideIcons.ellipsis,
   ];
 
   void _allerAccueil() {
@@ -362,13 +363,13 @@ class NouvelleCoquilleState extends State<NouvelleCoquille> {
               elevation: 1,
               leading: surPage
                   ? IconButton(
-                      icon: const Icon(Icons.arrow_back,
+                      icon: const Icon(LucideIcons.chevronLeft,
                           color: PaletteNouvelle.bleuNuit),
                       onPressed: () => setState(() => _destination = null),
                     )
                   : Builder(
                       builder: (ctx) => IconButton(
-                        icon: const Icon(Icons.menu,
+                        icon: const Icon(LucideIcons.menu,
                             color: PaletteNouvelle.bleuNuit),
                         onPressed: () => Scaffold.of(ctx).openDrawer(),
                       ),
@@ -433,7 +434,7 @@ class NouvelleCoquilleState extends State<NouvelleCoquille> {
                       const BoxConstraints(minWidth: 36, minHeight: 36),
                   style: IconButton.styleFrom(
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                  icon: const Icon(Icons.notifications_outlined,
+                  icon: const Icon(LucideIcons.bell,
                       color: PaletteNouvelle.bleuNuit, size: 22),
                   onPressed: () => _ouvrir(DestinationNouvelle.notifications),
                 ),
@@ -498,7 +499,7 @@ class _BoutonMessagerie extends StatelessWidget {
       style:
           IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
       iconSize: 22,
-      icon: const Icon(Icons.message_outlined, color: PaletteNouvelle.bleuNuit),
+      icon: const Icon(LucideIcons.messageCircle, color: PaletteNouvelle.bleuNuit),
       onPressed: onTap,
     );
     final source = nonLus;

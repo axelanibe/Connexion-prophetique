@@ -2,6 +2,7 @@
 // Entrées dans l'ordre de la maquette. Les pages elles-mêmes
 // arrivent en T9, elles s'ouvrent en état neutre pour l'instant.
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'destinations.dart';
 import 'palette.dart';
@@ -15,15 +16,15 @@ class _EntreePlus {
 }
 
 const _entreesPlus = [
-  _EntreePlus('Croissance spirituelle', Icons.trending_up_outlined, DestinationNouvelle.croissance),
-  _EntreePlus('Galerie', Icons.photo_library_outlined, DestinationNouvelle.galerie),
-  _EntreePlus('Mes fonctions', Icons.badge_outlined, DestinationNouvelle.fonctions),
-  _EntreePlus('Abonnement', Icons.card_membership_outlined, DestinationNouvelle.abonnement),
-  _EntreePlus('Espace structure', Icons.business_outlined, DestinationNouvelle.espaceStructure,
+  _EntreePlus('Croissance spirituelle', LucideIcons.sprout, DestinationNouvelle.croissance),
+  _EntreePlus('Galerie', LucideIcons.image, DestinationNouvelle.galerie),
+  _EntreePlus('Mes fonctions', LucideIcons.briefcase, DestinationNouvelle.fonctions),
+  _EntreePlus('Abonnement', LucideIcons.creditCard, DestinationNouvelle.abonnement),
+  _EntreePlus('Espace structure', LucideIcons.shield, DestinationNouvelle.espaceStructure,
       sousTitre: 'Administrateurs'),
-  _EntreePlus('Mes présences', Icons.check_circle_outline, DestinationNouvelle.presences),
-  _EntreePlus('Aide et contact', Icons.help_outline, DestinationNouvelle.aide),
-  _EntreePlus('Mes documents', Icons.folder_outlined, DestinationNouvelle.documents),
+  _EntreePlus('Mes présences', LucideIcons.circleCheck, DestinationNouvelle.presences),
+  _EntreePlus('Aide et contact', LucideIcons.helpCircle, DestinationNouvelle.aide),
+  _EntreePlus('Mes documents', LucideIcons.fileDown, DestinationNouvelle.documents),
 ];
 
 class PagePlus extends StatelessWidget {
@@ -51,7 +52,7 @@ class PagePlus extends StatelessWidget {
             leading: Icon(e.icone, color: PaletteNouvelle.bleuNuit),
             title: Text(e.titre),
             subtitle: e.sousTitre == null ? null : Text(e.sousTitre!),
-            trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+            trailing: const Icon(LucideIcons.chevronRight, color: Colors.grey),
             onTap: () => onNaviguer(e.destination),
           ),
       ],

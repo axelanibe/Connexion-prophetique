@@ -7,6 +7,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../app_models.dart' show Member;
@@ -28,13 +29,25 @@ class BadgeCarteEnAttente extends StatelessWidget {
         color: PaletteNouvelle.or,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: const Text(
-        'En attente de validation',
-        style: TextStyle(
-          color: PaletteNouvelle.bleuNuit,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-        ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(LucideIcons.clock,
+              size: 14, color: PaletteNouvelle.bleuNuit),
+          SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              'En attente de validation',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: PaletteNouvelle.bleuNuit,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -48,20 +61,20 @@ class _Entree {
 }
 
 const _entreesMonEspace = [
-  _Entree('Mon profil', Icons.person_outline, DestinationNouvelle.profil),
-  _Entree('Journal personnel', Icons.book_outlined, DestinationNouvelle.journal),
-  _Entree('Opportunité', Icons.work_outline, DestinationNouvelle.opportunite),
-  _Entree('Suivi', Icons.people_outline, DestinationNouvelle.suivi),
+  _Entree('Mon profil', LucideIcons.user, DestinationNouvelle.profil),
+  _Entree('Journal personnel', LucideIcons.bookOpen, DestinationNouvelle.journal),
+  _Entree('Opportunité', LucideIcons.search, DestinationNouvelle.opportunite),
+  _Entree('Suivi', LucideIcons.heart, DestinationNouvelle.suivi),
 ];
 
 const _entreesQuotidien = [
-  _Entree('Méditation', Icons.spa_outlined, DestinationNouvelle.meditation),
-  _Entree('Chaîne de prière', Icons.favorite_outline, DestinationNouvelle.chainePriere),
+  _Entree('Méditation', LucideIcons.sun, DestinationNouvelle.meditation),
+  _Entree('Chaîne de prière', LucideIcons.link, DestinationNouvelle.chainePriere),
 ];
 
 const _entreesBas = [
-  _Entree('Paramètres', Icons.settings_outlined, DestinationNouvelle.parametres),
-  _Entree('À propos', Icons.info_outline, DestinationNouvelle.aPropos),
+  _Entree('Paramètres', LucideIcons.settings, DestinationNouvelle.parametres),
+  _Entree('À propos', LucideIcons.info, DestinationNouvelle.aPropos),
 ];
 
 class TiroirNouveau extends StatefulWidget {
@@ -121,7 +134,7 @@ class _TiroirNouveauState extends State<TiroirNouveau> {
             child: TextField(
               decoration: InputDecoration(
                 hintText: 'Rechercher…',
-                prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                prefixIcon: const Icon(LucideIcons.search, color: Colors.grey),
                 filled: true,
                 fillColor: PaletteNouvelle.papier,
                 contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
@@ -145,7 +158,7 @@ class _TiroirNouveauState extends State<TiroirNouveau> {
           ],
           const Divider(height: 1),
           ListTile(
-            leading: const Icon(Icons.logout_outlined, color: PaletteNouvelle.bleuNuit),
+            leading: const Icon(LucideIcons.logOut, color: PaletteNouvelle.bleuNuit),
             title: const Text('Se déconnecter'),
             onTap: () {
               Navigator.of(context).pop();
@@ -288,7 +301,7 @@ class _CarteMembre extends StatelessWidget {
                   child: const Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.lock,
+                      Icon(LucideIcons.lock,
                           color: PaletteNouvelle.or, size: 32),
                       SizedBox(height: 4),
                       Text(

@@ -11,6 +11,7 @@
 // stories. Mur réservé aux membres : la page ne s'ouvre que
 // pour un membre connecté, à la bascule T11.
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -571,27 +572,28 @@ class _Bande extends StatelessWidget {
         children: [
           IconButton(
             tooltip: 'Retour',
-            icon: const Icon(Icons.arrow_back, color: PaletteNouvelle.bleuNuit),
+            icon: const Icon(LucideIcons.arrowLeft, color: PaletteNouvelle.bleuNuit),
             onPressed: onRetour,
           ),
           const Expanded(
             child: Text(
               'Connexion',
               style: TextStyle(
+                  fontFamily: 'Cinzel',
                   color: PaletteNouvelle.bleuNuit,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800),
+                  fontSize: 25,
+                  fontWeight: FontWeight.w700),
             ),
           ),
           IconButton(
             tooltip: 'Enregistrements',
-            icon: const Icon(Icons.bookmark_border,
+            icon: const Icon(LucideIcons.bookmark,
                 color: PaletteNouvelle.bleuNuit),
             onPressed: onEnregistrements,
           ),
           IconButton(
             tooltip: 'Notifications',
-            icon: const Icon(Icons.notifications_outlined,
+            icon: const Icon(LucideIcons.bell,
                 color: PaletteNouvelle.bleuNuit),
             onPressed: onNotifications,
           ),
@@ -641,11 +643,11 @@ class _RechercheState extends State<_Recherche> {
         decoration: InputDecoration(
           hintText: 'Rechercher une publication, un membre…',
           prefixIcon:
-              const Icon(Icons.search_outlined, color: PaletteNouvelle.orFonce),
+              const Icon(LucideIcons.search, color: PaletteNouvelle.orFonce),
           suffixIcon: widget.controleur.text.isEmpty
               ? null
               : IconButton(
-                  icon: const Icon(Icons.clear), onPressed: widget.onEffacer),
+                  icon: const Icon(LucideIcons.x), onPressed: widget.onEffacer),
           filled: true,
           fillColor: PaletteNouvelle.papier,
           border: OutlineInputBorder(
@@ -765,19 +767,19 @@ class _Compositeur extends StatelessWidget {
                 child: Wrap(
                   children: [
                     _BoutonMedia(
-                        icone: Icons.photo_outlined,
+                        icone: LucideIcons.image,
                         libelle: 'Photo',
                         onTap: onPhoto),
                     _BoutonMedia(
-                        icone: Icons.videocam_outlined,
+                        icone: LucideIcons.video,
                         libelle: 'Vidéo',
                         onTap: onVideo),
                     _BoutonMedia(
-                        icone: Icons.menu_book_outlined,
+                        icone: LucideIcons.bookOpen,
                         libelle: 'Verset',
                         onTap: onVerset),
                     _BoutonMedia(
-                        icone: Icons.volunteer_activism_outlined,
+                        icone: LucideIcons.flame,
                         libelle: 'Prière',
                         onTap: onPriere),
                   ],
@@ -816,14 +818,14 @@ class _ApercuMedia extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(estVideo ? Icons.videocam_outlined : Icons.photo_outlined,
+          Icon(estVideo ? LucideIcons.video : LucideIcons.image,
               color: PaletteNouvelle.bleuNuit, size: 18),
           const SizedBox(width: 8),
           Expanded(
               child: Text(nom, maxLines: 1, overflow: TextOverflow.ellipsis)),
           IconButton(
             tooltip: 'Retirer',
-            icon: const Icon(Icons.close, size: 18),
+            icon: const Icon(LucideIcons.x, size: 18),
             onPressed: onRetirer,
           ),
         ],
@@ -963,7 +965,7 @@ class _FeuilleVersetsState extends State<_FeuilleVersets> {
             onSubmitted: _rechercher,
             decoration: const InputDecoration(
               hintText: 'Rechercher un verset…',
-              prefixIcon: Icon(Icons.search_outlined),
+              prefixIcon: Icon(LucideIcons.search),
               border: OutlineInputBorder(),
             ),
           ),

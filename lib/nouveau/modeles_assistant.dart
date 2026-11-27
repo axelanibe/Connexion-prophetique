@@ -7,6 +7,7 @@
 // prière privée quitte le téléphone, par la route existante
 // POST /prieres, qui envoie l'e-mail sans rien conserver.
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 /// Verset de la réponse prière, Philippiens 4, 6, Louis Segond 1910.
 const versetPriereAssistant =
@@ -39,7 +40,7 @@ const sujetsFrequentsAssistant = <SujetAssistant>[
   SujetAssistant(
     id: 'carte',
     titre: 'Carte de membre',
-    icone: Icons.badge_outlined,
+    icone: LucideIcons.idCard,
     reponse:
         'La carte de membre coûte 1 000 FCFA, par Wave. Elle s’affiche '
         'une fois ton paiement validé par la structure.',
@@ -48,7 +49,7 @@ const sujetsFrequentsAssistant = <SujetAssistant>[
   SujetAssistant(
     id: 'camp',
     titre: 'Camp National Kairos',
-    icone: Icons.forest,
+    icone: LucideIcons.tent,
     reponse:
         'À l’inscription au Camp National Kairos, ton badge est créé '
         'automatiquement, avec ton nom, ta photo si elle est renseignée, '
@@ -59,7 +60,7 @@ const sujetsFrequentsAssistant = <SujetAssistant>[
   SujetAssistant(
     id: 'cotisations',
     titre: 'Cotisations',
-    icone: Icons.volunteer_activism_outlined,
+    icone: LucideIcons.heart,
     reponse:
         'La cotisation du mois est de 1 000 FCFA. Elle est marquée par '
         'scan QR, sans demande préalable.',
@@ -68,7 +69,7 @@ const sujetsFrequentsAssistant = <SujetAssistant>[
   SujetAssistant(
     id: 'priere',
     titre: 'Demande de prière privée',
-    icone: Icons.church,
+    icone: LucideIcons.hand,
     reponse:
         'Ton sujet de prière reste privé, il est transmis à la structure '
         'par e-mail, sans affichage public. Écris-le ci-dessous.\n\n'
@@ -78,7 +79,7 @@ const sujetsFrequentsAssistant = <SujetAssistant>[
   SujetAssistant(
     id: 'programmes',
     titre: 'Programmes et activités',
-    icone: Icons.calendar_month,
+    icone: LucideIcons.calendarCheck,
     reponse:
         'Les activités à venir, camps et retraites en cours, sont sur '
         'l’accueil, dans Activités à venir.',
@@ -87,7 +88,7 @@ const sujetsFrequentsAssistant = <SujetAssistant>[
   SujetAssistant(
     id: 'structure',
     titre: 'Parler à la structure',
-    icone: Icons.forum_outlined,
+    icone: LucideIcons.messageCircle,
     reponse:
         'Pour parler à la structure, écris dans la Messagerie : la '
         'discussion de la structure est en haut de la liste.',

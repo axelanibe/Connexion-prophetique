@@ -15,6 +15,7 @@
 // Textes de la Bible réelle seulement, via ServiceBible.
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../bible.dart';
@@ -309,7 +310,7 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
         children: [
           if (onRetour != null)
             IconButton(
-              icon: const Icon(Icons.arrow_back,
+              icon: const Icon(LucideIcons.chevronLeft,
                   color: PaletteNouvelle.bleuNuit),
               onPressed: onRetour,
             ),
@@ -381,7 +382,7 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
         const SizedBox(height: 20),
         if (_reprise != null)
           _tuileAction(
-            icone: Icons.bookmark_outlined,
+            icone: LucideIcons.arrowRight,
             titre: 'Reprendre la lecture',
             sousTitre:
                 '${_nomLivre(_reprise!.book)} ${_reprise!.chapter}:${_reprise!.verse}',
@@ -396,15 +397,15 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
           crossAxisSpacing: 12,
           childAspectRatio: 2.2,
           children: [
-            _tuileGrille(Icons.search, 'Recherche', _Vue.recherche,
+            _tuileGrille(LucideIcons.search, 'Recherche', _Vue.recherche,
                 onOuvrir: null),
-            _tuileGrille(Icons.book_outlined, 'Dictionnaire',
+            _tuileGrille(LucideIcons.bookOpen, 'Dictionnaire',
                 _Vue.dictionnaire, onOuvrir: null),
-            _tuileGrille(Icons.star_outlined, 'Favoris', _Vue.favoris,
+            _tuileGrille(LucideIcons.sparkle, 'Favoris', _Vue.favoris,
                 onOuvrir: () => _chargerFavoris()),
-            _tuileGrille(Icons.calendar_month_outlined, 'Plan de lecture',
+            _tuileGrille(LucideIcons.calendar, 'Plan de lecture',
                 _Vue.plan, onOuvrir: () => _chargerPlan()),
-            _tuileGrille(Icons.settings_outlined, 'Réglages',
+            _tuileGrille(LucideIcons.settings, 'Réglages',
                 _Vue.reglages, onOuvrir: null),
           ],
         ),
@@ -444,7 +445,7 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
         subtitle: chapitres > 0
             ? Text('$chapitres chapitres')
             : null,
-        trailing: const Icon(Icons.chevron_right,
+        trailing: const Icon(LucideIcons.chevronRight,
             color: PaletteNouvelle.bleuNuit),
         onTap: () => setState(() {
           _livre = livre;
@@ -470,7 +471,7 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
                 color: Colors.white, fontWeight: FontWeight.w700)),
         subtitle: Text(sousTitre,
             style: const TextStyle(color: Colors.white70)),
-        trailing: const Icon(Icons.chevron_right, color: Colors.white),
+        trailing: const Icon(LucideIcons.chevronRight, color: Colors.white),
         onTap: onTap,
       ),
     );
@@ -565,7 +566,7 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
                     if (mounted) setState(() => _enCoursAudio = false);
                   }
                 },
-                icon: Icon(_enCoursAudio ? Icons.stop : Icons.play_arrow),
+                icon: Icon(_enCoursAudio ? LucideIcons.square : LucideIcons.play),
                 label: Text(_enCoursAudio ? 'Arrêter' : 'Écouter'),
               ),
             ],
@@ -739,7 +740,7 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
             controller: _rechercheCtrl,
             decoration: const InputDecoration(
               hintText: 'Rechercher un mot, sans accents…',
-              prefixIcon: Icon(Icons.search),
+              prefixIcon: Icon(LucideIcons.search),
               border: OutlineInputBorder(),
               filled: true,
               fillColor: Colors.white,

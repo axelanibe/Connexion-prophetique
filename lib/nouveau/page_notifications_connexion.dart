@@ -4,6 +4,7 @@
 // types du mur). Un toucher ouvre le détail de la publication
 // ou le profil du suiveur, selon le lien.
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'carte_publication.dart';
 import 'modeles_connexion.dart';
@@ -128,7 +129,7 @@ class _PageNotificationsConnexionState
         backgroundColor: Colors.white,
         elevation: 1,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: PaletteNouvelle.bleuNuit),
+          icon: const Icon(LucideIcons.chevronLeft, color: PaletteNouvelle.bleuNuit),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text(

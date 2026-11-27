@@ -18,6 +18,7 @@
 // Sans serveur, pas de demande locale : la structure ne
 // pourrait jamais la voir, la carte n'apparaîtrait jamais.
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
@@ -67,10 +68,10 @@ class MoyenPaiementCarte {
   factory MoyenPaiementCarte.depuisServeur(Map<String, dynamic> m) {
     final id = (m['id'] ?? '').toString();
     final icone = switch (id) {
-      'mtn' => Icons.smartphone,
-      'orange' => Icons.account_balance_wallet,
-      'cinetpay' => Icons.credit_card,
-      _ => Icons.waves,
+      'mtn' => LucideIcons.smartphone,
+      'orange' => LucideIcons.wallet,
+      'cinetpay' => LucideIcons.creditCard,
+      _ => LucideIcons.waves,
     };
     return MoyenPaiementCarte(
       id: id,
@@ -93,22 +94,22 @@ const moyensPaiementCarte = <MoyenPaiementCarte>[
   MoyenPaiementCarte(
       id: 'wave',
       label: 'Wave',
-      icone: Icons.waves,
+      icone: LucideIcons.waves,
       disponible: true),
   MoyenPaiementCarte(
       id: 'mtn',
       label: 'MTN MoMo',
-      icone: Icons.smartphone,
+      icone: LucideIcons.smartphone,
       disponible: false),
   MoyenPaiementCarte(
       id: 'orange',
       label: 'Orange Money',
-      icone: Icons.account_balance_wallet,
+      icone: LucideIcons.wallet,
       disponible: false),
   MoyenPaiementCarte(
       id: 'cinetpay',
       label: 'Carte bancaire',
-      icone: Icons.credit_card,
+      icone: LucideIcons.creditCard,
       disponible: false),
 ];
 
@@ -240,7 +241,7 @@ class _FeuillePaiementCarteState extends State<_FeuillePaiementCarte> {
                 ),
                 IconButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close),
+                  icon: const Icon(LucideIcons.x),
                 ),
               ],
             ),
@@ -343,7 +344,7 @@ class _FeuillePaiementCarteState extends State<_FeuillePaiementCarte> {
                   backgroundColor: PaletteNouvelle.bleuNuit,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                icon: const Icon(Icons.shield,
+                icon: const Icon(LucideIcons.shieldCheck,
                     color: PaletteNouvelle.or, size: 18),
                 label: Text(
                     'Confirmer le paiement • ${fcfa(kMontantCarteFcfa)}'),

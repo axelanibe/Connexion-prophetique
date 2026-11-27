@@ -15,6 +15,7 @@
 // telle que validée : si Axel choisit le chatbox, elle sera
 // retirée plus tard, pas dans cette tranche.
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'modeles_assistant.dart';
 import 'palette.dart';
@@ -55,26 +56,38 @@ class BoutonFlottantAssistant extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FloatingActionButton.extended(
-      key: const ValueKey('fabAssistant'),
-      tooltip: 'Assistant CP',
-      backgroundColor: PaletteNouvelle.bleuNuit,
-      onPressed: onPressed,
-      icon: Container(
-        width: 10,
-        height: 10,
-        decoration: const BoxDecoration(
-          color: Colors.green,
-          shape: BoxShape.circle,
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        FloatingActionButton.extended(
+          key: const ValueKey('fabAssistant'),
+          tooltip: 'Assistant CP',
+          backgroundColor: PaletteNouvelle.bleuNuit,
+          onPressed: onPressed,
+          icon: const Icon(LucideIcons.bot,
+              color: PaletteNouvelle.or, size: 20),
+          label: const Text(
+            'Assistant CP',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ),
-      ),
-      label: const Text(
-        'Assistant CP',
-        style: TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
+        Positioned(
+          top: -3,
+          right: -3,
+          child: Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: Colors.green,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+          ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -334,7 +347,7 @@ class _EnTete extends StatelessWidget {
             radius: 22,
             backgroundColor: PaletteNouvelle.bleuNuit,
             child: Icon(
-              Icons.auto_awesome,
+              LucideIcons.house,
               color: PaletteNouvelle.or,
               size: 20,
             ),
@@ -375,13 +388,13 @@ class _EnTete extends StatelessWidget {
           IconButton(
             key: const ValueKey('reinitialiserAssistant'),
             tooltip: 'Réinitialiser',
-            icon: const Icon(Icons.restart_alt, color: Colors.grey),
+            icon: const Icon(LucideIcons.rotateCcw, color: Colors.grey),
             onPressed: onReinitialiser,
           ),
           IconButton(
             key: const ValueKey('fermerAssistant'),
             tooltip: 'Fermer',
-            icon: const Icon(Icons.close, color: PaletteNouvelle.bleuNuit),
+            icon: const Icon(LucideIcons.x, color: PaletteNouvelle.bleuNuit),
             onPressed: onFermer,
           ),
         ],
@@ -555,7 +568,7 @@ class _BulleAssistant extends StatelessWidget {
           radius: 14,
           backgroundColor: PaletteNouvelle.bleuNuit,
           child: Icon(
-            Icons.auto_awesome,
+            LucideIcons.house,
             color: PaletteNouvelle.or,
             size: 14,
           ),
@@ -638,7 +651,7 @@ class _IndicateurFrappe extends StatelessWidget {
           radius: 14,
           backgroundColor: PaletteNouvelle.bleuNuit,
           child: Icon(
-            Icons.auto_awesome,
+            LucideIcons.house,
             color: PaletteNouvelle.or,
             size: 14,
           ),
@@ -769,7 +782,7 @@ class _BarreSaisie extends StatelessWidget {
                 IconButton(
                   key: const ValueKey('microAssistant'),
                   tooltip: 'Message vocal',
-                  icon: const Icon(Icons.mic_none_outlined, color: Colors.grey),
+                  icon: const Icon(LucideIcons.mic, color: Colors.grey),
                   onPressed: onMicro,
                 ),
                 CircleAvatar(
@@ -777,7 +790,7 @@ class _BarreSaisie extends StatelessWidget {
                   child: IconButton(
                     key: const ValueKey('boutonEnvoyerAssistant'),
                     tooltip: 'Envoyer',
-                    icon: const Icon(Icons.send, color: Colors.white, size: 18),
+                    icon: const Icon(LucideIcons.send, color: Colors.white, size: 18),
                     onPressed: onEnvoyer,
                   ),
                 ),
@@ -788,7 +801,7 @@ class _BarreSaisie extends StatelessWidget {
           const Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.lock, size: 10, color: PaletteNouvelle.orFonce),
+              Icon(LucideIcons.lock, size: 10, color: PaletteNouvelle.orFonce),
               SizedBox(width: 4),
               Text(
                 'Échanges confidentiels',

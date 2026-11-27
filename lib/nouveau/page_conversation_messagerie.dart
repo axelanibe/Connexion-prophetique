@@ -8,6 +8,7 @@
 // d'annonces de la structure. L'envoi d'un message vocal
 // reste dans l'ancien écran, il n'est pas repris ici.
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../messagerie.dart' hide motifsSignalement;
 import 'modeles_connexion.dart';
@@ -184,7 +185,7 @@ class _PageConversationMessagerieState
         elevation: 1,
         leading: IconButton(
           tooltip: 'Retour',
-          icon: const Icon(Icons.arrow_back,
+          icon: const Icon(LucideIcons.chevronLeft,
               color: PaletteNouvelle.bleuNuit),
           onPressed: () => Navigator.of(context).pop(),
         ),
@@ -252,13 +253,13 @@ class _PageConversationMessagerieState
           if (conversation.type == 'directe')
             IconButton(
               tooltip: 'Appeler',
-              icon: const Icon(Icons.phone,
+              icon: const Icon(LucideIcons.phone,
                   color: PaletteNouvelle.bleuNuit),
               onPressed: _appeler,
             ),
           IconButton(
             tooltip: 'Signaler',
-            icon: const Icon(Icons.flag_outlined,
+            icon: const Icon(LucideIcons.flag,
                 color: PaletteNouvelle.bleuNuit),
             onPressed: _signaler,
           ),
@@ -397,7 +398,7 @@ class _BulleMessage extends StatelessWidget {
             ? Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.mic_none_outlined,
+                  Icon(LucideIcons.mic,
                       size: 18,
                       color: mien ? Colors.white : PaletteNouvelle.bleuNuit),
                   const SizedBox(width: 6),
@@ -477,7 +478,7 @@ class _BarreEcriture extends StatelessWidget {
             tooltip: 'Envoyer',
             style: IconButton.styleFrom(
                 backgroundColor: PaletteNouvelle.bleuNuit),
-            icon: const Icon(Icons.send, color: Colors.white, size: 20),
+            icon: const Icon(LucideIcons.send, color: Colors.white, size: 20),
             onPressed: enCours ? null : onEnvoyer,
           ),
         ],

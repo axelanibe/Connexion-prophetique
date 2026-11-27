@@ -12,6 +12,7 @@
 // sac ouvre seulement la liste du panier avec son total.
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../app_models.dart';
 import 'modeles_librairie.dart';
@@ -99,7 +100,7 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
                 initialValue: _requete,
                 autofocus: true,
                 decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.search_outlined),
+                  prefixIcon: const Icon(LucideIcons.search),
                   hintText: 'Rechercher un titre, un auteur…',
                   filled: true,
                   fillColor: Colors.white,
@@ -500,7 +501,7 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
               ),
               PopupMenuButton<String>(
                 tooltip: 'Actions',
-                icon: const Icon(Icons.more_vert),
+                icon: const Icon(LucideIcons.ellipsisVertical),
                 onSelected: (v) async {
                   if (v == 'partager') {
                     await _service.partager(livre);
@@ -512,30 +513,15 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
                 },
                 itemBuilder: (_) => [
                   const PopupMenuItem(
-                      value: 'partager',
-                      child: Row(children: [
-                        Icon(Icons.share_outlined, size: 16),
-                        SizedBox(width: 8),
-                        Text('Partager'),
-                      ])),
+                      value: 'partager', child: Text('Partager')),
                   if (_service.estAdminGeneral)
                     const PopupMenuItem(
-                        value: 'modifier',
-                        child: Row(children: [
-                          Icon(Icons.edit_outlined, size: 16),
-                          SizedBox(width: 8),
-                          Text('Modifier'),
-                        ])),
+                        value: 'modifier', child: Text('Modifier')),
                   if (_service.estAdminGeneral)
                     const PopupMenuItem(
                         value: 'retirer',
-                        child: Row(children: [
-                          Icon(Icons.delete_outlined,
-                              size: 16, color: Colors.red),
-                          SizedBox(width: 8),
-                          Text('Retirer',
-                              style: TextStyle(color: Colors.red)),
-                        ])),
+                        child: Text('Retirer',
+                            style: TextStyle(color: Colors.red))),
                 ],
               ),
             ]),
@@ -593,29 +579,25 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
               width: double.infinity,
               height: 48,
               child: achete
-                  ? FilledButton.icon(
+                  ? FilledButton(
                       style: FilledButton.styleFrom(
                           backgroundColor: _vert),
                       onPressed: () => _acheter(livre),
-                      icon: const Icon(Icons.book_outlined, size: 18),
-                      label: const Text("Lire l'ouvrage"),
+                      child: const Text("Lire l'ouvrage"),
                     )
                   : dansPanier
-                      ? FilledButton.icon(
+                      ? FilledButton(
                           style: FilledButton.styleFrom(
                               backgroundColor:
                                   const Color(0xFF1E3A5F)),
                           onPressed: () => _acheter(livre),
-                          icon: const Icon(Icons.check, size: 18),
-                          label: const Text('Déjà dans le panier'),
+                          child: const Text('Déjà dans le panier'),
                         )
-                      : FilledButton.icon(
+                      : FilledButton(
                           style: FilledButton.styleFrom(
                               backgroundColor: PaletteNouvelle.bleuNuit),
                           onPressed: () => _acheter(livre),
-                          icon: const Icon(Icons.shopping_cart_outlined,
-                              size: 18),
-                          label: const Text('Acheter'),
+                          child: const Text('Acheter'),
                         ),
             ),
           ],
@@ -646,8 +628,9 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
+                        fontFamily: 'Cinzel',
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
                         letterSpacing: 0.8,
                         color: PaletteNouvelle.orFonce)),
               ),
@@ -667,22 +650,20 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
                               color: Colors.white,
                               fontSize: 10,
                               fontWeight: FontWeight.bold)),
-                      child: const Icon(Icons.shopping_bag_outlined,
+                      child: const Icon(LucideIcons.shoppingBag,
                           color: _grisTexte)),
                   onPressed: _ouvrirPanier,
                 ),
               ),
               if (_service.estAdminGeneral) ...[
                 const SizedBox(width: 4),
-                OutlinedButton.icon(
+                OutlinedButton(
                   key: const ValueKey('boutonAjouter'),
                   style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: _grisBord),
                       foregroundColor: PaletteNouvelle.bleuNuit),
-                  icon: const Icon(Icons.add_outlined,
-                      size: 18, color: PaletteNouvelle.or),
-                  label: const Text('Ajouter'),
                   onPressed: () => _feuilleLivre(),
+                  child: const Text('+ Ajouter'),
                 ),
               ],
             ]),
@@ -698,7 +679,7 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
                     color: _grisFond,
                     borderRadius: BorderRadius.circular(12)),
                 child: Row(children: [
-                  const Icon(Icons.search_outlined, color: _grisTexte),
+                  const Icon(LucideIcons.search, color: _grisTexte),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -717,7 +698,7 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
                       key: const ValueKey('effacerRecherche'),
                       customBorder: const CircleBorder(),
                       onTap: () => setState(() => _requete = ''),
-                      child: const Icon(Icons.clear,
+                      child: const Icon(LucideIcons.x,
                           size: 18, color: _grisTexte),
                     ),
                 ]),
@@ -833,8 +814,8 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
                       Icon(
                           _requete.isNotEmpty ||
                                   !_repliees.contains(entree.key)
-                              ? Icons.expand_less
-                              : Icons.expand_more,
+                              ? LucideIcons.chevronUp
+                              : LucideIcons.chevronDown,
                           color: _grisTexte),
                     ]),
                   ),

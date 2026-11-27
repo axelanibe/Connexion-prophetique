@@ -421,8 +421,9 @@ class _PageParoleVivanteState extends State<PageParoleVivante> {
           const Text(
             'Parole vivante',
             style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
+              fontFamily: 'Cinzel',
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
               color: PaletteNouvelle.bleuNuit,
             ),
           ),

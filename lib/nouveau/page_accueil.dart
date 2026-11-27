@@ -8,6 +8,7 @@
 // sans données sont masquées. Non branché dans lib/main.dart,
 // la bascule est T11.
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../stories.dart' show StoriesStrip;
 import 'activites_venir.dart';
@@ -232,7 +233,7 @@ class _BarreRecherche extends StatelessWidget {
             border: Border.all(color: const Color(0xFFE3E7EE)),
           ),
           child: const Row(children: [
-            Icon(Icons.search_outlined, color: PaletteNouvelle.orFonce, size: 20),
+            Icon(LucideIcons.search, color: PaletteNouvelle.orFonce, size: 20),
             SizedBox(width: 8),
             Text('Rechercher…', style: TextStyle(color: Colors.grey, fontSize: 14)),
           ]),
@@ -299,8 +300,9 @@ class _CartePriere extends StatelessWidget {
                 Text(
                   verset.texte,
                   style: const TextStyle(
-                    fontFamily: 'Lora',
+                    fontFamily: 'Public Sans',
                     fontFamilyFallback: ['Georgia', 'serif'],
+                    fontStyle: FontStyle.italic,
                     color: PaletteNouvelle.bleuNuit,
                     fontSize: 17,
                     height: 1.4,
@@ -337,7 +339,7 @@ class _CartePriere extends StatelessWidget {
                     onPressed: onEcouter,
                     style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
                     icon: Icon(
-                      enEcoute ? Icons.stop_outlined : Icons.volume_up_outlined,
+                      enEcoute ? LucideIcons.square : LucideIcons.headphones,
                       size: 16,
                       color: PaletteNouvelle.bleuNuit,
                     ),
@@ -352,7 +354,7 @@ class _CartePriere extends StatelessWidget {
                   child: TextButton.icon(
                     onPressed: onPartager,
                     style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
-                    icon: const Icon(Icons.share_outlined, size: 16, color: PaletteNouvelle.bleuNuit),
+                    icon: const Icon(LucideIcons.share2, size: 16, color: PaletteNouvelle.bleuNuit),
                     label: const Text(
                       'Partager',
                       style: TextStyle(color: PaletteNouvelle.bleuNuit, fontSize: 12, fontWeight: FontWeight.w700),
@@ -361,15 +363,23 @@ class _CartePriere extends StatelessWidget {
                 ),
                 Expanded(
                   flex: 2,
-                  child: TextButton.icon(
+                  child: TextButton(
                     onPressed: onOuvrirBible,
                     style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
-                    icon: const Icon(Icons.menu_book_outlined, size: 16, color: PaletteNouvelle.bleuNuit),
-                    label: const Text(
-                      'Ouvrir dans la Bible',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: PaletteNouvelle.bleuNuit, fontSize: 12, fontWeight: FontWeight.w700),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            'Ouvrir dans la Bible',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: PaletteNouvelle.bleuNuit, fontSize: 12, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        SizedBox(width: 4),
+                        Icon(LucideIcons.arrowRight, size: 16, color: PaletteNouvelle.bleuNuit),
+                      ],
                     ),
                   ),
                 ),
@@ -399,10 +409,10 @@ class _AccesRapides extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tuiles = <(IconData, String, VoidCallback?)>[
-      (Icons.account_balance_outlined, 'Structure', onStructure),
-      (Icons.ondemand_video_outlined, 'Témoignages', onTemoignages),
-      (Icons.payments_outlined, 'Cotisations', onCotisations),
-      (Icons.headphones_outlined, 'Parole vivante', onParoleVivante),
+      (LucideIcons.church, 'Structure', onStructure),
+      (LucideIcons.messageCircle, 'Témoignages', onTemoignages),
+      (LucideIcons.circleDollarSign, 'Cotisations', onCotisations),
+      (LucideIcons.circlePlay, 'Parole vivante', onParoleVivante),
     ];
     Widget cellule((IconData, String, VoidCallback?) tuile) {
       return InkWell(
@@ -492,7 +502,7 @@ class _TuileLargeLibrairie extends StatelessWidget {
                 color: PaletteNouvelle.bleuNuit,
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: const Icon(Icons.local_library_outlined, color: PaletteNouvelle.or, size: 24),
+              child: const Icon(LucideIcons.shoppingBag, color: PaletteNouvelle.or, size: 24),
             ),
             const SizedBox(width: 12),
             const Expanded(
@@ -501,7 +511,7 @@ class _TuileLargeLibrairie extends StatelessWidget {
                 style: TextStyle(color: PaletteNouvelle.bleuNuit, fontSize: 17, fontWeight: FontWeight.w800),
               ),
             ),
-            const Icon(Icons.chevron_right_outlined, color: Colors.grey, size: 22),
+            const Icon(LucideIcons.chevronRight, color: Colors.grey, size: 22),
           ],
         ),
       ),

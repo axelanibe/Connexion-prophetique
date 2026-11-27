@@ -16,6 +16,7 @@
 // reçus et manqués en rouge, chacun avec un bouton pour
 // rappeler, badge rouge des manqués sur l'onglet Appels.
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../messagerie.dart';
 import 'modeles_messagerie.dart';
@@ -294,34 +295,15 @@ class _PageMessagerieState extends State<PageMessagerie> {
                   tooltip: 'Nouvelle discussion',
                   backgroundColor: PaletteNouvelle.bleuNuit,
                   onPressed: _nouvelleDiscussion,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      const Icon(Icons.chat_bubble_outline,
-                          color: Colors.white, size: 26),
-                      Positioned(
-                        right: -5,
-                        bottom: -3,
-                        child: Container(
-                          width: 14,
-                          height: 14,
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.add,
-                              color: PaletteNouvelle.bleuNuit, size: 12),
-                        ),
-                      ),
-                    ],
-                  ),
+                  child: const Icon(LucideIcons.messageCirclePlus,
+                      color: Colors.white, size: 26),
                 )
               : FloatingActionButton(
                   key: const ValueKey('fabNouvelAppel'),
                   tooltip: 'Nouvel appel',
                   backgroundColor: _vertAppel,
                   onPressed: _nouvelAppel,
-                  child: const Icon(Icons.phone, color: Colors.white),
+                  child: const Icon(LucideIcons.phone, color: Colors.white),
                 ),
       body: SafeArea(
         child: Column(
@@ -385,7 +367,7 @@ class _Bande extends StatelessWidget {
         children: [
           IconButton(
             tooltip: 'Retour',
-            icon: const Icon(Icons.arrow_back, color: PaletteNouvelle.bleuNuit),
+            icon: const Icon(LucideIcons.chevronLeft, color: PaletteNouvelle.bleuNuit),
             onPressed: onRetour,
           ),
           const Expanded(
@@ -431,6 +413,14 @@ class _Onglets extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
+                        Icon(
+                          v == VoletMessagerie.appels
+                              ? LucideIcons.phone
+                              : LucideIcons.messageCircle,
+                          size: 18,
+                          color: PaletteNouvelle.bleuNuit,
+                        ),
+                        const SizedBox(width: 6),
                         Text(
                           v.libelle,
                           style: TextStyle(
@@ -517,7 +507,26 @@ class _VoletDiscussions extends StatelessWidget {
           children: [
             for (final f in FiltreMessagerie.values)
               ChoiceChip(
-                label: Text(f.libelle),
+                label: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (f == FiltreMessagerie.messages)
+                      Icon(LucideIcons.messageCircle,
+                          size: 16,
+                          color: filtre == f
+                              ? Colors.white
+                              : PaletteNouvelle.bleuNuit),
+                    if (f == FiltreMessagerie.groupes)
+                      Icon(LucideIcons.users,
+                          size: 16,
+                          color: filtre == f
+                              ? Colors.white
+                              : PaletteNouvelle.bleuNuit),
+                    if (f != FiltreMessagerie.tous)
+                      const SizedBox(width: 6),
+                    Text(f.libelle),
+                  ],
+                ),
                 selected: filtre == f,
                 selectedColor: PaletteNouvelle.bleuNuit,
                 labelStyle: TextStyle(
@@ -682,8 +691,11 @@ class _LigneConversation extends StatelessWidget {
             if (conversation.estDiscussionStructure)
               const Padding(
                 padding: EdgeInsets.only(right: 4),
-                child: Icon(Icons.push_pin,
-                    size: 14, color: PaletteNouvelle.orFonce),
+                child: Text('ÉPINGLÉE',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: PaletteNouvelle.orFonce)),
               ),
             Expanded(
               child: Text(
@@ -808,7 +820,7 @@ class _VoletAppels extends StatelessWidget {
             subtitle: Row(
               children: [
                 Icon(
-                  sortant ? Icons.call_made : Icons.call_received,
+                  sortant ? LucideIcons.arrowUpRight : LucideIcons.arrowDownLeft,
                   size: 14,
                   color: appel.manque
                       ? PaletteNouvelle.rougeBadge
@@ -833,15 +845,15 @@ class _VoletAppels extends StatelessWidget {
               children: [
                 Icon(
                   appel.estVideo
-                      ? Icons.videocam_outlined
-                      : Icons.phone_outlined,
+                      ? LucideIcons.video
+                      : LucideIcons.phone,
                   color: PaletteNouvelle.bleuNuit,
                   size: 20,
                 ),
                 IconButton(
                   key: ValueKey('rappeler-${appel.id}'),
                   tooltip: 'Rappeler',
-                  icon: const Icon(Icons.phone,
+                  icon: const Icon(LucideIcons.phone,
                       color: PaletteNouvelle.bleuNuit),
                   onPressed: () => onRappeler(appel),
                 ),
@@ -911,7 +923,7 @@ class _FeuilleMembresState extends State<_FeuilleMembres> {
             onSubmitted: _rechercher,
             decoration: const InputDecoration(
               hintText: 'Rechercher un membre…',
-              prefixIcon: Icon(Icons.search_outlined),
+              prefixIcon: Icon(LucideIcons.search),
               border: OutlineInputBorder(),
             ),
           ),

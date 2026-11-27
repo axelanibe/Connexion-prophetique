@@ -4,6 +4,7 @@
 // commentaire avec @ (recherche de membres, 3 caractères au
 // moins) et envoi des identifiants mentionnés.
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'carte_publication.dart';
 import 'modeles_connexion.dart';
@@ -403,7 +404,7 @@ class _BarreCommentaire extends StatelessWidget {
                           style: const TextStyle(
                               color: Colors.grey, fontSize: 13))),
                   IconButton(
-                      icon: const Icon(Icons.close, size: 18),
+                      icon: const Icon(LucideIcons.x, size: 18),
                       onPressed: onAnnulerReponse),
                 ],
               ),
@@ -447,7 +448,7 @@ class _BarreCommentaire extends StatelessWidget {
               IconButton.filled(
                 style: IconButton.styleFrom(
                     backgroundColor: PaletteNouvelle.bleuNuit),
-                icon: const Icon(Icons.send_outlined, color: Colors.white),
+                icon: const Icon(LucideIcons.send, color: Colors.white),
                 onPressed: enCours ? null : onEnvoyer,
               ),
             ],

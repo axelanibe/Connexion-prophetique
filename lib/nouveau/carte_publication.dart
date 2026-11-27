@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:video_player/video_player.dart';
 
 import '../api.dart' show kApiBaseUrl;
@@ -174,7 +175,7 @@ class CartePublicationConnexion extends StatelessWidget {
                     ? 'Retirer des enregistrements'
                     : 'Enregistrer',
                 icon: Icon(
-                  p.enregistre ? Icons.bookmark : Icons.bookmark_border,
+                  p.enregistre ? LucideIcons.bookmark : LucideIcons.bookmark,
                   color: p.enregistre
                       ? PaletteNouvelle.orFonce
                       : PaletteNouvelle.bleuNuit,
@@ -183,7 +184,7 @@ class CartePublicationConnexion extends StatelessWidget {
               ),
               PopupMenuButton<String>(
                 tooltip: 'Options',
-                icon: const Icon(Icons.more_vert,
+                icon: const Icon(LucideIcons.ellipsisVertical,
                     color: PaletteNouvelle.bleuNuit),
                 onSelected: (v) {
                   if (v == 'signaler') onSignaler?.call();
@@ -240,7 +241,7 @@ class CartePublicationConnexion extends StatelessWidget {
                 style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 4)),
                 onPressed: onCommentaires,
-                icon: const Icon(Icons.comment_outlined,
+                icon: const Icon(LucideIcons.messageCircle,
                     size: 18, color: PaletteNouvelle.bleuNuit),
                 label: Text(
                   '${p.nbCommentaires}',
@@ -254,7 +255,7 @@ class CartePublicationConnexion extends StatelessWidget {
                 padding: const EdgeInsets.all(4),
                 constraints:
                     const BoxConstraints(minWidth: 36, minHeight: 36),
-                icon: const Icon(Icons.share_outlined,
+                icon: const Icon(LucideIcons.share2,
                     color: PaletteNouvelle.bleuNuit),
                 onPressed: onPartager,
               ),
@@ -280,9 +281,9 @@ class _BoutonReaction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final icone = switch (type) {
-      TypeReaction.jaime => Icons.thumb_up_outlined,
-      TypeReaction.amen => Icons.favorite_outlined,
-      TypeReaction.priere => Icons.volunteer_activism_outlined,
+      TypeReaction.jaime => LucideIcons.heart,
+      TypeReaction.amen => LucideIcons.sparkles,
+      TypeReaction.priere => LucideIcons.flame,
     };
     return TextButton.icon(
       style: TextButton.styleFrom(
@@ -359,7 +360,7 @@ class _TuileVideo extends StatelessWidget {
         child: const Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.play_circle_fill, color: PaletteNouvelle.or, size: 48),
+            Icon(LucideIcons.circlePlay, color: PaletteNouvelle.or, size: 48),
             SizedBox(height: 8),
             Text('Vidéo',
                 style: TextStyle(
@@ -444,7 +445,7 @@ class _LecteurVideoState extends State<_LecteurVideo> {
               top: 4,
               right: 4,
               child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
+                icon: const Icon(LucideIcons.x, color: Colors.white),
                 onPressed: () => Navigator.of(context).pop(),
               ),
             ),
@@ -487,12 +488,9 @@ class _CarteEpinglee extends StatelessWidget {
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.push_pin,
-                          size: 14, color: PaletteNouvelle.orFonce),
-                      SizedBox(width: 4),
                       Flexible(
                         child: Text(
-                          'Actualité de la structure',
+                          'Actualité de la structure · Épinglée',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
