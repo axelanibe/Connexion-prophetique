@@ -12,6 +12,7 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:video_player/video_player.dart';
 
 import 'api.dart';
@@ -283,7 +284,7 @@ class _CerclePublier extends StatelessWidget {
                 border: Border.all(color: _or, width: 2),
                 color: _nuit,
               ),
-              child: const Icon(Icons.add_outlined, color: _or, size: 30),
+              child: const Icon(LucideIcons.plus, color: _or, size: 30),
             ),
             const SizedBox(height: 6),
             Text(

@@ -35,10 +35,11 @@ class Ux {
   static const inkMuted = Color(0xFF5E687C);
   static const line = Color(0xFFE4E7EF);
 
-  /// Texte courant, Plus Jakarta Sans, avec repli système si la
-  /// police n'est pas disponible hors ligne : la liste de repli
-  /// laisse Flutter choisir une police système lisible au lieu
-  /// de bloquer ou d'afficher un carré.
+  /// Texte courant, Public Sans depuis T19, police du corps
+  /// de la maquette, avec repli système si la police n'est pas
+  /// disponible hors ligne : la liste de repli laisse Flutter
+  /// choisir une police système lisible au lieu de bloquer ou
+  /// d'afficher un carré.
   static TextStyle body({
     double size = 14,
     FontWeight weight = FontWeight.w400,
@@ -46,7 +47,7 @@ class Ux {
     double height = 1.45,
   }) =>
       TextStyle(
-        fontFamily: 'Plus Jakarta Sans',
+        fontFamily: 'Public Sans',
         fontSize: size,
         fontWeight: weight,
         color: color,
