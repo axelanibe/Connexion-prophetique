@@ -26,6 +26,7 @@ import 'destinations.dart';
 import 'lecture_livre.dart';
 import 'modeles_connexion.dart';
 import 'modeles_messagerie.dart';
+import 'page_a_propos.dart';
 import 'page_abonnement.dart';
 import 'page_accueil.dart';
 import 'page_assistant.dart';
@@ -60,6 +61,7 @@ import 'service_messagerie.dart';
 import 'service_parole.dart';
 import 'service_profil.dart';
 import 'service_t14.dart';
+import 'service_t18.dart';
 import 'service_t9.dart';
 import 'veille_reseau.dart';
 
@@ -92,6 +94,7 @@ class _RacineNouvelleState extends State<RacineNouvelle>
   late final ServiceAssistant _serviceAssistant;
   late final ServiceParoleVivante _serviceParole;
   late final ServiceT14 _serviceT14;
+  late final ServiceT18 _serviceT18;
   late final CacheContenus _cache;
 
   var _activites = <ActiviteAVenir>[];
@@ -139,6 +142,7 @@ class _RacineNouvelleState extends State<RacineNouvelle>
     _serviceAssistant = ServiceAssistantApi(api);
     _serviceParole = ServiceParoleVivanteReel();
     _serviceT14 = ServiceT14Reel();
+    _serviceT18 = ServiceT18Reel();
     _cache = CacheContenus(api);
     _quizCourant = QuizService.quizOfTheDay(
       QuizService.seedQuizzesFr,
@@ -580,10 +584,29 @@ class _RacineNouvelleState extends State<RacineNouvelle>
       croissance: PageCroissance(service: _serviceT9),
       fonctions: PageFonctions(service: _serviceT9),
       abonnement: PageAbonnement(service: _serviceT9),
+      aPropos: PageAPropos(
+        onOuvrirBureau: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => PageBureau(serviceT18: _serviceT18),
+            ),
+          );
+        },
+      ),
       galerie: PageGalerie(service: _serviceT9),
       espaceStructure: PageEspaceStructure(
-          service: _serviceT9, serviceT14: _serviceT14),
-      structure: PageStructure(service: _serviceT9),
+          service: _serviceT9,
+          serviceT14: _serviceT14,
+          serviceT18: _serviceT18,
+          onOuvrirCamps: () =>
+              _ouvrirDestination(DestinationNouvelle.camps)),
+      structure: PageStructure(
+        service: _serviceT9,
+        serviceT14: _serviceT14,
+        serviceT18: _serviceT18,
+        onOuvrirCamps: () =>
+            _ouvrirDestination(DestinationNouvelle.camps),
+      ),
       cotisations: PageCotisations(service: _serviceT14),
       paroleVivante: PageParoleVivante(
         service: _serviceParole,
