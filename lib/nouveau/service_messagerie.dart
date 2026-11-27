@@ -132,9 +132,17 @@ class ServiceMessagerieApi implements ServiceMessagerie {
   }
 
   @override
-  Future<void> appeler(String conversationId,
+  Future<Map<String, dynamic>> appeler(String conversationId,
       {required String type}) async {
-    await _api.creerAppelConversation(conversationId, type: type);
+    return _api.creerAppelConversation(conversationId, type: type);
+  }
+
+  @override
+  Future<Map<String, dynamic>?> appelActif(String conversationId) async {
+    final brut = await _api.fetchAppelActifConversation(conversationId);
+    final appel = brut['appel'];
+    if (appel is Map<String, dynamic>) return appel;
+    return null;
   }
 
   @override

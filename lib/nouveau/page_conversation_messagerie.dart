@@ -7,13 +7,18 @@
 // Les réponses désactivées masquent la saisie, comme le canal
 // d'annonces de la structure. L'envoi d'un message vocal
 // reste dans l'ancien écran, il n'est pas repris ici.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../app_models.dart';
+import '../appels.dart';
 import '../messagerie.dart' hide motifsSignalement;
 import 'modeles_connexion.dart';
 import 'modeles_messagerie.dart';
 import 'palette.dart';
+import 'relais_appels.dart';
 import 'veille_reseau.dart';
 
 class PageConversationMessagerie extends StatefulWidget {
@@ -23,11 +28,16 @@ class PageConversationMessagerie extends StatefulWidget {
     required this.conversation,
     required this.titre,
     this.monMembreId,
+    this.onOuvrirAppelEnCours,
   });
   final ServiceMessagerie service;
   final ConversationMessagerie conversation;
   final String titre;
   final String? monMembreId;
+
+  /// Ouvre l'écran d'appel sortant, injecté pour les tests :
+  /// sans lui, l'ouvreur réel pousse EcranAppelEnCours.
+  final OuvrirAppelEnCours? onOuvrirAppelEnCours;
 
   @override
   State<PageConversationMessagerie> createState() =>
@@ -43,15 +53,30 @@ class _PageConversationMessagerieState
   bool _enLigne = false;
   String? _erreur;
 
+  /// Appel sortant en cours de lancement, un seul à la fois.
+  var _appelEnCours = false;
+
+  /// Sondage de l'appel entrant toutes les 3 secondes, T21,
+  /// miroir de l'ancien _verifierAppelActif.
+  Timer? _minuteurAppel;
+
+  /// Appel entrant déjà ouvert, pour ne pas le rouvrir.
+  String? _appelEntrantOuvertId;
+
   @override
   void initState() {
     super.initState();
     VeilleReseau.partage.ajouterReprise(_recharger);
     _charger();
+    _minuteurAppel = Timer.periodic(
+      delaiVerificationAppelEntrant,
+      (_) => _verifierAppelActif(),
+    );
   }
 
   @override
   void dispose() {
+    _minuteurAppel?.cancel();
     VeilleReseau.partage.retirerReprise(_recharger);
     _texte.dispose();
     super.dispose();
@@ -87,6 +112,7 @@ class _PageConversationMessagerieState
         _chargement = false;
         _erreur = null;
       });
+      _verifierAppelActif();
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -151,19 +177,82 @@ class _PageConversationMessagerieState
     }
   }
 
-  Future<void> _appeler() async {
+  /// Appeler l'autre membre de cette conversation directe, T21,
+  /// miroir de l'ancien _appeler : un seul appel actif à la fois,
+  /// micro et caméra demandés avant d'ouvrir l'écran, pour que
+  /// les fenêtres système ne mangent pas les 30 secondes de
+  /// sonnerie. L'écran s'ouvre aussitôt, la création se fait en
+  /// arrière-plan, l'écran attend son identifiant.
+  Future<void> _appeler(String type) async {
+    if (_appelEnCours) return;
+    final autorise = await autorisationsAppel(video: type == 'video');
+    if (!autorise) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(type == 'video'
+              ? 'Micro ou caméra refusé : autorise le micro et la caméra dans les réglages pour appeler en vidéo.'
+              : 'Micro refusé : autorise le micro dans les réglages pour appeler.'),
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _appelEnCours = true);
+    final creation = widget.service.appeler(widget.conversation.id, type: type);
+    setState(() => _appelEnCours = false);
+    if (!mounted) {
+      // Écran non ouvert : la création en échec ne doit pas
+      // rester sans écouteur d'erreur.
+      unawaited(creation.catchError((_) => <String, dynamic>{}));
+      return;
+    }
+    final ouvrir =
+        widget.onOuvrirAppelEnCours ?? ouvrirAppelEnCoursParDefaut;
+    ouvrir(
+      context,
+      ecranAppelEnCours(
+        typeAppel: type,
+        autreNom: widget.titre,
+        autrePhoto: photoDataUrlProvider(widget.conversation.autrePhoto),
+        appelFutur: creation,
+      ),
+    );
+  }
+
+  /// Appel entrant, T21, miroir de l'ancien _verifierAppelActif :
+  /// vérifié toutes les 3 secondes par son propre minuteur, et
+  /// au chargement. Conversations directes seulement, jamais les
+  /// groupes. L'écran entrant ne s'ouvre qu'une fois par appel.
+  Future<void> _verifierAppelActif() async {
+    if (!mounted) return;
+    if (widget.conversation.type != 'directe') return;
+    if (_appelEntrantOuvertId != null) return;
     try {
-      await widget.service
-          .appeler(widget.conversation.id, type: 'audio');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Appel lancé.')),
+      final appel =
+          await widget.service.appelActif(widget.conversation.id);
+      if (!mounted || appel == null) return;
+      if ((appel['statut'] ?? '').toString() != 'sonne') return;
+      if ((appel['appelant_id'] ?? '').toString() == widget.monMembreId) {
+        return;
+      }
+      final id = (appel['id'] ?? '').toString();
+      if (id.isEmpty) return;
+      _appelEntrantOuvertId = id;
+      final autreNom = (appel['appelant_nom'] ?? '').toString();
+      await ouvrirAppelEntrant(
+        context,
+        donnees: {
+          'appel_id': id,
+          'appelant_nom': autreNom.isEmpty ? widget.titre : autreNom,
+          'type_appel': (appel['type'] ?? 'audio').toString(),
+          'conversation_id': widget.conversation.id,
+        },
+        monMembreId: widget.monMembreId,
       );
+      _appelEntrantOuvertId = null;
     } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('L’appel n’a pas pu être lancé.')),
-      );
+      // Le prochain tour réessaiera, sans rien afficher.
     }
   }
 
@@ -250,13 +339,20 @@ class _PageConversationMessagerieState
           ],
         ),
         actions: [
-          if (conversation.type == 'directe')
+          if (conversation.type == 'directe') ...[
             IconButton(
-              tooltip: 'Appeler',
+              tooltip: 'Appel vocal',
               icon: const Icon(LucideIcons.phone,
                   color: PaletteNouvelle.bleuNuit),
-              onPressed: _appeler,
+              onPressed: _appelEnCours ? null : () => _appeler('audio'),
             ),
+            IconButton(
+              tooltip: 'Appel vidéo',
+              icon: const Icon(LucideIcons.video,
+                  color: PaletteNouvelle.bleuNuit),
+              onPressed: _appelEnCours ? null : () => _appeler('video'),
+            ),
+          ],
           IconButton(
             tooltip: 'Signaler',
             icon: const Icon(LucideIcons.flag,

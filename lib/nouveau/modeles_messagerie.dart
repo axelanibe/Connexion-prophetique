@@ -117,7 +117,16 @@ abstract class ServiceMessagerie {
   Future<void> marquerLue(String conversationId);
   Future<List<MembreMessagerie>> rechercherMembres(String q);
   Future<ConversationMessagerie> creerConversationDirecte(String membreId);
-  Future<void> appeler(String conversationId, {required String type});
+  /// Lance un appel et renvoie la création serveur, qui devient
+  /// l'appelFutur de l'écran d'appel sortant, tranche T21.
+  Future<Map<String, dynamic>> appeler(String conversationId,
+      {required String type});
+
+  /// Appel en sonnerie ou en cours dans une conversation, carte
+  /// brute de GET /appel_actif, ou null, tranche T21 : la page
+  /// vérifie statut == 'sonne' et appelant_id sans importer
+  /// l'ancien modèle AppelMessagerie, en collision de nom ici.
+  Future<Map<String, dynamic>?> appelActif(String conversationId);
   Future<void> signaler(
       {required String cibleType,
       required String cibleId,

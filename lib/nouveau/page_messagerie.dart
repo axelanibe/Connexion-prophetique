@@ -15,21 +15,30 @@
 // Section Appels à part, dans son propre volet : effectués,
 // reçus et manqués en rouge, chacun avec un bouton pour
 // rappeler, badge rouge des manqués sur l'onglet Appels.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../app_models.dart';
 import '../messagerie.dart';
 import 'modeles_messagerie.dart';
 import 'page_conversation_messagerie.dart';
 import 'palette.dart';
+import 'relais_appels.dart';
 import 'veille_reseau.dart';
 
 class PageMessagerie extends StatefulWidget {
-  const PageMessagerie({super.key, required this.service, this.onRetour});
+  const PageMessagerie(
+      {super.key, required this.service, this.onRetour, this.onOuvrirAppelEnCours});
   final ServiceMessagerie service;
 
   /// Retour vers l'accueil, fourni par la coquille à la bascule.
   final VoidCallback? onRetour;
+
+  /// Ouvre l'écran d'appel sortant, injecté pour les tests :
+  /// sans lui, l'ouvreur réel pousse EcranAppelEnCours.
+  final OuvrirAppelEnCours? onOuvrirAppelEnCours;
 
   @override
   State<PageMessagerie> createState() => _PageMessagerieState();
@@ -46,6 +55,9 @@ class _PageMessagerieState extends State<PageMessagerie> {
   String? _monMembreId;
   bool _chargement = true;
   String? _erreur;
+
+  /// Appel sortant en cours de lancement, un seul à la fois.
+  var _appelEnCours = false;
 
   @override
   void initState() {
@@ -183,6 +195,7 @@ class _PageMessagerieState extends State<PageMessagerie> {
           conversation: conversation,
           titre: _nomAffiche(conversation),
           monMembreId: _monMembreId,
+          onOuvrirAppelEnCours: widget.onOuvrirAppelEnCours,
         ),
       ),
     );
@@ -248,25 +261,59 @@ class _PageMessagerieState extends State<PageMessagerie> {
     if (membre == null || !mounted) return;
     final conversation = await _directePour(membre);
     if (conversation == null || !mounted) return;
-    await _appeler(conversation, 'audio');
-    if (!mounted) return;
-    _ouvrir(conversation);
+    final type = await showModalBottomSheet<String>(
+      context: context,
+      builder: (_) => const _FeuilleChoixAppel(),
+    );
+    if (type == null || !mounted) return;
+    await _appeler(conversation, type);
   }
 
+  /// Appel sortant depuis la liste, T21, même circuit que la
+  /// conversation : autorisations d'abord, écran aussitôt,
+  /// création en arrière-plan. Sert aussi à _rappeler.
   Future<void> _appeler(
       ConversationMessagerie conversation, String type) async {
-    try {
-      await widget.service.appeler(conversation.id, type: type);
+    if (_appelEnCours) return;
+    final autorise = await autorisationsAppel(video: type == 'video');
+    if (!autorise) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Appel lancé.')),
+        SnackBar(
+          content: Text(type == 'video'
+              ? 'Micro ou caméra refusé : autorise le micro et la caméra dans les réglages pour appeler en vidéo.'
+              : 'Micro refusé : autorise le micro dans les réglages pour appeler.'),
+        ),
       );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('L’appel n’a pas pu être lancé.')),
-      );
+      return;
     }
+    if (!mounted) return;
+    setState(() => _appelEnCours = true);
+    final creation = widget.service.appeler(conversation.id, type: type);
+    setState(() => _appelEnCours = false);
+    if (!mounted) {
+      unawaited(creation.catchError((_) => <String, dynamic>{}));
+      return;
+    }
+    final ouvrir =
+        widget.onOuvrirAppelEnCours ?? ouvrirAppelEnCoursParDefaut;
+    ouvrir(
+      context,
+      ecranAppelEnCours(
+        typeAppel: type,
+        autreNom: _nomAppel(conversation),
+        autrePhoto: photoDataUrlProvider(conversation.autrePhoto),
+        appelFutur: creation,
+      ),
+    );
+  }
+
+  /// Nom affiché dans l'écran d'appel : l'autre membre, sinon
+  /// le titre de la conversation.
+  String _nomAppel(ConversationMessagerie conversation) {
+    final autre = (conversation.autreNom ?? '').trim();
+    if (autre.isNotEmpty) return autre;
+    return (conversation.title ?? '').trim();
   }
 
   Future<void> _rappeler(AppelMessagerie appel) async {
@@ -947,6 +994,43 @@ class _FeuilleMembresState extends State<_FeuilleMembres> {
             ),
           ),
           const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+}
+
+/// Feuille de choix du type d'appel, T21, maquette : deux
+/// choix, « Appel vocal » puis « Appel vidéo ».
+class _FeuilleChoixAppel extends StatelessWidget {
+  const _FeuilleChoixAppel();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Nouvel appel',
+              style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: PaletteNouvelle.bleuNuit)),
+          const SizedBox(height: 8),
+          ListTile(
+            leading: const Icon(LucideIcons.phone,
+                color: PaletteNouvelle.bleuNuit),
+            title: const Text('Appel vocal'),
+            onTap: () => Navigator.of(context).pop('audio'),
+          ),
+          ListTile(
+            leading: const Icon(LucideIcons.video,
+                color: PaletteNouvelle.bleuNuit),
+            title: const Text('Appel vidéo'),
+            onTap: () => Navigator.of(context).pop('video'),
+          ),
         ],
       ),
     );

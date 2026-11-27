@@ -5,14 +5,18 @@
 // chargent seuls, chacun sur ses routes. Les activités de
 // l'accueil passent par CacheContenus, lecture locale d'abord,
 // puis réseau, jamais de chargeur de camps séparé.
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../appel_en_cours.dart';
 import '../app_models.dart';
 import '../audio.dart';
 import '../bible.dart';
 import '../models.dart';
+import '../push_notifications.dart';
 import '../services.dart';
 import 'activites_venir.dart';
 import 'cache_contenus.dart';
@@ -47,6 +51,7 @@ import 'partage_verset.dart';
 import 'quiz_admin.dart';
 import 'quiz_ajoutes.dart';
 import 'recherche_globale.dart';
+import 'relais_appels.dart';
 import 'service_assistant.dart';
 import 'service_bible.dart';
 import 'service_connexion.dart';
@@ -75,7 +80,8 @@ class RacineNouvelle extends StatefulWidget {
   State<RacineNouvelle> createState() => _RacineNouvelleState();
 }
 
-class _RacineNouvelleState extends State<RacineNouvelle> {
+class _RacineNouvelleState extends State<RacineNouvelle>
+    with WidgetsBindingObserver {
   final _cleCoquille = GlobalKey<NouvelleCoquilleState>();
   late final ServiceConnexion _serviceConnexion;
   late final ServiceMessagerie _serviceMessagerie;
@@ -112,9 +118,18 @@ class _RacineNouvelleState extends State<RacineNouvelle> {
   /// Paiements chargés, pour l'état de la cotisation du mois.
   var _paiementsCharges = false;
 
+  /// Appels entrants, T21 : abonnement au flux FCM et sondage
+  /// global, miroir de l'ancien AppShell. La racine vit toute
+  /// la session, l'abonné manquant du nouveau code.
+  StreamSubscription<Map<String, String>>? _abonnementAppelEntrant;
+  Timer? _minuteurAppelsEntrants;
+  final _pauseSondage = PauseSondage();
+  final _gardeAppelEntrant = GardeAppelEntrant();
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _serviceConnexion = ServiceConnexionApi(api);
     _serviceMessagerie = ServiceMessagerieApi(api);
     _serviceLibrairie = ServiceLibrairieReel();
@@ -135,12 +150,94 @@ class _RacineNouvelleState extends State<RacineNouvelle> {
     _chargerQuizAjoutes();
     _chargerPaiements();
     VeilleReseau.partage.ajouterReprise(_chargerActivites);
+    // Appel entrant en avant-plan, T21 : la notification ouvre
+    // l'écran d'appel entrant, sans attendre le toucher. Le
+    // sondage global couvre l'application ouverte en repli.
+    _abonnementAppelEntrant =
+        PushNotifications.instance.onAppelEntrant.listen(
+      (data) => _ouvrirAppelEntrant(data),
+    );
+    _demarrerSondageAppels();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _abonnementAppelEntrant?.cancel();
+    _minuteurAppelsEntrants?.cancel();
     VeilleReseau.partage.retirerReprise(_chargerActivites);
     super.dispose();
+  }
+
+  /// Sondage global des appels entrants, T21, miroir de
+  /// l'ancien AppShell : 10 secondes quand l'onglet est
+  /// visible, 30 secondes quand il est masqué.
+  void _demarrerSondageAppels({int secondes = 10}) {
+    _minuteurAppelsEntrants?.cancel();
+    _minuteurAppelsEntrants = Timer.periodic(
+      Duration(seconds: secondes),
+      (_) => _verifierAppelsEntrants(),
+    );
+  }
+
+  /// Onglet masqué ou retour, T21 : sur le web, quand l'onglet
+  /// est masqué, le sondage passe à 30 secondes, sans jamais
+  /// s'arrêter, le web n'a ni FCM ni CallKit, le sondage est
+  /// la seule voie d'appel entrant. Au retour, 10 secondes.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
+    if (state == AppLifecycleState.hidden && kIsWeb) {
+      _demarrerSondageAppels(secondes: 30);
+    } else if (state == AppLifecycleState.resumed) {
+      _demarrerSondageAppels();
+    }
+  }
+
+  /// Un tour de sondage : un appel en sonnerie ouvre l'écran
+  /// d'appel entrant. Silencieux : le prochain tour réessaiera.
+  Future<void> _verifierAppelsEntrants() async {
+    if (!mounted || api.membreId == null) return;
+    // WebSocket déjà connectée : les signaux d'appel arrivent
+    // par la socket, le tour HTTP est sauté.
+    if (etatAppelGlobal.signalisation?.connecte == true) return;
+    // Recul sur 429 : pendant la pause, on saute les tours
+    // sans appeler le serveur, puis on reprend à 10 s.
+    if (_pauseSondage.enPause) return;
+    try {
+      final entrants = await api.fetchAppelsEntrants();
+      if (!mounted || entrants.isEmpty) return;
+      _ouvrirAppelEntrant(
+          donneesAppelEntrantDepuisLigne(entrants.first));
+    } on ApiException catch (e) {
+      // 429 : pause de la durée Retry-After, plafonnée à 65 s.
+      if (e.status == 429) {
+        _pauseSondage.mettreEnPause(
+          delaiReessai429(e.message, retryAfter: e.delaiReessai),
+        );
+      }
+    } catch (_) {}
+  }
+
+  /// Écran d'appel entrant, depuis une notification touchée ou
+  /// reçue en avant-plan, ou depuis le sondage. Garde anti
+  /// double ouverture : le même appel ne s'ouvre pas deux fois
+  /// dans la minute. Sans identifiant d'appel, on ouvre la
+  /// messagerie, qui vérifiera l'appel actif dans la conversation.
+  void _ouvrirAppelEntrant(Map<String, String> data) {
+    if (!mounted) return;
+    final appelId = data['appel_id'] ?? data['lien_id'] ?? '';
+    if (appelId.isEmpty) {
+      _cleCoquille.currentState
+          ?.ouvrirDestination(DestinationNouvelle.messagerie);
+      return;
+    }
+    if (!_gardeAppelEntrant.accepter(appelId)) return;
+    unawaited(ouvrirAppelEntrant(
+      context,
+      donnees: data,
+      monMembreId: api.membreId,
+    ));
   }
 
   /// État de la carte, T15 : chargé au démarrage pour la
