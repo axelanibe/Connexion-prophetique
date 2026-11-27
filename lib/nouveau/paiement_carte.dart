@@ -28,6 +28,10 @@ import 'palette.dart';
 /// Montant unique de la carte de membre, imposé par le serveur.
 const int kMontantCarteFcfa = 1000;
 
+/// Montant unique de la cotisation mensuelle, imposé par le
+/// serveur, T20 : 1 000 FCFA pour le mois en cours.
+const int kMontantCotisationFcfa = 1000;
+
 String fcfa(int n) {
   final s = n.toString();
   final b = StringBuffer();
@@ -492,6 +496,80 @@ Future<String?> payerCarte(BuildContext c, {String nomMembre = ''}) async {
       builder: (_) => PageVerificationPaiement(
         reference: reference!,
         montant: kMontantCarteFcfa,
+        moyen: method,
+      ),
+    ),
+  );
+  return reference;
+}
+
+/// Paiement de la cotisation du mois en cours, T20, même
+/// circuit que la carte : la demande est créée côté serveur
+/// (POST /paiements/cotisation, 1 000 FCFA, montant imposé
+/// par le serveur), puis le prestataire s'ouvre, avec le
+/// montant exact affiché avant l'ouverture. L'ouverture ne
+/// marque jamais un paiement comme payé : la structure
+/// valide après contrôle de son compte, ou le prestataire
+/// confirme par vérification côté serveur, la page de
+/// vérification montre la référence. Retourne la référence
+/// créée, null si annulé ou impossible.
+Future<String?> payerCotisation(BuildContext c, {String nomMembre = ''}) async {
+  void dire(String m) {
+    if (c.mounted) {
+      ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(m)));
+    }
+  }
+
+  if (!api.isConnected) {
+    dire('Serveur injoignable. Vérifiez votre connexion, puis réessayez.');
+    return null;
+  }
+  var moyens = moyensPaiementCarte;
+  try {
+    final lus = await api.fetchMoyensPaiement();
+    final depuisServeur = MoyenPaiementCarte.listeDepuisServeur(lus);
+    if (depuisServeur.isNotEmpty) moyens = depuisServeur;
+  } catch (_) {
+    // Sans serveur, la liste locale : Wave seul disponible.
+  }
+  final method = await choisirMoyenPaiementFeuille(c,
+      nomMembre: nomMembre, moyens: moyens);
+  if (method == null) return null;
+  String? reference;
+  try {
+    final cree = await api.createCotisation(kMontantCotisationFcfa);
+    reference = (cree['reference'] ?? '').toString();
+    if (reference.isEmpty) reference = null;
+  } catch (_) {
+    reference = null;
+  }
+  if (reference == null) {
+    dire('Demande impossible pour le moment. Réessaie plus tard.');
+    return null;
+  }
+  String? url;
+  try {
+    final paye = await api.payerPaiement(reference, method);
+    url = (paye['url'] ?? '').toString();
+    if (url.isEmpty) url = null;
+  } catch (_) {
+    dire('Paiement impossible pour le moment. Réessaie plus tard.');
+    return reference;
+  }
+  if (url != null) {
+    final ok = await ouvrirUrlPaiement(url);
+    if (!ok && c.mounted) {
+      dire('Impossible d’ouvrir la page de paiement. Vérifiez votre connexion.');
+    }
+  } else if (method == 'mtn' && c.mounted) {
+    dire('Validez le paiement sur votre téléphone MTN MoMo.');
+  }
+  if (!c.mounted) return reference;
+  await Navigator.of(c).push(
+    MaterialPageRoute(
+      builder: (_) => PageVerificationPaiement(
+        reference: reference!,
+        montant: kMontantCotisationFcfa,
         moyen: method,
       ),
     ),

@@ -1,8 +1,11 @@
 // Nouvel Accueil, tranche T2, 26 nov. 2026.
 // Recherche en pilule blanche, stories, Prière du jour
-// (Philippiens 4, 6), quiz, accès rapides, tuile large
-// Librairie, Activités à venir. Ni carte de membre ni Mon
-// parcours, ni rubrique Actualités : elle vit dans Connexion.
+// (Philippiens 4, 6), quiz, accès rapides, Activités à venir.
+// Ni carte de membre ni Mon parcours, ni rubrique Actualités :
+// elle vit dans Connexion. T20 : la tuile large Librairie est
+// retirée, la maquette n'en a pas sur l'accueil ; les 4 tuiles
+// suivent son design exact ; la carte cotisation du mois est
+// de retour, et les activités ouvrent la page Camps.
 // Données fournies par l'application, comme en T1, jamais
 // inventées ; la carte de la Prière du jour et les sections
 // sans données sont masquées. Non branché dans lib/main.dart,
@@ -40,6 +43,12 @@ class VersetPriere {
 class ActiviteAVenir {
   const ActiviteAVenir({
     required this.titre,
+    this.evenementId = '',
+    this.type = '',
+    this.description = '',
+    this.tarifFcfa = 0,
+    this.inscrits = 0,
+    this.nombrePlaces = 0,
     this.dateDebut,
     this.dateFin,
     this.lieu = '',
@@ -47,10 +56,43 @@ class ActiviteAVenir {
     this.onTap,
   });
   final String titre;
+
+  /// Identifiant serveur de l'événement, pour l'inscription.
+  final String evenementId;
+
+  /// Type serveur, « camp » ou « retraite ».
+  final String type;
+
+  /// Description de la structure, vide si non renseignée.
+  final String description;
+
+  /// Tarif en FCFA, 0 pour un camp gratuit.
+  final int tarifFcfa;
+
+  /// Inscrits et places, 0 si non renseignés.
+  final int inscrits;
+  final int nombrePlaces;
   final DateTime? dateDebut, dateFin;
   final String lieu;
   final String imageUrl;
   final VoidCallback? onTap;
+
+  /// Copie avec un autre toucher, pour brancher l'ouverture
+  /// de la page du camp depuis l'accueil.
+  ActiviteAVenir avecTap(VoidCallback? tap) => ActiviteAVenir(
+        titre: titre,
+        evenementId: evenementId,
+        type: type,
+        description: description,
+        tarifFcfa: tarifFcfa,
+        inscrits: inscrits,
+        nombrePlaces: nombrePlaces,
+        dateDebut: dateDebut,
+        dateFin: dateFin,
+        lieu: lieu,
+        imageUrl: imageUrl,
+        onTap: tap,
+      );
 
   /// En cours : commencée et pas encore terminée.
   bool get enCours {
@@ -88,7 +130,14 @@ class PageAccueil extends StatelessWidget {
     this.onTemoignages,
     this.onCotisations,
     this.onParoleVivante,
-    this.onLibrairie,
+    this.cotisationChargee = false,
+    this.cotisationPayee = false,
+    this.cotisationEnAttente = false,
+    this.onPayerCotisation,
+    this.onVoirCamps,
+    this.quizEstAdmin = false,
+    this.onAjouterQuestionQuiz,
+    this.onGererQuestionsQuiz,
     this.activites = const [],
     this.bandeStories,
   });
@@ -119,8 +168,21 @@ class PageAccueil extends StatelessWidget {
   final VoidCallback? onCotisations;
   final VoidCallback? onParoleVivante;
 
-  /// Tuile large Librairie, ouvre l'onglet Librairie.
-  final VoidCallback? onLibrairie;
+  /// Cotisation du mois en cours, T20 : chargée par la racine
+  /// depuis l'historique des paiements, la carte ne s'affiche
+  /// qu'une fois l'état connu.
+  final bool cotisationChargee;
+  final bool cotisationPayee;
+  final bool cotisationEnAttente;
+  final VoidCallback? onPayerCotisation;
+
+  /// « Voir tout » des Activités à venir, vers la page Camps.
+  final VoidCallback? onVoirCamps;
+
+  /// Gestion du quiz par l'administrateur général, T20.
+  final bool quizEstAdmin;
+  final VoidCallback? onAjouterQuestionQuiz;
+  final VoidCallback? onGererQuestionsQuiz;
 
   /// Camps et retraites, la page écarte les terminées.
   final List<ActiviteAVenir> activites;
@@ -156,6 +218,9 @@ class PageAccueil extends StatelessWidget {
             onRepondre: onRepondre,
             onQuestionSuivante: onQuestionSuivante,
             onRecommencer: onRecommencerQuiz,
+            estAdmin: quizEstAdmin,
+            onAjouterQuestion: onAjouterQuestionQuiz,
+            onGererQuestions: onGererQuestionsQuiz,
           ),
           const SizedBox(height: 24),
         ],
@@ -167,11 +232,23 @@ class PageAccueil extends StatelessWidget {
           onCotisations: onCotisations,
           onParoleVivante: onParoleVivante,
         ),
-        const SizedBox(height: 12),
-        _TuileLargeLibrairie(onTap: onLibrairie),
+        if (cotisationChargee) ...[
+          const SizedBox(height: 12),
+          _CarteCotisation(
+            payee: cotisationPayee,
+            enAttente: cotisationEnAttente,
+            onPayer: onPayerCotisation,
+          ),
+        ],
         if (aVenir.isNotEmpty) ...[
           const SizedBox(height: 24),
-          const _TitreSection('Activités à venir'),
+          _TitreSection('Activités à venir',
+              action: onVoirCamps == null
+                  ? null
+                  : TextButton(
+                      onPressed: onVoirCamps,
+                      child: const Text('Voir tout'),
+                    )),
           const SizedBox(height: 12),
           ActivitesAVenir(activites: aVenir),
         ],
@@ -181,13 +258,15 @@ class PageAccueil extends StatelessWidget {
 }
 
 /// Titre de section, bleu nuit avec trait doré, maquette.
+/// Action facultative à droite, par exemple « Voir tout ».
 class _TitreSection extends StatelessWidget {
-  const _TitreSection(this.titre);
+  const _TitreSection(this.titre, {this.action});
   final String titre;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final titreWidget = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -208,6 +287,12 @@ class _TitreSection extends StatelessWidget {
           ),
         ),
       ],
+    );
+    final a = action;
+    if (a == null) return titreWidget;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [Expanded(child: titreWidget), a],
     );
   }
 }
@@ -392,8 +477,10 @@ class _CartePriere extends StatelessWidget {
   }
 }
 
-/// Accès rapides, 2x2, icône et nom seulement, coins ronds,
-/// ombres légères, comme la maquette.
+/// Accès rapides, T20, design exact de la maquette : grille
+/// 2 colonnes, écart 11 px, chaque tuile est une carte blanche
+/// individuelle, bordure #e3e8f0, rayon 18 px, icône 44 px à
+/// gauche sur fond pastel, libellé 14,5 px gras à droite.
 class _AccesRapides extends StatelessWidget {
   const _AccesRapides({
     this.onStructure,
@@ -408,48 +495,145 @@ class _AccesRapides extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tuiles = <(IconData, String, VoidCallback?)>[
-      (LucideIcons.church, 'Structure', onStructure),
-      (LucideIcons.messageCircle, 'Témoignages', onTemoignages),
-      (LucideIcons.circleDollarSign, 'Cotisations', onCotisations),
-      (LucideIcons.circlePlay, 'Parole vivante', onParoleVivante),
+    final tuiles = <_TuileAcces>[
+      const _TuileAcces(
+        LucideIcons.church,
+        'Structure',
+        Color(0xFFE0E9F4),
+        PaletteNouvelle.bleuNuit,
+      ),
+      const _TuileAcces(
+        LucideIcons.messageCircle,
+        'Témoignages',
+        Color(0xFFFDF3D3),
+        Color(0xFF8A6410),
+      ),
+      const _TuileAcces(
+        LucideIcons.circleDollarSign,
+        'Cotisations',
+        Color(0xFFE2F5E9),
+        Color(0xFF14713A),
+      ),
+      const _TuileAcces(
+        LucideIcons.circlePlay,
+        'Parole vivante',
+        Color(0xFFFDF3D3),
+        Color(0xFF8A6410),
+      ),
     ];
-    Widget cellule((IconData, String, VoidCallback?) tuile) {
-      return InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: tuile.$3,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: PaletteNouvelle.bleuNuit,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(tuile.$1, color: PaletteNouvelle.or, size: 24),
+    final rappels = <VoidCallback?>[
+      onStructure,
+      onTemoignages,
+      onCotisations,
+      onParoleVivante,
+    ];
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 11,
+        crossAxisSpacing: 11,
+        childAspectRatio: 2.35,
+      ),
+      itemCount: tuiles.length,
+      itemBuilder: (context, i) {
+        final tuile = tuiles[i];
+        return Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: rappels[i],
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(15, 14, 14, 14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFE3E8F0)),
+                boxShadow: [
+                  BoxShadow(
+                    color: PaletteNouvelle.bleuNuit.withValues(alpha: 0.045),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                tuile.$2,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: PaletteNouvelle.bleuNuit, fontSize: 15, fontWeight: FontWeight.w800),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: tuile.fond,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(tuile.icone, color: tuile.couleurIcone, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      tuile.libelle,
+                      style: const TextStyle(
+                        color: Color(0xFF14202F),
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      );
-    }
+        );
+      },
+    );
+  }
+}
 
+class _TuileAcces {
+  const _TuileAcces(this.icone, this.libelle, this.fond, this.couleurIcone);
+  final IconData icone;
+  final String libelle;
+  final Color fond;
+  final Color couleurIcone;
+}
+
+/// Carte cotisation du mois, T20, comme l'ancienne version :
+/// « Cotisation de [mois] [année] : 1 000 FCFA à régler. » et
+/// un bouton or « Payer ma cotisation : 1 000 FCFA ». Payée,
+/// la carte montre « payée » avec une coche verte ; en
+/// attente, « en attente de validation », sans bouton, pour
+/// ne jamais créer deux demandes pour le même mois.
+class _CarteCotisation extends StatelessWidget {
+  const _CarteCotisation({
+    required this.payee,
+    required this.enAttente,
+    this.onPayer,
+  });
+  final bool payee;
+  final bool enAttente;
+  final VoidCallback? onPayer;
+
+  static const _mois = [
+    'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+    'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final moisAnnee = '${_mois[now.month - 1]} ${now.year}';
+    final texte = payee
+        ? 'Cotisation de $moisAnnee : payée.'
+        : enAttente
+            ? 'Cotisation de $moisAnnee : en attente de validation.'
+            : 'Cotisation de $moisAnnee : 1 000 FCFA à régler.';
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE3E7EE)),
+        border: Border.all(color: PaletteNouvelle.or),
         boxShadow: [
           BoxShadow(
             color: PaletteNouvelle.bleuNuit.withValues(alpha: 0.06),
@@ -459,61 +643,54 @@ class _AccesRapides extends StatelessWidget {
         ],
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [Expanded(child: cellule(tuiles[0])), Expanded(child: cellule(tuiles[1]))]),
-          const SizedBox(height: 20),
-          Row(children: [Expanded(child: cellule(tuiles[2])), Expanded(child: cellule(tuiles[3]))]),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF4E9C8),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  payee ? LucideIcons.circleCheck : LucideIcons.wallet,
+                  color: payee
+                      ? const Color(0xFF14713A)
+                      : PaletteNouvelle.orFonce,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  texte,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: PaletteNouvelle.bleuNuit,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (!payee && !enAttente) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: onPayer,
+                style: FilledButton.styleFrom(
+                  backgroundColor: PaletteNouvelle.orFonce,
+                  foregroundColor: Colors.white,
+                ),
+                icon: const Icon(LucideIcons.heart, size: 20),
+                label: const Text('Payer ma cotisation : 1 000 FCFA'),
+              ),
+            ),
+          ],
         ],
-      ),
-    );
-  }
-}
-
-/// Tuile large Librairie, en bas des accès rapides.
-class _TuileLargeLibrairie extends StatelessWidget {
-  const _TuileLargeLibrairie({this.onTap});
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(22),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0xFFE3E7EE)),
-          boxShadow: [
-            BoxShadow(
-              color: PaletteNouvelle.bleuNuit.withValues(alpha: 0.06),
-              blurRadius: 16,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: PaletteNouvelle.bleuNuit,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(LucideIcons.shoppingBag, color: PaletteNouvelle.or, size: 24),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text(
-                'Librairie',
-                style: TextStyle(color: PaletteNouvelle.bleuNuit, fontSize: 17, fontWeight: FontWeight.w800),
-              ),
-            ),
-            const Icon(LucideIcons.chevronRight, color: Colors.grey, size: 22),
-          ],
-        ),
       ),
     );
   }

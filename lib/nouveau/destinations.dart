@@ -29,7 +29,8 @@ enum DestinationNouvelle {
   structure('Structure'),
   bureau('Le Bureau'),
   cotisations('Cotisations'),
-  paroleVivante('Parole vivante');
+  paroleVivante('Parole vivante'),
+  camps('Camps');
 
   const DestinationNouvelle(this.titre);
   final String titre;

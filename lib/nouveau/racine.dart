@@ -7,7 +7,6 @@
 // puis réseau, jamais de chargeur de camps séparé.
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../api.dart';
 import '../app_models.dart';
@@ -27,6 +26,7 @@ import 'page_abonnement.dart';
 import 'page_accueil.dart';
 import 'page_assistant.dart';
 import 'page_bible.dart';
+import 'page_camps.dart';
 import 'page_carte.dart';
 import 'page_chaine_priere.dart';
 import 'page_connexion.dart';
@@ -43,6 +43,9 @@ import 'page_profil.dart';
 import 'page_structure.dart';
 import 'page_suivi.dart';
 import 'paiement_carte.dart';
+import 'partage_verset.dart';
+import 'quiz_admin.dart';
+import 'quiz_ajoutes.dart';
 import 'recherche_globale.dart';
 import 'service_assistant.dart';
 import 'service_bible.dart';
@@ -99,6 +102,16 @@ class _RacineNouvelleState extends State<RacineNouvelle> {
   int? _reponseChoisie;
   var _termine = false;
 
+  /// Camp ouvert depuis une carte d'Activités à venir, T20.
+  String? _campOuvertId;
+
+  /// Questions de quiz ajoutées par la structure, T20, qui
+  /// entrent dans la rotation après la banque de départ.
+  var _questionsAjoutees = <QuestionQuizAjoutee>[];
+
+  /// Paiements chargés, pour l'état de la cotisation du mois.
+  var _paiementsCharges = false;
+
   @override
   void initState() {
     super.initState();
@@ -119,6 +132,8 @@ class _RacineNouvelleState extends State<RacineNouvelle> {
     _chargerVersetPriere();
     _chargerActivites();
     _chargerEtatCarte();
+    _chargerQuizAjoutes();
+    _chargerPaiements();
     VeilleReseau.partage.ajouterReprise(_chargerActivites);
   }
 
@@ -134,6 +149,65 @@ class _RacineNouvelleState extends State<RacineNouvelle> {
   Future<void> _chargerEtatCarte() async {
     await _serviceProfil.charger();
     if (mounted) setState(() {});
+  }
+
+  /// Questions ajoutées par la structure, T20 : lecture
+  /// locale, jamais d'écriture en base.
+  Future<void> _chargerQuizAjoutes() async {
+    final ajoutees = await QuestionsQuizAjoutees.charger();
+    if (mounted) setState(() => _questionsAjoutees = ajoutees);
+  }
+
+  /// Paiements, T20, pour l'état de la cotisation du mois sur
+  /// l'accueil : lecture seulement, jamais d'écriture.
+  Future<void> _chargerPaiements() async {
+    await _serviceT14.chargerPaiements();
+    if (mounted) setState(() => _paiementsCharges = true);
+  }
+
+  /// Rotation du quiz : la banque de départ, puis les
+  /// questions ajoutées par la structure, dans l'ordre.
+  List<Quiz> get _quizsRotation => [
+        ...QuizService.seedQuizzesFr,
+        ..._questionsAjoutees.map((q) => q.versQuiz()),
+      ];
+
+  /// État de la cotisation du mois en cours, T20 : payée si
+  /// une cotisation confirmée vise le mois, en attente si
+  /// une cotisation est en attente, sinon à régler.
+  ({bool chargee, bool payee, bool enAttente}) get _etatCotisation {
+    final maintenant = DateTime.now();
+    var payee = false;
+    var enAttente = false;
+    for (final p in _serviceT14.paiements) {
+      if (p.type != 'cotisation') continue;
+      // moisCible est une chaîne, « 2026-11 » ou le premier
+      // jour du mois ; sinon la date de création.
+      final cible = DateTime.tryParse(p.moisCible) ?? p.creeLe;
+      if (cible == null ||
+          cible.year != maintenant.year ||
+          cible.month != maintenant.month) {
+        continue;
+      }
+      if (p.statut == 'confirme') payee = true;
+      if (p.statut == 'en_attente') enAttente = true;
+    }
+    return (
+      chargee: _paiementsCharges,
+      payee: payee,
+      enAttente: enAttente,
+    );
+  }
+
+  /// Paiement de la cotisation du mois, T20 : après le
+  /// paiement, les paiements sont relus pour l'état.
+  Future<void> _payerCotisation() async {
+    final reference = await payerCotisation(
+      context,
+      nomMembre: widget.membre?.name ?? '',
+    );
+    if (reference == null) return;
+    await _chargerPaiements();
   }
 
   /// Verset fixe de la Prière du jour, Philippiens 4, 6, lu dans
@@ -192,9 +266,7 @@ class _RacineNouvelleState extends State<RacineNouvelle> {
   Future<void> _partagerPriere() async {
     final verset = _versetPriere;
     if (verset == null) return;
-    await SharePlus.instance.share(
-      ShareParams(text: '${verset.texte}\n${verset.reference}'),
-    );
+    await partagerVerset(context, verset);
   }
 
   /// Quiz de l'accueil : quiz du jour, une question après
@@ -214,9 +286,8 @@ class _RacineNouvelleState extends State<RacineNouvelle> {
       );
     }
     final question = quiz.questions[_indexQuestion];
-    final numero = QuizService.seedQuizzesFr
-            .indexWhere((q) => q.id == quiz.id) +
-        1;
+    final rotation = _quizsRotation;
+    final numero = rotation.indexWhere((q) => q.id == quiz.id) + 1;
     return QuizAccueil(
       personnage: quiz.character,
       indexQuestion: _indexQuestion + 1,
@@ -225,7 +296,7 @@ class _RacineNouvelleState extends State<RacineNouvelle> {
       question: question.question,
       choix: question.choices,
       numeroQuiz: numero < 1 ? 1 : numero,
-      totalQuiz: QuizService.seedQuizzesFr.length,
+      totalQuiz: rotation.length,
       reponseChoisie: _reponseChoisie,
       bonneReponse:
           _reponseChoisie == null ? null : question.correctIndex,
@@ -263,7 +334,7 @@ class _RacineNouvelleState extends State<RacineNouvelle> {
     final quiz = _quizCourant;
     if (quiz == null) return;
     setState(() {
-      _quizCourant = QuizService.nextQuiz(QuizService.seedQuizzesFr, quiz);
+      _quizCourant = QuizService.nextQuiz(_quizsRotation, quiz);
       _indexQuestion = 0;
       _score = 0;
       _reponseChoisie = null;
@@ -341,14 +412,30 @@ class _RacineNouvelleState extends State<RacineNouvelle> {
         onRepondre: _repondreQuiz,
         onQuestionSuivante: _questionSuivanteQuiz,
         onRecommencerQuiz: _recommencerQuiz,
+        quizEstAdmin: api.role == 'admin_general',
+        onAjouterQuestionQuiz: () =>
+            ajouterQuestionQuiz(context, onChange: _chargerQuizAjoutes),
+        onGererQuestionsQuiz: () =>
+            gererQuestionsQuiz(context, onChange: _chargerQuizAjoutes),
         onStructure: () => _ouvrirDestination(DestinationNouvelle.structure),
         onTemoignages: _ouvrirTemoignages,
         onCotisations: () =>
             _ouvrirDestination(DestinationNouvelle.cotisations),
         onParoleVivante: () =>
             _ouvrirDestination(DestinationNouvelle.paroleVivante),
-        onLibrairie: () => _allerOnglet(3),
-        activites: _activites,
+        cotisationChargee: _etatCotisation.chargee,
+        cotisationPayee: _etatCotisation.payee,
+        cotisationEnAttente: _etatCotisation.enAttente,
+        onPayerCotisation: _payerCotisation,
+        onVoirCamps: () =>
+            _ouvrirDestination(DestinationNouvelle.camps),
+        activites: [
+          for (final a in _activites)
+            a.avecTap(() {
+              setState(() => _campOuvertId = a.evenementId);
+              _ouvrirDestination(DestinationNouvelle.camps);
+            }),
+        ],
       ),
       connexion: KeyedSubtree(
         key: ValueKey('connexion$_cleConnexion'),
@@ -404,6 +491,14 @@ class _RacineNouvelleState extends State<RacineNouvelle> {
       paroleVivante: PageParoleVivante(
         service: _serviceParole,
         onRetour: _allerAccueil,
+      ),
+      camps: PageCamps(
+        activites: _activites,
+        service: _serviceT9,
+        evenementInitialId: _campOuvertId,
+        onInitialConsomme: () => _campOuvertId = null,
+        onVoirBadge: () =>
+            _ouvrirDestination(DestinationNouvelle.galerie),
       ),
     );
   }

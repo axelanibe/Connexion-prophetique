@@ -45,11 +45,20 @@ class CarteQuizAccueil extends StatefulWidget {
     this.onRepondre,
     this.onQuestionSuivante,
     this.onRecommencer,
+    this.estAdmin = false,
+    this.onAjouterQuestion,
+    this.onGererQuestions,
   });
   final QuizAccueil quiz;
   final ValueChanged<int>? onRepondre;
   final VoidCallback? onQuestionSuivante;
   final VoidCallback? onRecommencer;
+
+  /// Gestion des questions par l'administrateur général, T20 :
+  /// ajouter et gérer, jamais la banque de départ.
+  final bool estAdmin;
+  final VoidCallback? onAjouterQuestion;
+  final VoidCallback? onGererQuestions;
 
   @override
   State<CarteQuizAccueil> createState() => _CarteQuizAccueilState();
@@ -233,6 +242,33 @@ class _CarteQuizAccueilState extends State<CarteQuizAccueil> {
                       ),
                       onPressed: widget.onQuestionSuivante,
                       child: Text(quiz.estDerniere ? 'Voir mon score' : 'Question suivante'),
+                    ),
+                  ),
+                ],
+                // Gestion directe façon artefact, comme l'ancien
+                // quiz : administrateur général seulement, jamais
+                // pour un membre ordinaire. La banque n'est jamais
+                // touchée, seules les questions ajoutées sont gérées.
+                if (widget.estAdmin) ...[
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: OutlinedButton.icon(
+                      onPressed: widget.onAjouterQuestion,
+                      icon: const Icon(LucideIcons.plus),
+                      label: const Text('Ajouter une question de quiz'),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: OutlinedButton(
+                      onPressed: widget.onGererQuestions,
+                      child: const Text('Gérer les questions ajoutées'),
                     ),
                   ),
                 ],

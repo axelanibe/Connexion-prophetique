@@ -32,6 +32,12 @@ List<ActiviteAVenir> activitesDepuisEvenements(
     final pays = (ligne['pays'] ?? '').toString();
     activites.add(ActiviteAVenir(
       titre: titre,
+      evenementId: (ligne['id'] ?? '').toString(),
+      type: type,
+      description: (ligne['description'] ?? '').toString(),
+      tarifFcfa: (ligne['tarif_fcfa'] as num?)?.toInt() ?? 0,
+      inscrits: (ligne['inscrits'] as num?)?.toInt() ?? 0,
+      nombrePlaces: (ligne['nombre_places'] as num?)?.toInt() ?? 0,
       dateDebut: debutRaw.isEmpty ? null : DateTime.tryParse(debutRaw),
       dateFin: finRaw.isEmpty ? null : DateTime.tryParse(finRaw),
       lieu: [lieu, pays].where((s) => s.isNotEmpty).join(', '),

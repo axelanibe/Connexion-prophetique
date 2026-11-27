@@ -58,6 +58,7 @@ class NouvelleCoquille extends StatefulWidget {
     this.aide,
     this.cotisations,
     this.paroleVivante,
+    this.camps,
     this.etatCarte,
   });
   final Member? membre;
@@ -134,6 +135,9 @@ class NouvelleCoquille extends StatefulWidget {
   final Widget? aide;
   final Widget? cotisations;
   final Widget? paroleVivante;
+
+  /// Page Camps, tranche T20.
+  final Widget? camps;
 
   /// Bouton flottant, T11 : l'Assistant, présent sur toutes
   /// les pages de la coquille.
@@ -286,6 +290,8 @@ class NouvelleCoquilleState extends State<NouvelleCoquille> {
         widget.cotisations!,
       DestinationNouvelle.paroleVivante when widget.paroleVivante != null =>
         widget.paroleVivante!,
+      DestinationNouvelle.camps when widget.camps != null =>
+        widget.camps!,
       _ => PageNeutre(destination.titre),
     };
   }

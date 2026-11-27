@@ -187,6 +187,11 @@ class InscriptionBadge {
     this.estKairos = false,
     this.passVisible = false,
     this.dateDebut,
+    this.tarifFcfa = 0,
+    this.montantPaye = 0,
+    this.versementEnAttenteReference = '',
+    this.versementEnAttenteMontant = 0,
+    this.versementEnAttenteNumero = 0,
   });
   final String evenementId;
   final String nom;
@@ -195,6 +200,15 @@ class InscriptionBadge {
   final bool estKairos;
   final bool passVisible;
   final DateTime? dateDebut;
+
+  /// Progression des versements pour les camps payants, T20 :
+  /// tarif, montant payé, versement en attente, pour payer le
+  /// reste depuis la page du camp.
+  final int tarifFcfa;
+  final int montantPaye;
+  final String versementEnAttenteReference;
+  final int versementEnAttenteMontant;
+  final int versementEnAttenteNumero;
 
   factory InscriptionBadge.depuisJson(Map<String, dynamic> j) =>
       InscriptionBadge(
@@ -205,6 +219,14 @@ class InscriptionBadge {
         estKairos: j['est_kairos'] == true,
         passVisible: j['pass_visible'] == true,
         dateDebut: DateTime.tryParse((j['date_debut'] ?? '').toString()),
+        tarifFcfa: (j['tarif_fcfa'] as num?)?.toInt() ?? 0,
+        montantPaye: (j['montant_paye'] as num?)?.toInt() ?? 0,
+        versementEnAttenteReference:
+            (j['versement_en_attente_reference'] ?? '').toString(),
+        versementEnAttenteMontant:
+            (j['versement_en_attente_montant'] as num?)?.toInt() ?? 0,
+        versementEnAttenteNumero:
+            (j['versement_en_attente_numero'] as num?)?.toInt() ?? 0,
       );
 
   /// Donnée du QR : le code du pass, sinon matricule et camp.
