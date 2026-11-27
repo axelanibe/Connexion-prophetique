@@ -68,7 +68,6 @@ Future<void> _pomper(
   VoidCallback? onRecommencerQuiz,
   VoidCallback? onSearch,
   VoidCallback? onStructure,
-  VoidCallback? onLibrairie,
 }) async {
   // Fenêtre haute, 2400 px : la ListView ne construit que les
   // enfants visibles, la hauteur fait construire toute la page
@@ -88,7 +87,6 @@ Future<void> _pomper(
         onRecommencerQuiz: onRecommencerQuiz,
         onSearch: onSearch,
         onStructure: onStructure,
-        onLibrairie: onLibrairie,
         bandeStories: const SizedBox.shrink(),
       ),
     ),
@@ -115,7 +113,9 @@ void main() {
       for (final tuile in ['Structure', 'Témoignages', 'Cotisations', 'Parole vivante']) {
         expect(find.text(tuile), findsOneWidget);
       }
-      expect(find.text('Librairie'), findsOneWidget);
+      // T20 : aucune tuile Librairie sur l'accueil, la Librairie
+      // vit dans la barre du bas.
+      expect(find.text('Librairie'), findsNothing);
       expect(find.text('Activités à venir'), findsOneWidget);
       expect(find.text('Camp de test'), findsOneWidget);
       expect(find.text('Retraite en cours'), findsOneWidget);
@@ -202,7 +202,7 @@ void main() {
       expect(find.text('Quiz Bible'), findsNothing);
       expect(find.text('Activités à venir'), findsNothing);
       expect(find.text('Structure'), findsOneWidget);
-      expect(find.text('Librairie'), findsOneWidget);
+      expect(find.text('Librairie'), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
@@ -216,27 +216,21 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('rappels : recherche, tuiles et librairie', (tester) async {
+    testWidgets('rappels : recherche et tuiles', (tester) async {
       var recherches = 0;
       var structures = 0;
-      var librairies = 0;
       await _pomper(
         tester,
         onSearch: () => recherches++,
         onStructure: () => structures++,
-        onLibrairie: () => librairies++,
       );
       await tester.tap(find.text('Rechercher…'));
       await tester.pump();
       await tester.ensureVisible(find.text('Structure'));
       await tester.tap(find.text('Structure'));
       await tester.pump();
-      await tester.ensureVisible(find.text('Librairie'));
-      await tester.tap(find.text('Librairie'));
-      await tester.pump();
       expect(recherches, 1);
       expect(structures, 1);
-      expect(librairies, 1);
       expect(tester.takeException(), isNull);
     });
 
