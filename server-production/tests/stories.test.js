@@ -21,9 +21,11 @@ import {
   DUREE_URL_SIGNEE_SECONDES,
   TAILLE_MAX_PHOTO_OCTETS,
   TAILLE_MAX_VIDEO_OCTETS,
+  TAILLE_MAX_AUDIO_OCTETS,
   TYPES_STORY,
   MIMES_PHOTO,
   MIMES_VIDEO,
+  MIMES_AUDIO,
   configR2,
   r2Actif,
   hoteR2,
@@ -58,9 +60,11 @@ test('constantes : durée 24 h, tailles et types décidés', () => {
   assert.equal(DUREE_URL_SIGNEE_SECONDES, 900);
   assert.equal(TAILLE_MAX_PHOTO_OCTETS, 5 * 1024 * 1024);
   assert.equal(TAILLE_MAX_VIDEO_OCTETS, 25 * 1024 * 1024);
-  assert.deepEqual(TYPES_STORY, ['photo', 'video']);
+  assert.equal(TAILLE_MAX_AUDIO_OCTETS, 10 * 1024 * 1024);
+  assert.deepEqual(TYPES_STORY, ['photo', 'video', 'audio']);
   assert.deepEqual(MIMES_PHOTO, ['image/jpeg', 'image/png', 'image/webp']);
   assert.deepEqual(MIMES_VIDEO, ['video/mp4', 'video/quicktime', 'video/webm']);
+  assert.deepEqual(MIMES_AUDIO, ['audio/webm', 'video/webm', 'audio/mp4', 'audio/x-m4a', 'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/x-wav', 'audio/aac']);
   assert.equal(Object.isFrozen(TYPES_STORY), true);
 });
 
@@ -85,6 +89,8 @@ test('cleStory : dossier stories, extension du type réel, unique', () => {
   assert.equal(cleStory('photo', 'image/png').endsWith('.png'), true);
   assert.equal(cleStory('video', 'video/quicktime').endsWith('.mov'), true);
   assert.equal(cleStory('video', 'video/webm').endsWith('.webm'), true);
+  assert.equal(cleStory('audio', 'audio/mpeg').endsWith('.mp3'), true);
+  assert.equal(cleStory('audio', 'video/webm').endsWith('.webm'), true);
   assert.notEqual(cleStory('photo', 'image/jpeg'), cleStory('photo', 'image/jpeg'));
 });
 
@@ -124,8 +130,21 @@ test('storyExpiree : avant et après la limite', () => {
 test('validerPublication : cas valides et refus', () => {
   assert.equal(validerPublication({ type: 'photo', mime: 'image/jpeg', tailleOctets: 1000 }), null);
   assert.equal(validerPublication({ type: 'video', mime: 'video/mp4', tailleOctets: 25 * 1024 * 1024 }), null);
+  // Audio, correction de suivi 27 nov. 2026 : message vocal de
+  // 60 secondes au plus, conteneur webm lu comme video/webm.
+  assert.equal(validerPublication({ type: 'audio', mime: 'audio/mpeg', tailleOctets: 1000 }), null);
+  assert.equal(validerPublication({ type: 'audio', mime: 'video/webm', tailleOctets: 1000 }), null);
+  assert.equal(validerPublication({ type: 'audio', mime: 'audio/mp4', tailleOctets: 10 * 1024 * 1024 }), null);
   assert.deepEqual(
-    validerPublication({ type: 'audio', mime: 'audio/mpeg', tailleOctets: 1000 }),
+    validerPublication({ type: 'audio', mime: 'audio/mpeg', tailleOctets: 10 * 1024 * 1024 + 1 }),
+    { statut: 413, message: 'Média trop volumineux.' },
+  );
+  assert.deepEqual(
+    validerPublication({ type: 'audio', mime: 'image/jpeg', tailleOctets: 1000 }),
+    { statut: 415, message: 'Type de média non autorisé.' },
+  );
+  assert.deepEqual(
+    validerPublication({ type: 'bruit', mime: 'audio/mpeg', tailleOctets: 1000 }),
     { statut: 400, message: 'Type de story invalide.' },
   );
   assert.deepEqual(
@@ -153,7 +172,10 @@ test('validerEnregistrementStory : dossier bon, refus clairs sinon', () => {
     expireLe: new Date(Date.now() + 24 * 60 * 60 * 1000),
   };
   assert.equal(validerEnregistrementStory(bon), null);
-  assert.equal(validerEnregistrementStory({ ...bon, type: 'audio' }).statut, 400);
+  assert.equal(validerEnregistrementStory({ ...bon, type: 'audio', mime: 'audio/mpeg' }), null);
+  assert.equal(validerEnregistrementStory({ ...bon, type: 'audio', mime: 'video/webm' }), null);
+  assert.equal(validerEnregistrementStory({ ...bon, type: 'audio' }).statut, 415);
+  assert.equal(validerEnregistrementStory({ ...bon, type: 'bruit' }).statut, 400);
   assert.equal(validerEnregistrementStory({ ...bon, cle: '' }).statut, 400);
   assert.equal(validerEnregistrementStory({ ...bon, cle: 'autre/abc.jpg' }).statut, 400);
   assert.equal(validerEnregistrementStory({ ...bon, mime: 'video/mp4' }).statut, 415);

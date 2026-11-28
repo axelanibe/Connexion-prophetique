@@ -74,8 +74,8 @@ test('heureValide : HH:MM, 00:00 à 23:59', () => {
 });
 
 // ── Modèle Word ──────────────────────────────────────────────
-test('modèle : 75 créneaux, dimanche à samedi, 5 h à 23 h', () => {
-  assert.equal(MODELE_CHRONOGRAMME.length, 75);
+test('modèle : 76 créneaux, dimanche à samedi, 5 h à 23 h', () => {
+  assert.equal(MODELE_CHRONOGRAMME.length, 76);
   for (const c of MODELE_CHRONOGRAMME) {
     assert.equal(jourSemaineValide(c.jourSemaine), true);
     assert.equal(heureValide(c.debut), true);
@@ -89,9 +89,9 @@ test('modèle : 75 créneaux, dimanche à samedi, 5 h à 23 h', () => {
     parJour.set(c.jourSemaine, (parJour.get(c.jourSemaine) ?? 0) + 1);
   }
   // Dimanche : rassemblement, départ, toilette, réfectoire,
-  // culte d'ouverture. Samedi : journée sportive seulement.
+  // culte d'ouverture. Samedi : journée sportive et réfectoire.
   assert.equal(parJour.get(0), 5);
-  assert.equal(parJour.get(6), 1);
+  assert.equal(parJour.get(6), 2);
   assert.equal(parJour.get(1), 14);
   assert.equal(parJour.get(5), 13);
   // Enseignements 1 à 9, ateliers 1 à 4, dans l'ordre.
@@ -118,7 +118,7 @@ test('modèle : 75 créneaux, dimanche à samedi, 5 h à 23 h', () => {
 test('appliquerModeleChronogramme : semaine datée depuis le dimanche', () => {
   // 2027-08-22 est un dimanche, premier jour du modèle.
   const entrees = appliquerModeleChronogramme('2027-08-22');
-  assert.equal(entrees.length, 75);
+  assert.equal(entrees.length, 76);
   assert.equal(entrees[0].jour, '2027-08-23');
   assert.equal(entrees[0].titre, 'Réveil matinal');
   const dimanche = entrees.filter((e) => e.jour === '2027-08-22');
@@ -129,7 +129,7 @@ test('appliquerModeleChronogramme : semaine datée depuis le dimanche', () => {
   const samedi = entrees.filter((e) => e.jour === '2027-08-28');
   assert.deepEqual(
     samedi.map((e) => e.titre),
-    ['Journée sportive'],
+    ['Journée sportive', 'Réfectoire'],
   );
   // Pas un dimanche, pas un jour réel : liste vide.
   assert.deepEqual(appliquerModeleChronogramme('2027-08-23'), []);
