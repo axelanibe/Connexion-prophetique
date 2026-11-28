@@ -55,6 +55,7 @@ import { tauxChangePlausible } from './src/taux_paypal.js';
 import { validerMessageContact } from './src/contact.js';
 import { anniversaireReference, estAnniversaireAujourdhui, formaterDateIntegration } from './src/anniversaires.js';
 import { genererAttestationPdf, urlVerificationAttestation, etatAttestation, pageVerificationAttestationHtml } from './src/generer_attestation_pdf.js';
+import { genererXlsx, genererPdfExport } from './src/exports.js';
 import { DEFAULT_DESIGN_CONFIG, mergeDesignConfig, migPaletteDesign, validateDesignPatch } from './src/design.js';
 import { VERSION_CONFIG } from './src/config_version.js';
 import { etagPourContenu, etagCorrespond } from './src/etag.js';
@@ -1771,7 +1772,7 @@ app.get('/etablissements/:id/nominations', { preHandler: membreG }, async (req) 
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const etab = (await q('SELECT id FROM etablissements WHERE id = $1', [id])).rows[0];
   if (!etab) throw httpError(404, 'Établissement introuvable.');
-  return (await q(`SELECT n.id, n.portee, n.fonction_code, f.libelle AS fonction_libelle, n.debute_le, n.finit_le, m.nom_complet, CASE WHEN n.debute_le > now() THEN 'a_venir' ELSE 'active' END AS statut FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code JOIN membres m ON m.id = n.membre_id WHERE n.etablissement_id = $1 AND NOT n.revoque AND (n.finit_le IS NULL OR n.finit_le > now()) ORDER BY n.debute_le`, [id])).rows;
+  return (await q(`SELECT n.id, n.portee, n.fonction_code, f.libelle AS fonction_libelle, n.debute_le, n.finit_le, COALESCE(m.nom_complet, pe.nom_complet) AS nom_complet, CASE WHEN n.debute_le > now() THEN 'a_venir' ELSE 'active' END AS statut FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code LEFT JOIN membres m ON m.id = n.membre_id LEFT JOIN personnes_externes pe ON pe.id = n.personne_externe_id WHERE n.etablissement_id = $1 AND NOT n.revoque AND (n.finit_le IS NULL OR n.finit_le > now()) ORDER BY n.debute_le`, [id])).rows;
 });
 
 app.get('/actualites', async (req, reply) => {
@@ -2204,7 +2205,7 @@ app.get('/admin/comptabilite', { preHandler: contenuG }, async (req) => {
 // dans les détails du journal d'audit. Aucune route de
 // suppression : une fiche erronée se corrige par modification.
 const SCOLAIRE_CLASSES = ['CP1', 'CP2', 'CE1', 'CE2', 'CM1', 'CM2', '6e', '5e', '4e', '3e', '2nde', '1ère', 'Terminale', 'Université', 'Formation professionnelle', 'Autre'];
-const SCOLAIRE_SELECT = `SELECT s.*, m.nom_complet AS membre_nom, m.matricule, m.fonction AS membre_fonction, e.nom AS etablissement, CASE WHEN s.moyenne_t1 IS NOT NULL AND s.moyenne_t2 IS NOT NULL AND s.moyenne_t3 IS NOT NULL THEN ROUND((s.moyenne_t1 + s.moyenne_t2 + s.moyenne_t3) / 3, 2) ELSE NULL END AS moyenne_annuelle FROM suivis_scolaires s JOIN membres m ON m.id = s.membre_id LEFT JOIN etablissements e ON e.id = s.etablissement_id`;
+const SCOLAIRE_SELECT = `SELECT s.*, COALESCE(m.nom_complet, pe.nom_complet) AS membre_nom, m.matricule, COALESCE(m.fonction, pe.fonction) AS membre_fonction, e.nom AS etablissement, CASE WHEN s.moyenne_t1 IS NOT NULL AND s.moyenne_t2 IS NOT NULL AND s.moyenne_t3 IS NOT NULL THEN ROUND((s.moyenne_t1 + s.moyenne_t2 + s.moyenne_t3) / 3, 2) ELSE NULL END AS moyenne_annuelle FROM suivis_scolaires s LEFT JOIN membres m ON m.id = s.membre_id LEFT JOIN personnes_externes pe ON pe.id = s.personne_externe_id LEFT JOIN etablissements e ON e.id = s.etablissement_id`;
 
 async function suiviScolaireParId(id) {
   return (await q(`${SCOLAIRE_SELECT} WHERE s.id = $1`, [id])).rows[0] ?? null;
@@ -2217,7 +2218,10 @@ function suiviScolaireControle(row, req) {
 }
 
 const suiviScolaireCorps = z.object({
-  membre_id: z.string().uuid(),
+  membre_id: z.string().uuid().optional().nullable(),
+  // Correctif global 27 nov. 2026 : une personne hors système
+  // (élève sans compte) peut avoir un suivi scolaire.
+  personne_externe_id: z.string().uuid().optional().nullable(),
   classe: z.enum(SCOLAIRE_CLASSES),
   classe_libre: z.string().trim().max(100).transform(texteMajuscules).optional().nullable(),
   annee_scolaire: z.string().trim().min(4).max(20),
@@ -2238,7 +2242,7 @@ app.get('/admin/suivis-scolaires', { preHandler: contenuG }, async (req) => {
   // ceux des autres camps.
   const porteeNomination = await activitesPourPermission(req, 'suivi.lire');
   return (await q(
-    `${SCOLAIRE_SELECT} WHERE ($1::uuid IS NULL OR s.etablissement_id = $1) AND ($2::text IS NULL OR s.annee_scolaire = $2) AND ($3::boolean = false OR EXISTS (SELECT 1 FROM bureau_membres b WHERE b.membre_id = s.membre_id)) AND ($4::uuid[] IS NULL OR EXISTS (SELECT 1 FROM inscriptions i WHERE i.membre_id = s.membre_id AND i.evenement_id = ANY($4::uuid[]))) ORDER BY m.nom_complet, s.annee_scolaire DESC`,
+    `${SCOLAIRE_SELECT} WHERE ($1::uuid IS NULL OR s.etablissement_id = $1) AND ($2::text IS NULL OR s.annee_scolaire = $2) AND ($3::boolean = false OR EXISTS (SELECT 1 FROM bureau_membres b WHERE b.membre_id = s.membre_id)) AND ($4::uuid[] IS NULL OR EXISTS (SELECT 1 FROM inscriptions i WHERE i.membre_id = s.membre_id AND i.evenement_id = ANY($4::uuid[]))) ORDER BY COALESCE(m.nom_complet, pe.nom_complet), s.annee_scolaire DESC`,
     [perimetre, annee, bureau, porteeNomination],
   )).rows;
 });
@@ -2253,24 +2257,42 @@ app.get('/admin/suivis-scolaires/:id', { preHandler: contenuG }, async (req) => 
 app.post('/admin/suivis-scolaires', { preHandler: contenuG }, async (req, reply) => {
   exigerFonctionAdmin(req, 'responsable');
   const b = suiviScolaireCorps.parse(req.body ?? {});
-  const membre = (await q('SELECT id, nom_complet, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
-  if (!membre) throw httpError(404, 'Membre introuvable.');
-  if (req.user.role === 'admin_etablissement' && (membre.etablissement_id == null || membre.etablissement_id !== req.user.eid)) throw httpError(403, 'Ce membre n’appartient pas à votre établissement.');
+  if (!b.membre_id && !b.personne_externe_id) throw httpError(400, 'Choisissez un membre ou une personne hors système.');
+  if (b.membre_id && b.personne_externe_id) throw httpError(400, 'Choisissez un membre ou une personne hors système, pas les deux.');
+  let nomComplet = null; let etablissementId = null;
+  if (b.membre_id) {
+    const membre = (await q('SELECT id, nom_complet, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
+    if (!membre) throw httpError(404, 'Membre introuvable.');
+    nomComplet = membre.nom_complet; etablissementId = membre.etablissement_id;
+  } else {
+    const externe = (await q('SELECT id, nom_complet, etablissement_id FROM personnes_externes WHERE id = $1', [b.personne_externe_id])).rows[0];
+    if (!externe) throw httpError(404, 'Personne introuvable.');
+    nomComplet = externe.nom_complet; etablissementId = externe.etablissement_id;
+  }
+  if (req.user.role === 'admin_etablissement' && (etablissementId == null || etablissementId !== req.user.eid)) throw httpError(403, 'Cette personne n’appartient pas à votre établissement.');
   // Carte 126 tranche 3 : un responsable éducatif nommé n'écrit
-  // que le suivi des membres inscrits à son activité.
-  await exigerNomination(req, 'suivi.ecrire', { membreId: b.membre_id });
+  // que le suivi des membres inscrits à son activité. Une personne
+  // hors système n'a pas d'inscription, donc pas de portée par
+  // nomination : seuls les administrateurs la créent.
+  if (b.membre_id) await exigerNomination(req, 'suivi.ecrire', { membreId: b.membre_id });
   const examen = b.examen === true;
+  const conflit = b.membre_id ? '(membre_id, annee_scolaire)' : '(personne_externe_id, annee_scolaire)';
   const row = (await q(
-    `INSERT INTO suivis_scolaires (membre_id, etablissement_id, classe, classe_libre, annee_scolaire, moyenne_t1, moyenne_t2, moyenne_t3, examen, type_examen, resultat_examen, cree_par, modifie_par)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
-     ON CONFLICT (membre_id, annee_scolaire) DO UPDATE SET etablissement_id = EXCLUDED.etablissement_id, classe = EXCLUDED.classe, classe_libre = EXCLUDED.classe_libre, moyenne_t1 = EXCLUDED.moyenne_t1, moyenne_t2 = EXCLUDED.moyenne_t2, moyenne_t3 = EXCLUDED.moyenne_t3, examen = EXCLUDED.examen, type_examen = EXCLUDED.type_examen, resultat_examen = EXCLUDED.resultat_examen, modifie_par = EXCLUDED.modifie_par, modifie_le = now()
+    `INSERT INTO suivis_scolaires (membre_id, personne_externe_id, etablissement_id, classe, classe_libre, annee_scolaire, moyenne_t1, moyenne_t2, moyenne_t3, examen, type_examen, resultat_examen, cree_par, modifie_par)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
+     ON CONFLICT ${conflit} DO UPDATE SET etablissement_id = EXCLUDED.etablissement_id, classe = EXCLUDED.classe, classe_libre = EXCLUDED.classe_libre, moyenne_t1 = EXCLUDED.moyenne_t1, moyenne_t2 = EXCLUDED.moyenne_t2, moyenne_t3 = EXCLUDED.moyenne_t3, examen = EXCLUDED.examen, type_examen = EXCLUDED.type_examen, resultat_examen = EXCLUDED.resultat_examen, modifie_par = EXCLUDED.modifie_par, modifie_le = now()
      RETURNING id`,
-    [b.membre_id, membre.etablissement_id, b.classe, b.classe === 'Autre' ? (b.classe_libre ?? null) : null, b.annee_scolaire, b.moyenne_t1 ?? null, b.moyenne_t2 ?? null, b.moyenne_t3 ?? null, examen, examen ? (b.type_examen ?? null) : null, examen ? (b.resultat_examen ?? null) : null, req.user.sub],
+    [b.membre_id ?? null, b.personne_externe_id ?? null, etablissementId, b.classe, b.classe === 'Autre' ? (b.classe_libre ?? null) : null, b.annee_scolaire, b.moyenne_t1 ?? null, b.moyenne_t2 ?? null, b.moyenne_t3 ?? null, examen, examen ? (b.type_examen ?? null) : null, examen ? (b.resultat_examen ?? null) : null, req.user.sub],
   )).rows[0];
   const complet = await suiviScolaireParId(row.id);
-  await audit(pool, req, 'suivi_scolaire.enregistre', 'suivis_scolaires', row.id, { membre_id: b.membre_id, annee_scolaire: b.annee_scolaire, etablissement_id: membre.etablissement_id });
-  await notifierMembre(b.membre_id, 'moyenne', 'Vos moyennes ont été mises à jour', `Vos moyennes pour l'année scolaire ${b.annee_scolaire} ont été mises à jour.`, 'suivi_scolaire', row.id);
-  await notifierParentsEnfant(b.membre_id, 'moyenne_enfant', `Les moyennes de ${prenomDe(membre.nom_complet)} ont été mises à jour`, `Les moyennes de ${prenomDe(membre.nom_complet)} pour l'année scolaire ${b.annee_scolaire} ont été mises à jour.`, 'suivi_scolaire', row.id);
+  await audit(pool, req, 'suivi_scolaire.enregistre', 'suivis_scolaires', row.id, { membre_id: b.membre_id ?? null, personne_externe_id: b.personne_externe_id ?? null, annee_scolaire: b.annee_scolaire, etablissement_id: etablissementId });
+  // Notification automatique à l'enfant et au parent, seulement
+  // pour un membre : une personne hors système n'a pas de compte
+  // ni de lien parent enregistré.
+  if (b.membre_id) {
+    await notifierMembre(b.membre_id, 'moyenne', 'Vos moyennes ont été mises à jour', `Vos moyennes pour l'année scolaire ${b.annee_scolaire} ont été mises à jour.`, 'suivi_scolaire', row.id);
+    await notifierParentsEnfant(b.membre_id, 'moyenne_enfant', `Les moyennes de ${prenomDe(nomComplet)} ont été mises à jour`, `Les moyennes de ${prenomDe(nomComplet)} pour l'année scolaire ${b.annee_scolaire} ont été mises à jour.`, 'suivi_scolaire', row.id);
+  }
   return reply.code(201).send(complet);
 });
 
@@ -2280,25 +2302,39 @@ app.put('/admin/suivis-scolaires/:id', { preHandler: contenuG }, async (req) => 
   const b = suiviScolaireCorps.parse(req.body ?? {});
   const ancien = await suiviScolaireParId(id);
   if (!ancien) throw httpError(404, 'Suivi introuvable.');
-  if (b.membre_id !== ancien.membre_id) throw httpError(400, 'Le membre d’un suivi ne se change pas. Créez un suivi pour l’autre membre.');
-  const membre = (await q('SELECT id, nom_complet, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
-  if (!membre) throw httpError(404, 'Membre introuvable.');
-  if (req.user.role === 'admin_etablissement' && (membre.etablissement_id == null || membre.etablissement_id !== req.user.eid)) throw httpError(403, 'Ce membre n’appartient pas à votre établissement.');
+  if (b.membre_id !== ancien.membre_id || (b.personne_externe_id ?? null) !== (ancien.personne_externe_id ?? null)) throw httpError(400, 'La personne d’un suivi ne se change pas. Créez un suivi pour l’autre personne.');
+  let nomComplet = null; let etablissementId = null;
+  if (b.membre_id) {
+    const membre = (await q('SELECT id, nom_complet, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
+    if (!membre) throw httpError(404, 'Membre introuvable.');
+    nomComplet = membre.nom_complet; etablissementId = membre.etablissement_id;
+  } else {
+    const externe = (await q('SELECT id, nom_complet, etablissement_id FROM personnes_externes WHERE id = $1', [b.personne_externe_id])).rows[0];
+    if (!externe) throw httpError(404, 'Personne introuvable.');
+    nomComplet = externe.nom_complet; etablissementId = externe.etablissement_id;
+  }
+  if (req.user.role === 'admin_etablissement' && (etablissementId == null || etablissementId !== req.user.eid)) throw httpError(403, 'Cette personne n’appartient pas à votre établissement.');
   // Carte 126 tranche 3 : un responsable éducatif nommé n'écrit
   // que le suivi des membres inscrits à son activité.
-  await exigerNomination(req, 'suivi.ecrire', { membreId: b.membre_id });
+  if (b.membre_id) await exigerNomination(req, 'suivi.ecrire', { membreId: b.membre_id });
   if (b.annee_scolaire !== ancien.annee_scolaire) {
-    const doublon = (await q('SELECT id FROM suivis_scolaires WHERE membre_id = $1 AND annee_scolaire = $2 AND id <> $3', [b.membre_id, b.annee_scolaire, id])).rows[0];
-    if (doublon) throw httpError(409, 'Un suivi existe déjà pour ce membre et cette année scolaire.');
+    const doublon = (await q(
+      b.membre_id
+        ? 'SELECT id FROM suivis_scolaires WHERE membre_id = $1 AND annee_scolaire = $2 AND id <> $3'
+        : 'SELECT id FROM suivis_scolaires WHERE personne_externe_id = $1 AND annee_scolaire = $2 AND id <> $3',
+      [b.membre_id ?? b.personne_externe_id, b.annee_scolaire, id])).rows[0];
+    if (doublon) throw httpError(409, 'Un suivi existe déjà pour cette personne et cette année scolaire.');
   }
   const examen = b.examen === true;
   await q(
     `UPDATE suivis_scolaires SET etablissement_id = $1, classe = $2, classe_libre = $3, annee_scolaire = $4, moyenne_t1 = $5, moyenne_t2 = $6, moyenne_t3 = $7, examen = $8, type_examen = $9, resultat_examen = $10, modifie_par = $11, modifie_le = now() WHERE id = $12`,
-    [membre.etablissement_id, b.classe, b.classe === 'Autre' ? (b.classe_libre ?? null) : null, b.annee_scolaire, b.moyenne_t1 ?? null, b.moyenne_t2 ?? null, b.moyenne_t3 ?? null, examen, examen ? (b.type_examen ?? null) : null, examen ? (b.resultat_examen ?? null) : null, req.user.sub, id],
+    [etablissementId, b.classe, b.classe === 'Autre' ? (b.classe_libre ?? null) : null, b.annee_scolaire, b.moyenne_t1 ?? null, b.moyenne_t2 ?? null, b.moyenne_t3 ?? null, examen, examen ? (b.type_examen ?? null) : null, examen ? (b.resultat_examen ?? null) : null, req.user.sub, id],
   );
-  await audit(pool, req, 'suivi_scolaire.modifie', 'suivis_scolaires', id, { membre_id: b.membre_id, annee_scolaire: b.annee_scolaire, etablissement_id: membre.etablissement_id });
-  await notifierMembre(b.membre_id, 'moyenne', 'Vos moyennes ont été mises à jour', `Vos moyennes pour l'année scolaire ${b.annee_scolaire} ont été mises à jour.`, 'suivi_scolaire', id);
-  await notifierParentsEnfant(b.membre_id, 'moyenne_enfant', `Les moyennes de ${prenomDe(membre.nom_complet)} ont été mises à jour`, `Les moyennes de ${prenomDe(membre.nom_complet)} pour l'année scolaire ${b.annee_scolaire} ont été mises à jour.`, 'suivi_scolaire', id);
+  await audit(pool, req, 'suivi_scolaire.modifie', 'suivis_scolaires', id, { membre_id: b.membre_id ?? null, personne_externe_id: b.personne_externe_id ?? null, annee_scolaire: b.annee_scolaire, etablissement_id: etablissementId });
+  if (b.membre_id) {
+    await notifierMembre(b.membre_id, 'moyenne', 'Vos moyennes ont été mises à jour', `Vos moyennes pour l'année scolaire ${b.annee_scolaire} ont été mises à jour.`, 'suivi_scolaire', id);
+    await notifierParentsEnfant(b.membre_id, 'moyenne_enfant', `Les moyennes de ${prenomDe(nomComplet)} ont été mises à jour`, `Les moyennes de ${prenomDe(nomComplet)} pour l'année scolaire ${b.annee_scolaire} ont été mises à jour.`, 'suivi_scolaire', id);
+  }
   return suiviScolaireParId(id);
 });
 
@@ -2625,7 +2661,7 @@ app.get('/attestations/verification/:reference', async (req, reply) => {
 // modification restent possibles. Aucune route de suppression en
 // première version. Le journal d'audit ne reprend que membre, date
 // et établissement, aucune donnée sensible.
-const PLANNING_SELECT = `SELECT p.*, m.nom_complet AS membre_nom, m.matricule, e.nom AS etablissement, ev.nom AS evenement_nom FROM plannings_responsables p JOIN membres m ON m.id = p.membre_id LEFT JOIN etablissements e ON e.id = p.etablissement_id LEFT JOIN evenements ev ON ev.id = p.evenement_id`;
+const PLANNING_SELECT = `SELECT p.*, COALESCE(m.nom_complet, pe.nom_complet) AS membre_nom, m.matricule, e.nom AS etablissement, ev.nom AS evenement_nom FROM plannings_responsables p LEFT JOIN membres m ON m.id = p.membre_id LEFT JOIN personnes_externes pe ON pe.id = p.personne_externe_id LEFT JOIN etablissements e ON e.id = p.etablissement_id LEFT JOIN evenements ev ON ev.id = p.evenement_id`;
 
 async function planningParId(id) {
   return (await q(`${PLANNING_SELECT} WHERE p.id = $1`, [id])).rows[0] ?? null;
@@ -2656,10 +2692,10 @@ function planningEnConflit(a, b) {
   return da < fb && fa > db;
 }
 
-async function planningConflits(membreId, date, debut, fin, exclureId) {
+async function planningConflits(membreId, date, debut, fin, exclureId, personneExterneId = null) {
   const rows = (await q(
-    `SELECT id, activite, date, heure_debut, heure_fin FROM plannings_responsables WHERE membre_id = $1 AND date = $2 AND ($3::uuid IS NULL OR id <> $3)`,
-    [membreId, date, exclureId ?? null],
+    `SELECT id, activite, date, heure_debut, heure_fin FROM plannings_responsables WHERE (($1::uuid IS NOT NULL AND membre_id = $1) OR ($2::uuid IS NOT NULL AND personne_externe_id = $2)) AND date = $3 AND ($4::uuid IS NULL OR id <> $4)`,
+    [membreId ?? null, personneExterneId ?? null, date, exclureId ?? null],
   )).rows;
   const candidat = { heure_debut: debut ?? null, heure_fin: fin ?? null };
   return rows.filter((r) => planningEnConflit(candidat, r)).map((r) => ({
@@ -2674,7 +2710,7 @@ async function planningConflits(membreId, date, debut, fin, exclureId) {
 function planningAvecConflits(rows) {
   return rows.map((r) => {
     const date = r.date instanceof Date ? r.date.toISOString().slice(0, 10) : String(r.date).slice(0, 10);
-    const conflits = rows.filter((o) => o.id !== r.id && o.membre_id === r.membre_id && (o.date instanceof Date ? o.date.toISOString().slice(0, 10) : String(o.date).slice(0, 10)) === date && planningEnConflit(r, o)).map((o) => ({
+    const conflits = rows.filter((o) => o.id !== r.id && (o.membre_id ?? o.personne_externe_id) === (r.membre_id ?? r.personne_externe_id) && (o.date instanceof Date ? o.date.toISOString().slice(0, 10) : String(o.date).slice(0, 10)) === date && planningEnConflit(r, o)).map((o) => ({
       id: o.id,
       activite: o.activite,
       date,
@@ -2686,7 +2722,10 @@ function planningAvecConflits(rows) {
 }
 
 const planningCorps = z.object({
-  membre_id: z.string().uuid(),
+  membre_id: z.string().uuid().optional().nullable(),
+  // Correctif global 27 nov. 2026 : une personne hors système
+  // peut être planifiée, sans compte application.
+  personne_externe_id: z.string().uuid().optional().nullable(),
   activite: z.string().trim().min(1).max(300).transform(texteMajuscules),
   evenement_id: z.string().uuid().optional().nullable(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -2707,7 +2746,7 @@ app.get('/admin/plannings', { preHandler: contenuG }, async (req) => {
   const moisNum = mois ? Number(mois.slice(5, 7)) : null;
   const finMois = mois && annee != null && moisNum != null ? `${moisNum === 12 ? annee + 1 : annee}-${String(moisNum === 12 ? 1 : moisNum + 1).padStart(2, '0')}-01` : null;
   const rows = (await q(
-    `${PLANNING_SELECT} WHERE ($1::uuid IS NULL OR p.etablissement_id = $1) AND ($2::uuid IS NULL OR p.membre_id = $2) AND ($3::date IS NULL OR p.date >= $3) AND ($4::date IS NULL OR p.date < $4) ORDER BY p.date, p.heure_debut NULLS LAST, m.nom_complet`,
+    `${PLANNING_SELECT} WHERE ($1::uuid IS NULL OR p.etablissement_id = $1) AND ($2::uuid IS NULL OR p.membre_id = $2) AND ($3::date IS NULL OR p.date >= $3) AND ($4::date IS NULL OR p.date < $4) ORDER BY p.date, p.heure_debut NULLS LAST, COALESCE(m.nom_complet, pe.nom_complet)`,
     [filtre, membre, debutMois, finMois],
   )).rows;
   return planningAvecConflits(rows);
@@ -2718,21 +2757,31 @@ app.post('/admin/plannings', { preHandler: contenuG }, async (req, reply) => {
   const b = planningCorps.parse(req.body ?? {});
   if (b.heure_debut && b.heure_fin && planningHeureMinutes(b.heure_fin) < planningHeureMinutes(b.heure_debut)) throw httpError(400, 'L’heure de fin ne peut pas précéder l’heure de début.');
   if (req.user.role === 'admin_etablissement' && !req.user.eid) throw httpError(403, 'Aucun établissement rattaché, création impossible.');
-  const membre = (await q('SELECT id, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
-  if (!membre) throw httpError(404, 'Membre introuvable.');
-  if (req.user.role === 'admin_etablissement' && (membre.etablissement_id == null || membre.etablissement_id !== req.user.eid)) throw httpError(403, 'Ce membre n’appartient pas à votre établissement.');
+  if (!b.membre_id && !b.personne_externe_id) throw httpError(400, 'Choisissez un membre ou une personne hors système.');
+  if (b.membre_id && b.personne_externe_id) throw httpError(400, 'Choisissez un membre ou une personne hors système, pas les deux.');
+  let etablissementId = null;
+  if (b.membre_id) {
+    const membre = (await q('SELECT id, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
+    if (!membre) throw httpError(404, 'Membre introuvable.');
+    etablissementId = membre.etablissement_id;
+  } else {
+    const externe = (await q('SELECT id, etablissement_id FROM personnes_externes WHERE id = $1', [b.personne_externe_id])).rows[0];
+    if (!externe) throw httpError(404, 'Personne introuvable.');
+    etablissementId = externe.etablissement_id;
+  }
+  if (req.user.role === 'admin_etablissement' && (etablissementId == null || etablissementId !== req.user.eid)) throw httpError(403, 'Cette personne n’appartient pas à votre établissement.');
   if (b.evenement_id) {
     const ev = (await q('SELECT id FROM evenements WHERE id = $1', [b.evenement_id])).rows[0];
     if (!ev) throw httpError(404, 'Événement introuvable.');
   }
   const row = (await q(
-    `INSERT INTO plannings_responsables (membre_id, etablissement_id, activite, evenement_id, date, heure_debut, heure_fin, role_service, cree_par)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-    [b.membre_id, membre.etablissement_id, b.activite, b.evenement_id ?? null, b.date, b.heure_debut ?? null, b.heure_fin ?? null, b.role_service ?? null, req.user.sub],
+    `INSERT INTO plannings_responsables (membre_id, personne_externe_id, etablissement_id, activite, evenement_id, date, heure_debut, heure_fin, role_service, cree_par)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+    [b.membre_id ?? null, b.personne_externe_id ?? null, etablissementId, b.activite, b.evenement_id ?? null, b.date, b.heure_debut ?? null, b.heure_fin ?? null, b.role_service ?? null, req.user.sub],
   )).rows[0];
-  const conflits = await planningConflits(b.membre_id, b.date, b.heure_debut ?? null, b.heure_fin ?? null, row.id);
+  const conflits = await planningConflits(b.membre_id ?? null, b.date, b.heure_debut ?? null, b.heure_fin ?? null, row.id, b.personne_externe_id ?? null);
   const complet = await planningParId(row.id);
-  await audit(pool, req, 'planning.cree', 'plannings_responsables', row.id, { membre_id: b.membre_id, date: b.date, etablissement_id: membre.etablissement_id });
+  await audit(pool, req, 'planning.cree', 'plannings_responsables', row.id, { membre_id: b.membre_id ?? null, personne_externe_id: b.personne_externe_id ?? null, date: b.date, etablissement_id: etablissementId });
   return reply.code(201).send({ ...complet, conflits });
 });
 
@@ -2742,21 +2791,29 @@ app.put('/admin/plannings/:id', { preHandler: contenuG }, async (req) => {
   const b = planningCorps.parse(req.body ?? {});
   if (b.heure_debut && b.heure_fin && planningHeureMinutes(b.heure_fin) < planningHeureMinutes(b.heure_debut)) throw httpError(400, 'L’heure de fin ne peut pas précéder l’heure de début.');
   const ancien = planningControle(await planningParId(id), req);
-  if (b.membre_id !== ancien.membre_id) throw httpError(400, 'Le responsable d’un planning ne se change pas. Créez un planning pour l’autre responsable.');
-  const membre = (await q('SELECT id, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
-  if (!membre) throw httpError(404, 'Membre introuvable.');
-  if (req.user.role === 'admin_etablissement' && (membre.etablissement_id == null || membre.etablissement_id !== req.user.eid)) throw httpError(403, 'Ce membre n’appartient pas à votre établissement.');
+  if (b.membre_id !== ancien.membre_id || (b.personne_externe_id ?? null) !== (ancien.personne_externe_id ?? null)) throw httpError(400, 'Le responsable d’un planning ne se change pas. Créez un planning pour l’autre responsable.');
+  let etablissementId = null;
+  if (b.membre_id) {
+    const membre = (await q('SELECT id, etablissement_id FROM membres WHERE id = $1', [b.membre_id])).rows[0];
+    if (!membre) throw httpError(404, 'Membre introuvable.');
+    etablissementId = membre.etablissement_id;
+  } else {
+    const externe = (await q('SELECT id, etablissement_id FROM personnes_externes WHERE id = $1', [b.personne_externe_id])).rows[0];
+    if (!externe) throw httpError(404, 'Personne introuvable.');
+    etablissementId = externe.etablissement_id;
+  }
+  if (req.user.role === 'admin_etablissement' && (etablissementId == null || etablissementId !== req.user.eid)) throw httpError(403, 'Cette personne n’appartient pas à votre établissement.');
   if (b.evenement_id) {
     const ev = (await q('SELECT id FROM evenements WHERE id = $1', [b.evenement_id])).rows[0];
     if (!ev) throw httpError(404, 'Événement introuvable.');
   }
   await q(
     `UPDATE plannings_responsables SET etablissement_id = $1, activite = $2, evenement_id = $3, date = $4, heure_debut = $5, heure_fin = $6, role_service = $7, modifie_le = now() WHERE id = $8`,
-    [membre.etablissement_id, b.activite, b.evenement_id ?? null, b.date, b.heure_debut ?? null, b.heure_fin ?? null, b.role_service ?? null, id],
+    [etablissementId, b.activite, b.evenement_id ?? null, b.date, b.heure_debut ?? null, b.heure_fin ?? null, b.role_service ?? null, id],
   );
-  const conflits = await planningConflits(b.membre_id, b.date, b.heure_debut ?? null, b.heure_fin ?? null, id);
+  const conflits = await planningConflits(b.membre_id ?? null, b.date, b.heure_debut ?? null, b.heure_fin ?? null, id, b.personne_externe_id ?? null);
   const complet = await planningParId(id);
-  await audit(pool, req, 'planning.modifie', 'plannings_responsables', id, { membre_id: b.membre_id, date: b.date, etablissement_id: membre.etablissement_id });
+  await audit(pool, req, 'planning.modifie', 'plannings_responsables', id, { membre_id: b.membre_id ?? null, personne_externe_id: b.personne_externe_id ?? null, date: b.date, etablissement_id: etablissementId });
   return { ...complet, conflits };
 });
 
@@ -7131,14 +7188,84 @@ app.get('/admin/inscriptions', { preHandler: contenuG }, async (req) => {
   const inclureSans = req.user.role === 'admin_etablissement';
   return (
     await q(
-      `SELECT e.nom AS camp, m.nom_complet, m.matricule, i.inscrit_le,
-              (NOT i.versements_requis OR (SELECT COALESCE(SUM(montant_fcfa), 0) FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'confirme') >= e.tarif_fcfa) AS pass_visible
-       FROM inscriptions i JOIN membres m ON m.id = i.membre_id JOIN evenements e ON e.id = i.evenement_id
-       WHERE i.evenement_id = $1 AND ($2::uuid IS NULL OR m.etablissement_id = $2 OR ($3::boolean AND m.etablissement_id IS NULL))
-       ORDER BY m.nom_complet`,
+      `SELECT e.nom AS camp, COALESCE(m.nom_complet, pe.nom_complet) AS nom_complet, m.matricule, i.inscrit_le, i.contact_parent,
+              (NOT i.versements_requis OR (SELECT COALESCE(SUM(montant_fcfa), 0) FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = COALESCE(i.membre_id, i.personne_externe_id) AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'confirme') >= e.tarif_fcfa) AS pass_visible
+       FROM inscriptions i LEFT JOIN membres m ON m.id = i.membre_id LEFT JOIN personnes_externes pe ON pe.id = i.personne_externe_id JOIN evenements e ON e.id = i.evenement_id
+       WHERE i.evenement_id = $1 AND ($2::uuid IS NULL OR COALESCE(m.etablissement_id, pe.etablissement_id) = $2 OR ($3::boolean AND COALESCE(m.etablissement_id, pe.etablissement_id) IS NULL))
+       ORDER BY COALESCE(m.nom_complet, pe.nom_complet)`,
       [evenementId, perimetre, inclureSans],
     )
   ).rows;
+});
+
+// Inscription au camp par un administrateur, correctif global
+// 27 nov. 2026 : formulaire pro pour inscrire un membre sans
+// téléphone, ou une personne hors système, avec le contact du
+// parent ou tuteur. Même garde et périmètre que la liste.
+// Le pass est généré comme pour l'auto-inscription ; les 6
+// versements s'appliquent quand le tarif est supérieur à 0.
+// Une personne hors système n'a pas de compte, donc pas de
+// notification ni de groupe : son règlement se fait par don de
+// camp au nom de la personne, comme aujourd'hui.
+app.post('/admin/evenements/:id/inscriptions', { preHandler: contenuG }, async (req, reply) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const body = z.object({
+    membre_id: z.string().uuid().optional().nullable(),
+    personne_externe_id: z.string().uuid().optional().nullable(),
+    contact_parent: z.string().trim().max(200).optional().nullable(),
+  }).parse(req.body ?? {});
+  if (!body.membre_id && !body.personne_externe_id) throw httpError(400, 'Choisissez un membre ou une personne hors système.');
+  if (body.membre_id && body.personne_externe_id) throw httpError(400, 'Choisissez un membre ou une personne hors système, pas les deux.');
+  const ev = (await q('SELECT id, nom, type, est_kairos, tarif_fcfa FROM evenements WHERE id = $1 AND publie', [id])).rows[0];
+  if (!ev) throw httpError(404, 'Camp introuvable.');
+  await exigerNomination(req, 'camp.inscriptions', { evenementId: id, obligatoire: true });
+  let nomComplet = null; let etablissementId = null;
+  if (body.membre_id) {
+    const membre = (await q('SELECT id, nom_complet, etablissement_id FROM membres WHERE id = $1', [body.membre_id])).rows[0];
+    if (!membre) throw httpError(404, 'Membre introuvable.');
+    nomComplet = membre.nom_complet; etablissementId = membre.etablissement_id;
+  } else {
+    const externe = (await q('SELECT id, nom_complet, etablissement_id FROM personnes_externes WHERE id = $1', [body.personne_externe_id])).rows[0];
+    if (!externe) throw httpError(404, 'Personne introuvable.');
+    nomComplet = externe.nom_complet; etablissementId = externe.etablissement_id;
+  }
+  const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : null;
+  if (perimetre && etablissementId != null && etablissementId !== perimetre) throw httpError(403, 'Cette personne n’appartient pas à votre établissement.');
+  const existante = (await q(
+    body.membre_id
+      ? 'SELECT id FROM inscriptions WHERE evenement_id = $1 AND membre_id = $2'
+      : 'SELECT id FROM inscriptions WHERE evenement_id = $1 AND personne_externe_id = $2',
+    [id, body.membre_id ?? body.personne_externe_id])).rows[0];
+  if (existante) throw httpError(409, 'Cette personne est déjà inscrite à ce camp.');
+  let r;
+  try {
+    r = (await q(
+      `INSERT INTO inscriptions (evenement_id, membre_id, personne_externe_id, versements_requis, contact_parent) VALUES ($1, $2, $3, $4, $5) RETURNING id, code_pass, inscrit_le, versements_requis`,
+      [id, body.membre_id ?? null, body.personne_externe_id ?? null, (ev.tarif_fcfa ?? 0) > 0, body.contact_parent ?? null],
+    )).rows[0];
+  } catch (e) {
+    if (e.code === '23505') throw httpError(409, 'Cette personne est déjà inscrite à ce camp.');
+    throw e;
+  }
+  if (body.membre_id && estTypeEvenementGroupe(ev.type)) await assurerGroupeEvenement(id, ev.nom, body.membre_id);
+  let versements = null;
+  if (body.membre_id && r.versements_requis) {
+    const prog = await progressionCamp(body.membre_id, id);
+    versements = { ...prog, requis: true };
+    const tarif = ev.tarif_fcfa ?? 0;
+    await notifierMembre(
+      body.membre_id,
+      'camp_rappel',
+      'Paiement du camp en 6 fois',
+      `Bonjour {prenom}, votre inscription à ${ev.nom} est enregistrée. Votre pass sera généré quand les 6 versements seront payés, soit ${fcfaTexte(montantVersement(tarif, 1))} par versement, ${fcfaTexte(tarif)} au total. Il vous reste ${fcfaTexte(tarif)} à payer.`,
+      'camp',
+      id,
+      'Paiement du camp en 6 fois',
+      `Votre inscription à ${ev.nom} est enregistrée. Votre pass sera généré quand les 6 versements seront payés, soit ${fcfaTexte(montantVersement(tarif, 1))} par versement, ${fcfaTexte(tarif)} au total. Il vous reste ${fcfaTexte(tarif)} à payer.`,
+    );
+  }
+  await audit(pool, req, 'inscription_camp.creee', 'inscriptions', r.id, { evenement_id: id, membre_id: body.membre_id ?? null, personne_externe_id: body.personne_externe_id ?? null });
+  return reply.code(201).send({ evenement: ev.nom, badge: ev.est_kairos, code_pass: r.code_pass, inscrit_le: r.inscrit_le, versements, nom_complet: nomComplet });
 });
 
 // Suivi des versements de camp, 2 nov. 2026, tranche 2 des 7
@@ -7763,6 +7890,101 @@ app.get('/admin/membres', { preHandler: contenuG }, async (req) => {
   ).rows;
 });
 
+// Exports complets en Excel et PDF, correctif global 27 nov. 2026 :
+// mêmes données, mêmes colonnes et même périmètre que les listes
+// (la liste client est plafonnée, l'export serveur ne l'est pas,
+// sauf le plafond de garde à 5 000 lignes pour les paiements).
+// Lecture seule, aucune écriture en base. Format xlsx par défaut,
+// pdf sur ?format=pdf. Les inscriptions exigent evenement_id,
+// comme la liste, avec la même garde de nomination.
+app.get('/admin/exports/:sujet', { preHandler: contenuG }, async (req, reply) => {
+  const { sujet } = z.object({ sujet: z.enum(['membres', 'paiements', 'presences', 'inscriptions']) }).parse(req.params);
+  const { format, evenement_id } = z.object({
+    format: z.enum(['xlsx', 'pdf']).optional().default('xlsx'),
+    evenement_id: z.string().uuid().optional(),
+  }).parse(req.query);
+  const dateIso = (v) => (v instanceof Date ? v.toISOString() : (v ?? ''));
+  let titre;
+  let colonnes;
+  let lignes;
+  if (sujet === 'membres') {
+    const filtre = req.user.role === 'admin_etablissement' ? req.user.eid : null;
+    const porteeNomination = await activitesPourPermission(req, 'camp.lire');
+    const rows = (
+      await q(
+        `SELECT m.matricule, m.nom_complet, m.fonction, u.role AS role_compte, e.nom AS etablissement
+         FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id
+         LEFT JOIN utilisateurs u ON u.id = m.utilisateur_id
+         WHERE ($1::uuid IS NULL OR m.etablissement_id = $1)
+           AND ($2::uuid[] IS NULL OR EXISTS (SELECT 1 FROM inscriptions i WHERE i.membre_id = m.id AND i.evenement_id = ANY($2::uuid[])))
+         ORDER BY m.nom_complet LIMIT 500`,
+        [filtre, porteeNomination],
+      )
+    ).rows;
+    titre = 'Membres';
+    colonnes = ['Nom', 'Matricule', 'Fonction', 'Rôle', 'Établissement'];
+    lignes = rows.map((r) => [r.nom_complet ?? '', r.matricule ?? '', r.fonction ?? '', r.role_compte ?? '', r.etablissement ?? '']);
+  } else if (sujet === 'paiements') {
+    const porteeNomination = await activitesPourPermission(req, 'finances.lire');
+    const rows = (
+      await q(
+        `SELECT p.reference, p.type, p.montant_fcfa, p.statut, p.moyen, m.nom_complet
+         FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id
+         WHERE ($1::uuid IS NULL OR m.etablissement_id = $1)
+           AND ($2::uuid[] IS NULL OR p.evenement_id = ANY($2::uuid[]) OR (p.type = 'camp' AND EXISTS (SELECT 1 FROM inscriptions i WHERE i.membre_id = (CASE WHEN p.beneficiaire_contact IS NOT NULL THEN p.beneficiaire_id ELSE p.membre_id END) AND i.evenement_id = ANY($2::uuid[]))))
+         ORDER BY p.cree_le DESC LIMIT 5000`,
+        [req.user.role === 'admin_etablissement' ? req.user.eid : null, porteeNomination],
+      )
+    ).rows;
+    titre = 'Paiements';
+    colonnes = ['Référence', 'Type', 'Montant FCFA', 'Statut', 'Moyen', 'Membre'];
+    lignes = rows.map((r) => [r.reference ?? '', r.type ?? '', Number(r.montant_fcfa) || 0, r.statut ?? '', r.moyen ?? '', r.nom_complet ?? '']);
+  } else if (sujet === 'presences') {
+    const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : null;
+    const rows = (
+      await q(
+        `SELECT p.statut, p.scanne_le, p.methode, COALESCE(e.nom, a.titre, '') AS activite_nom, s.nom_complet AS scanne_par_nom
+         FROM presences p JOIN membres m ON m.id = p.membre_id
+         LEFT JOIN evenements e ON e.id = p.activite_id
+         LEFT JOIN activites_etablissement a ON a.id = p.activite_id
+         LEFT JOIN membres s ON s.id = p.scanne_par
+         WHERE ($1::uuid IS NULL OR m.etablissement_id = $1)
+         ORDER BY p.scanne_le DESC LIMIT 500`,
+        [perimetre],
+      )
+    ).rows;
+    titre = 'Présences';
+    colonnes = ['Activité', 'Statut', 'Scanné le', 'Méthode', 'Scanné par'];
+    lignes = rows.map((r) => [r.activite_nom ?? '', r.statut ?? '', dateIso(r.scanne_le), r.methode ?? '', r.scanne_par_nom ?? '']);
+  } else {
+    if (!evenement_id) throw httpError(400, 'Camp requis.');
+    const ev = (await q('SELECT id, nom FROM evenements WHERE id = $1', [evenement_id])).rows[0];
+    if (!ev) throw httpError(404, 'Camp introuvable.');
+    await exigerNomination(req, 'camp.inscriptions', { evenementId: evenement_id, obligatoire: true });
+    const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : null;
+    const inclureSans = req.user.role === 'admin_etablissement';
+    const rows = (
+      await q(
+        `SELECT COALESCE(m.nom_complet, pe.nom_complet) AS nom_complet, m.matricule, i.inscrit_le,
+                (NOT i.versements_requis OR (SELECT COALESCE(SUM(montant_fcfa), 0) FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = COALESCE(i.membre_id, i.personne_externe_id) AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'confirme') >= e.tarif_fcfa) AS pass_visible
+         FROM inscriptions i LEFT JOIN membres m ON m.id = i.membre_id LEFT JOIN personnes_externes pe ON pe.id = i.personne_externe_id JOIN evenements e ON e.id = i.evenement_id
+         WHERE i.evenement_id = $1 AND ($2::uuid IS NULL OR COALESCE(m.etablissement_id, pe.etablissement_id) = $2 OR ($3::boolean AND COALESCE(m.etablissement_id, pe.etablissement_id) IS NULL))
+         ORDER BY COALESCE(m.nom_complet, pe.nom_complet)`,
+        [evenement_id, perimetre, inclureSans],
+      )
+    ).rows;
+    titre = `Inscriptions ${ev.nom}`;
+    colonnes = ['Nom', 'Matricule', 'Inscrit le', 'Pass visible'];
+    lignes = rows.map((r) => [r.nom_complet ?? '', r.matricule ?? '', dateIso(r.inscrit_le), r.pass_visible ? 'oui' : 'non']);
+  }
+  const tampon = format === 'pdf' ? await genererPdfExport(titre, colonnes, lignes) : genererXlsx(titre, colonnes, lignes);
+  const mime = format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  return reply
+    .header('Content-Type', mime)
+    .header('Content-Disposition', `attachment; filename="${sujet}.${format}"`)
+    .send(tampon);
+});
+
 // Carte d'un membre pour l'administration, 30 oct. 2026 : lecture
 // seule, pour voir et imprimer la carte. Périmètre : général voit
 // tout, établissement voit son établissement, et un membre sans
@@ -7985,7 +8207,11 @@ app.post('/admin/membres/:id/role', { preHandler: adminG }, async (req) => {
 // gérer les nominations.
 app.post('/admin/nominations', { preHandler: adminG }, async (req, reply) => {
   const body = z.object({
-    membre_id: z.string().uuid(),
+    membre_id: z.string().uuid().optional().nullable(),
+    // Correctif global 27 nov. 2026 : une personne hors système
+    // (fiche personnes_externes) peut être nommée à un poste,
+    // sans compte application. Exactement l'un des deux.
+    personne_externe_id: z.string().uuid().optional().nullable(),
     portee: z.enum(['structure', 'etablissement', 'activite']),
     evenement_id: z.string().uuid().optional().nullable(),
     etablissement_id: z.string().uuid().optional().nullable(),
@@ -7998,8 +8224,16 @@ app.post('/admin/nominations', { preHandler: adminG }, async (req, reply) => {
   if (body.portee === 'etablissement' && body.evenement_id) throw httpError(400, 'Une nomination d’établissement ne porte pas sur une activité.');
   if (body.portee === 'activite' && !body.evenement_id) throw httpError(400, 'Choisissez une activité.');
   if (body.portee === 'activite' && body.etablissement_id) throw httpError(400, 'Une nomination d’activité ne porte pas sur un établissement.');
-  const membre = (await q('SELECT id, matricule FROM membres WHERE id = $1', [body.membre_id])).rows[0];
-  if (!membre) throw httpError(404, 'Membre introuvable.');
+  if (!body.membre_id && !body.personne_externe_id) throw httpError(400, 'Choisissez un membre ou une personne hors système.');
+  if (body.membre_id && body.personne_externe_id) throw httpError(400, 'Choisissez un membre ou une personne hors système, pas les deux.');
+  let membre = null; let externe = null;
+  if (body.membre_id) {
+    membre = (await q('SELECT id, matricule FROM membres WHERE id = $1', [body.membre_id])).rows[0];
+    if (!membre) throw httpError(404, 'Membre introuvable.');
+  } else {
+    externe = (await q('SELECT id, nom_complet FROM personnes_externes WHERE id = $1', [body.personne_externe_id])).rows[0];
+    if (!externe) throw httpError(404, 'Personne introuvable.');
+  }
   if (body.evenement_id) {
     const ev = (await q('SELECT id FROM evenements WHERE id = $1', [body.evenement_id])).rows[0];
     if (!ev) throw httpError(404, 'Activité introuvable.');
@@ -8014,12 +8248,16 @@ app.post('/admin/nominations', { preHandler: adminG }, async (req, reply) => {
   const finit = body.finit_le ? new Date(body.finit_le) : null;
   if (Number.isNaN(debute.getTime()) || (finit && Number.isNaN(finit.getTime()))) throw httpError(400, 'Dates invalides.');
   if (finit && finit <= debute) throw httpError(400, 'La fin doit être après le début.');
-  const doublon = (await q('SELECT id FROM nominations WHERE membre_id = $1 AND portee = $2 AND evenement_id IS NOT DISTINCT FROM $3 AND etablissement_id IS NOT DISTINCT FROM $4 AND fonction_code = $5 AND NOT revoque AND (finit_le IS NULL OR finit_le > now())', [body.membre_id, body.portee, body.evenement_id ?? null, body.etablissement_id ?? null, body.fonction_code])).rows[0];
+  const doublon = (await q(
+    body.membre_id
+      ? 'SELECT id FROM nominations WHERE membre_id = $1 AND portee = $2 AND evenement_id IS NOT DISTINCT FROM $3 AND etablissement_id IS NOT DISTINCT FROM $4 AND fonction_code = $5 AND NOT revoque AND (finit_le IS NULL OR finit_le > now())'
+      : 'SELECT id FROM nominations WHERE personne_externe_id = $1 AND portee = $2 AND evenement_id IS NOT DISTINCT FROM $3 AND etablissement_id IS NOT DISTINCT FROM $4 AND fonction_code = $5 AND NOT revoque AND (finit_le IS NULL OR finit_le > now())',
+    [body.membre_id ?? body.personne_externe_id, body.portee, body.evenement_id ?? null, body.etablissement_id ?? null, body.fonction_code])).rows[0];
   if (doublon) throw httpError(409, 'Cette nomination existe déjà.');
-  const [sql, params] = insertSql('nominations', { membre_id: body.membre_id, portee: body.portee, evenement_id: body.evenement_id ?? null, etablissement_id: body.etablissement_id ?? null, fonction_code: body.fonction_code, debute_le: debute.toISOString(), finit_le: finit ? finit.toISOString() : null, cree_par: req.user.sub });
+  const [sql, params] = insertSql('nominations', { membre_id: body.membre_id ?? null, personne_externe_id: body.personne_externe_id ?? null, portee: body.portee, evenement_id: body.evenement_id ?? null, etablissement_id: body.etablissement_id ?? null, fonction_code: body.fonction_code, debute_le: debute.toISOString(), finit_le: finit ? finit.toISOString() : null, cree_par: req.user.sub });
   const row = await tx(async (c) => {
     const r = (await c.query(sql, params)).rows[0];
-    await audit(c, req, 'nomination.creee', 'nominations', r.id, { membre_id: membre.id, matricule: membre.matricule, portee: body.portee, evenement_id: body.evenement_id ?? null, etablissement_id: body.etablissement_id ?? null, fonction_code: body.fonction_code });
+    await audit(c, req, 'nomination.creee', 'nominations', r.id, { membre_id: membre?.id ?? null, personne_externe_id: externe?.id ?? null, matricule: membre?.matricule ?? null, portee: body.portee, evenement_id: body.evenement_id ?? null, etablissement_id: body.etablissement_id ?? null, fonction_code: body.fonction_code });
     return r;
   });
   return reply.code(201).send(row);
@@ -8062,7 +8300,11 @@ app.put('/admin/nominations/:id', { preHandler: adminG }, async (req) => {
   if (!Object.keys(maj).length) throw httpError(400, 'Aucune modification.');
   const fonctionFinale = maj.fonction_code ?? existante.fonction_code;
   const etablissementFinal = 'etablissement_id' in maj ? maj.etablissement_id : existante.etablissement_id;
-  const doublon = (await q('SELECT id FROM nominations WHERE id <> $1 AND membre_id = $2 AND portee = $3 AND evenement_id IS NOT DISTINCT FROM $4 AND etablissement_id IS NOT DISTINCT FROM $5 AND fonction_code = $6 AND NOT revoque AND (finit_le IS NULL OR finit_le > now())', [id, existante.membre_id, existante.portee, existante.evenement_id, etablissementFinal, fonctionFinale])).rows[0];
+  const doublon = (await q(
+    existante.membre_id
+      ? 'SELECT id FROM nominations WHERE id <> $1 AND membre_id = $2 AND portee = $3 AND evenement_id IS NOT DISTINCT FROM $4 AND etablissement_id IS NOT DISTINCT FROM $5 AND fonction_code = $6 AND NOT revoque AND (finit_le IS NULL OR finit_le > now())'
+      : 'SELECT id FROM nominations WHERE id <> $1 AND personne_externe_id = $2 AND portee = $3 AND evenement_id IS NOT DISTINCT FROM $4 AND etablissement_id IS NOT DISTINCT FROM $5 AND fonction_code = $6 AND NOT revoque AND (finit_le IS NULL OR finit_le > now())',
+    [id, existante.membre_id ?? existante.personne_externe_id, existante.portee, existante.evenement_id, etablissementFinal, fonctionFinale])).rows[0];
   if (doublon) throw httpError(409, 'Cette nomination existe déjà.');
   const [sql, params] = updateSql('nominations', id, maj);
   const row = await tx(async (c) => {
@@ -8103,7 +8345,7 @@ app.get('/admin/nominations', { preHandler: adminG }, async (req) => {
   if (filtre.portee) { params.push(filtre.portee); conditions.push(`n.portee = $${params.length}`); }
   if (filtre.actives === 'true') conditions.push(`NOT n.revoque AND (n.finit_le IS NULL OR n.finit_le > now())`);
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  const rows = (await q(`SELECT n.*, f.libelle AS fonction_libelle, f.permissions, m.nom_complet, m.matricule, e.nom AS evenement_nom, et.nom AS etablissement_nom, me.nom AS membre_etablissement FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code JOIN membres m ON m.id = n.membre_id LEFT JOIN evenements e ON e.id = n.evenement_id LEFT JOIN etablissements et ON et.id = n.etablissement_id LEFT JOIN etablissements me ON me.id = m.etablissement_id ${where} ORDER BY n.cree_le DESC`, params)).rows;
+  const rows = (await q(`SELECT n.*, f.libelle AS fonction_libelle, f.permissions, COALESCE(m.nom_complet, pe.nom_complet) AS nom_complet, m.matricule, e.nom AS evenement_nom, et.nom AS etablissement_nom, me.nom AS membre_etablissement, pe.nom_complet AS personne_externe_nom, pe.contact AS personne_externe_contact FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code LEFT JOIN membres m ON m.id = n.membre_id LEFT JOIN personnes_externes pe ON pe.id = n.personne_externe_id LEFT JOIN evenements e ON e.id = n.evenement_id LEFT JOIN etablissements et ON et.id = n.etablissement_id LEFT JOIN etablissements me ON me.id = COALESCE(m.etablissement_id, pe.etablissement_id) ${where} ORDER BY n.cree_le DESC`, params)).rows;
   return rows;
 });
 
@@ -8116,6 +8358,95 @@ app.get('/admin/nominations', { preHandler: adminG }, async (req) => {
 app.get('/moi/nominations', { preHandler: membreG }, async (req) => {
   const rows = (await q(`SELECT n.id, n.portee, n.evenement_id, n.etablissement_id, n.fonction_code, f.libelle AS fonction_libelle, f.permissions, n.debute_le, n.finit_le, e.nom AS evenement_nom, et.nom AS etablissement_nom FROM nominations n JOIN fonctions_admin f ON f.code = n.fonction_code LEFT JOIN evenements e ON e.id = n.evenement_id LEFT JOIN etablissements et ON et.id = n.etablissement_id WHERE n.membre_id = $1 AND NOT n.revoque AND (n.finit_le IS NULL OR n.finit_le > now()) ORDER BY n.portee, n.debute_le`, [req.user.mid])).rows;
   return rows;
+});
+
+// ───────────────────────── Personnes hors système, correctif
+// global 27 nov. 2026 ─────────────────────────
+// Fiche personne sans compte application : nom, fonction,
+// contact, établissement et rôle admin désigné. Utilisable
+// dans Nominations, Planning des responsables, Département
+// scolaire et inscriptions au camp. La suppression refuse
+// quand la personne est utilisée quelque part.
+const personneExterneCorps = z.object({
+  nom_complet: z.string().trim().min(1).max(200),
+  fonction: z.string().trim().max(100).optional().nullable(),
+  contact: z.string().trim().max(200).optional().nullable(),
+  etablissement_id: z.string().uuid().optional().nullable(),
+  role_admin: z.enum(['admin_general', 'admin_etablissement']).optional().nullable(),
+});
+
+async function personneExterneParId(id) {
+  return (await q(`SELECT p.*, e.nom AS etablissement_nom FROM personnes_externes p LEFT JOIN etablissements e ON e.id = p.etablissement_id WHERE p.id = $1`, [id])).rows[0] ?? null;
+}
+
+function formaterPersonneExterne(row) {
+  return {
+    id: row.id,
+    nom_complet: row.nom_complet,
+    fonction: row.fonction,
+    contact: row.contact ?? '',
+    etablissement_id: row.etablissement_id ?? null,
+    etablissement_nom: row.etablissement_nom ?? null,
+    role_admin: row.role_admin ?? null,
+    cree_le: row.cree_le,
+  };
+}
+
+app.get('/admin/personnes-externes', { preHandler: adminG }, async () => {
+  const rows = (await q(`SELECT p.*, e.nom AS etablissement_nom FROM personnes_externes p LEFT JOIN etablissements e ON e.id = p.etablissement_id ORDER BY p.nom_complet`)).rows;
+  return rows.map(formaterPersonneExterne);
+});
+
+app.post('/admin/personnes-externes', { preHandler: adminG }, async (req, reply) => {
+  const b = personneExterneCorps.parse(req.body ?? {});
+  if (b.etablissement_id) {
+    const etab = (await q('SELECT id FROM etablissements WHERE id = $1', [b.etablissement_id])).rows[0];
+    if (!etab) throw httpError(404, 'Établissement introuvable.');
+  }
+  if (b.role_admin === 'admin_etablissement' && !b.etablissement_id) throw httpError(400, 'Choisissez un établissement pour un administrateur d’établissement.');
+  const [sql, params] = insertSql('personnes_externes', { nom_complet: b.nom_complet, fonction: b.fonction ?? 'Membre', contact: b.contact ?? '', etablissement_id: b.etablissement_id ?? null, role_admin: b.role_admin ?? null, cree_par: req.user.sub });
+  const row = await tx(async (c) => {
+    const r = (await c.query(sql, params)).rows[0];
+    await audit(c, req, 'personne_externe.creee', 'personnes_externes', r.id, { nom_complet: b.nom_complet });
+    return r;
+  });
+  return reply.code(201).send(formaterPersonneExterne(await personneExterneParId(row.id)));
+});
+
+app.put('/admin/personnes-externes/:id', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const body = clean(personneExterneCorps.partial().parse(req.body ?? {}));
+  const existante = await personneExterneParId(id);
+  if (!existante) throw httpError(404, 'Personne introuvable.');
+  if ('etablissement_id' in body && body.etablissement_id) {
+    const etab = (await q('SELECT id FROM etablissements WHERE id = $1', [body.etablissement_id])).rows[0];
+    if (!etab) throw httpError(404, 'Établissement introuvable.');
+  }
+  if (Object.keys(body).length === 0) throw httpError(400, 'Aucune modification.');
+  const roleFinal = 'role_admin' in body ? body.role_admin : existante.role_admin;
+  const etabFinal = 'etablissement_id' in body ? body.etablissement_id : existante.etablissement_id;
+  if (roleFinal === 'admin_etablissement' && !etabFinal) throw httpError(400, 'Choisissez un établissement pour un administrateur d’établissement.');
+  const [sql, params] = updateSql('personnes_externes', id, { ...body, modifie_le: new Date().toISOString() });
+  const row = await tx(async (c) => {
+    const r = (await c.query(sql, params)).rows[0];
+    if (!r) throw httpError(404, 'Personne introuvable.');
+    await audit(c, req, 'personne_externe.modifiee', 'personnes_externes', id, body);
+    return r;
+  });
+  return formaterPersonneExterne(await personneExterneParId(row.id));
+});
+
+app.delete('/admin/personnes-externes/:id', { preHandler: adminG }, async (req) => {
+  const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  const existante = await personneExterneParId(id);
+  if (!existante) throw httpError(404, 'Personne introuvable.');
+  const usages = (await q(`SELECT (SELECT COUNT(*) FROM nominations WHERE personne_externe_id = $1) + (SELECT COUNT(*) FROM plannings_responsables WHERE personne_externe_id = $1) + (SELECT COUNT(*) FROM suivis_scolaires WHERE personne_externe_id = $1) + (SELECT COUNT(*) FROM inscriptions WHERE personne_externe_id = $1) AS n`, [id])).rows[0]?.n ?? 0;
+  if (usages > 0) throw httpError(409, 'Cette personne est utilisée, elle ne peut pas être supprimée.');
+  await tx(async (c) => {
+    await c.query('DELETE FROM personnes_externes WHERE id = $1', [id]);
+    await audit(c, req, 'personne_externe.supprimee', 'personnes_externes', id, { nom_complet: existante.nom_complet });
+  });
+  return { ok: true };
 });
 
 
@@ -8666,11 +8997,20 @@ const AUTORISES = {
   livre: { mimes: ['application/pdf', 'application/epub+zip'], max: 50 * 1024 * 1024 },
   audio: { mimes: ['audio/mpeg', 'audio/mp4', 'audio/x-m4a', 'audio/aac', 'audio/ogg', 'audio/vnd.wave', 'audio/x-wav'], max: 100 * 1024 * 1024 },
   image: { mimes: ['image/jpeg', 'image/png', 'image/webp'], max: 5 * 1024 * 1024 },
+  // Documents institutionnels, correctif global 27 nov. 2026 :
+  // PDF et bureautique Office, 20 Mo. Le type est lu dans les
+  // octets par file-type : un faux .docx (simple zip) est détecté
+  // application/zip et refusé en 415.
+  document: { mimes: ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'], max: 20 * 1024 * 1024 },
 };
 
 app.post('/admin/fichiers', { preHandler: contenuG }, async (req, reply) => {
-  const { type } = z.object({ type: z.enum(['livre', 'audio', 'image']) }).parse(req.query);
-  if (type !== 'image' && req.user.role !== 'admin_general') throw httpError(403, 'Accès refusé.');
+  const { type } = z.object({ type: z.enum(['livre', 'audio', 'image', 'document']) }).parse(req.query);
+  // Document : même garde que la publication d'un document, éditeur
+  // ou responsable, général toujours admis. Livre et audio restent
+  // réservés au général, comme avant.
+  if (type === 'document') exigerFonctionAdmin(req, 'editeur', 'responsable');
+  else if (type !== 'image' && req.user.role !== 'admin_general') throw httpError(403, 'Accès refusé.');
   if (type === 'image') exigerFonctionAdmin(req, 'editeur', 'responsable');
   const part = await req.file();
   if (!part) throw httpError(400, 'Aucun fichier reçu.');
@@ -9109,6 +9449,7 @@ const COLONNES_PUBLICATION_MUR = `
   (SELECT type FROM aimes WHERE cible_type = 'mur' AND cible_id = p.id AND membre_id = $1) AS mon_type,
   (SELECT COUNT(*) FROM commentaires WHERE cible_type = 'mur' AND cible_id = p.id) AS nb_commentaires,
   EXISTS (SELECT 1 FROM mur_enregistrements WHERE membre_id = $1 AND publication_id = p.id) AS enregistre,
+  EXISTS (SELECT 1 FROM mur_suivis WHERE suiveur_id = $1 AND suivi_id = p.auteur_id) AS suivi_par_moi,
   (p.auteur_id = $1) AS est_auteur`;
 const JOINTURES_PUBLICATION_MUR = `
   FROM mur_publications p
@@ -14523,5 +14864,39 @@ try {
   await q(`CREATE INDEX IF NOT EXISTS ix_mur_enregistrements_membre ON mur_enregistrements (membre_id, cree_le DESC)`);
   await q(`ALTER TABLE membres ADD COLUMN IF NOT EXISTS presentation text`);
 } catch (e) { app.log.warn({ err: e, migration: 'mur v2 tranche 0' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Personnes hors système, correctif global 27 nov. 2026 : fiche
+// personne sans compte application (nom, fonction, contact),
+// utilisable dans Nominations, Planning des responsables,
+// Département scolaire, Administrateurs (désignation) et
+// inscriptions au camp. Table et colonnes créées au démarrage,
+// sans toucher à schema.sql.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS personnes_externes (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    nom_complet text NOT NULL,
+    fonction text NOT NULL DEFAULT 'Membre',
+    contact text NOT NULL DEFAULT '',
+    etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL,
+    role_admin text,
+    cree_par uuid REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    cree_le timestamptz NOT NULL DEFAULT now(),
+    modifie_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_personnes_externes_nom ON personnes_externes (nom_complet)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS personnes_externes' }, 'Échec de migration — poursuite du démarrage'); }
+try {
+  await q(`ALTER TABLE nominations ADD COLUMN IF NOT EXISTS personne_externe_id uuid REFERENCES personnes_externes(id) ON DELETE CASCADE`);
+  await q(`ALTER TABLE nominations ALTER COLUMN membre_id DROP NOT NULL`);
+  await q(`ALTER TABLE plannings_responsables ADD COLUMN IF NOT EXISTS personne_externe_id uuid REFERENCES personnes_externes(id) ON DELETE CASCADE`);
+  await q(`ALTER TABLE plannings_responsables ALTER COLUMN membre_id DROP NOT NULL`);
+  await q(`ALTER TABLE suivis_scolaires ADD COLUMN IF NOT EXISTS personne_externe_id uuid REFERENCES personnes_externes(id) ON DELETE CASCADE`);
+  await q(`ALTER TABLE suivis_scolaires ALTER COLUMN membre_id DROP NOT NULL`);
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS ix_suivis_externe_annee ON suivis_scolaires (personne_externe_id, annee_scolaire) WHERE personne_externe_id IS NOT NULL`);
+  await q(`ALTER TABLE inscriptions ADD COLUMN IF NOT EXISTS personne_externe_id uuid REFERENCES personnes_externes(id) ON DELETE CASCADE`);
+  await q(`ALTER TABLE inscriptions ADD COLUMN IF NOT EXISTS contact_parent text`);
+  await q(`ALTER TABLE inscriptions ALTER COLUMN membre_id DROP NOT NULL`);
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS ix_inscriptions_externe ON inscriptions (evenement_id, personne_externe_id) WHERE personne_externe_id IS NOT NULL`);
+} catch (e) { app.log.warn({ err: e, migration: 'personnes externes colonnes' }, 'Échec de migration — poursuite du démarrage'); }
 
 app.listen({ port: CFG.port, host: '0.0.0.0' });
