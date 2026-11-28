@@ -62,7 +62,7 @@ import { etagPourContenu, etagCorrespond } from './src/etag.js';
 import { analyserBureauImport, mapperFonctionBureau, deciderLienBureau } from './src/bureau_import.js';
 import { analyserMembresImport } from './src/membres_import.js';
 import { fcmServiceAccount, fcmAccessToken, fcmSendOne, normaliserCategoriesPush } from './src/fcm.js';
-import { electionStatut, electionEstOuverte, resultatsVisiblesPourMembre, validerCreationElection, formaterElectionMembre } from './src/elections.js';
+import { electionStatut, electionEstOuverte, validerCreationElection, formaterElectionMembre } from './src/elections.js';
 import { PLATEFORME_MONTANT_ANNUEL, dateFinAbonnement, abonnementStatut, peutPublierPlateforme, validerCreationEnseignementPlateforme, formaterEnseignementPlateformeMembre } from './src/plateforme.js';
 import { validerSuppressionPropreCompte, validerAnnulationSuppression, dateEffacementDefinitif, suppressionAnnulable } from './src/suppression_compte.js';
 import { purgerComptesEchus, effacerCompteDefinitivement } from './src/effacement_compte.js';
@@ -5506,9 +5506,10 @@ app.get('/defi/classement', { preHandler: membreG }, async (req) => {
 // fin, candidats membres, un vote par membre. Hors période, la
 // fonctionnalité n'apparaît pas aux membres : GET /elections/actuelle
 // renvoie alors { election: null }, sans titre, sans candidat, sans
-// date. Pendant le vote, aucun résultat n'est renvoyé aux membres :
-// ni total, ni voix par candidat. Les résultats membres ne sont
-// lisibles qu'après la fin, par GET /elections/:id/resultats ; la
+// date. Pendant le vote, les membres voient les scores en direct,
+// salve 28 nov. 2026 : totaux par candidat et total des voix, sans
+// jamais exposer qui a voté pour qui. Les résultats membres sont
+// lisibles à tout moment par GET /elections/:id/resultats ; la
 // structure les lit à tout moment par GET /admin/elections/:id.
 // Le choix de chacun n'est jamais renvoyé par aucune route : seuls
 // les totaux le sont. La table election_votes garde membre_id pour
@@ -5528,7 +5529,12 @@ app.get('/elections/actuelle', { preHandler: membreG }, async (req) => {
   ).rows[0];
   if (!el) return { election: null };
   const candidats = (
-    await q('SELECT id, nom, fonction, ordre FROM election_candidats WHERE election_id = $1 ORDER BY ordre ASC, nom ASC', [el.id])
+    await q(
+      `SELECT c.id, c.nom, c.fonction, c.ordre, COUNT(v.id)::int AS voix
+         FROM election_candidats c LEFT JOIN election_votes v ON v.candidat_id = c.id
+        WHERE c.election_id = $1 GROUP BY c.id ORDER BY c.ordre ASC, c.nom ASC`,
+      [el.id],
+    )
   ).rows;
   const vote = req.user.mid
     ? (await q('SELECT candidat_id FROM election_votes WHERE election_id = $1 AND membre_id = $2', [el.id, req.user.mid])).rows[0]
@@ -5566,7 +5572,10 @@ app.get('/elections/:id/resultats', { preHandler: membreG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
   const el = (await q('SELECT id, titre, poste, date_debut, date_fin FROM elections WHERE id = $1', [id])).rows[0];
   if (!el) throw httpError(404, 'Élection introuvable.');
-  if (!resultatsVisiblesPourMembre(el)) throw httpError(404, 'Les résultats seront disponibles après la fin de l’élection.');
+  // Salve 28 nov. 2026 : les totaux en direct sont lisibles par
+  // les membres pendant le vote comme après la fin, sans jamais
+  // exposer qui a voté pour qui. 404 seulement si l'élection
+  // n'existe pas.
   const resultats = (
     await q(
       `SELECT c.id AS candidat_id, c.nom, c.fonction, c.ordre, COUNT(v.id)::int AS voix
@@ -5576,7 +5585,7 @@ app.get('/elections/:id/resultats', { preHandler: membreG }, async (req) => {
     )
   ).rows;
   const total = resultats.reduce((s, r) => s + (r.voix || 0), 0);
-  return { election: { ...el, statut: 'terminee' }, total_voix: total, resultats };
+  return { election: { ...el, statut: electionStatut(el) }, total_voix: total, resultats };
 });
 
 // ───────────────────────── Élections : administration ─────────────────────────
@@ -9587,6 +9596,7 @@ app.delete('/temoignages/:id', { preHandler: membreG }, async (req) => {
 // mes enregistrements et mon droit d'auteur.
 const COLONNES_PUBLICATION_MUR = `
   p.id, p.auteur_id, p.texte, p.photo_donnees AS photo,
+  (SELECT json_agg(donnees ORDER BY ordre) FROM mur_publication_photos WHERE publication_id = p.id) AS photos,
   p.categorie, p.statut_moderation, p.cle_r2_video,
   p.type_mime_video, p.taille_video_octets, p.cree_le,
   m.nom_complet AS auteur_nom, e.nom AS etablissement_nom,
@@ -9603,6 +9613,20 @@ const JOINTURES_PUBLICATION_MUR = `
   LEFT JOIN membres m ON m.id = p.auteur_id
   LEFT JOIN etablissements e ON e.id = p.etablissement_id`;
 
+// Blocage, lot 1 Connexion 2.0, salve 28 nov. 2026 : vrai
+// quand l'un des deux membres a bloqué l'autre, dans un sens
+// ou dans l'autre. Un blocage empêche toute interaction : le
+// fil cache les publications de l'auteur bloqué, suivre,
+// réagir et commenter sont refusés côté serveur.
+async function murBloque(mid, autreId) {
+  if (mid == null || autreId == null) return false;
+  const ligne = (await q(
+    `SELECT 1 FROM blocks WHERE (blocker_id = $1 AND blocked_id = $2) OR (blocker_id = $2 AND blocked_id = $1) LIMIT 1`,
+    [mid, autreId],
+  )).rows[0];
+  return ligne != null;
+}
+
 app.get('/mur', { preHandler: membreG }, async (req) => {
   const mid = req.user.mid ?? null;
   const categorie = typeof req.query.categorie === 'string' ? req.query.categorie : null;
@@ -9613,6 +9637,11 @@ app.get('/mur', { preHandler: membreG }, async (req) => {
   const limite = Number.isNaN(limiteBrute) ? 20 : Math.min(LIMITE_MUR_PUBLICATIONS, Math.max(1, limiteBrute));
   const params = [mid];
   const conditions = [`p.statut_moderation IN ('visible', 'en_examen')`];
+  // Lot 1 Connexion 2.0 : les publications d'un membre bloqué,
+  // dans un sens ou dans l'autre, ne figurent jamais dans mon fil.
+  if (mid != null) {
+    conditions.push(`NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = $1 AND b.blocked_id = p.auteur_id) OR (b.blocker_id = p.auteur_id AND b.blocked_id = $1))`);
+  }
   if (categorie != null) {
     params.push(categorie);
     conditions.push(`p.categorie = $${params.length}`);
@@ -9670,6 +9699,11 @@ app.get('/mur/:id', { preHandler: membreG }, async (req) => {
     [req.user.mid ?? null, id],
   )).rows[0];
   if (!ligne || ligne.statut_moderation === 'masque' || ligne.statut_moderation === 'retire') {
+    throw httpError(404, 'Publication introuvable.');
+  }
+  // Lot 1 Connexion 2.0 : une publication d'un membre bloqué,
+  // dans un sens ou dans l'autre, n'existe pas pour moi.
+  if (await murBloque(req.user.mid, ligne.auteur_id)) {
     throw httpError(404, 'Publication introuvable.');
   }
   return { publication: formaterPublicationMur(ligne) };
@@ -9752,6 +9786,7 @@ app.get('/mur/membres/:id', { preHandler: membreG }, async (req) => {
             (SELECT COUNT(*) FROM mur_suivis WHERE suivi_id = m.id) AS nb_abonnes,
             (SELECT COUNT(*) FROM mur_suivis WHERE suiveur_id = m.id) AS nb_abonnements,
             EXISTS (SELECT 1 FROM mur_suivis WHERE suiveur_id = $2 AND suivi_id = m.id) AS suivi_par_moi,
+            EXISTS (SELECT 1 FROM blocks WHERE blocker_id = $2 AND blocked_id = m.id) AS bloque_par_moi,
             (m.id = $2) AS est_moi
      FROM membres m
      LEFT JOIN etablissements e ON e.id = m.etablissement_id
@@ -9836,6 +9871,11 @@ app.post('/mur/suivis', { preHandler: membreG }, async (req) => {
   if (suiviId === req.user.mid) throw httpError(400, 'Impossible de se suivre soi-même.');
   const existe = (await q(`SELECT id FROM membres WHERE id = $1`, [suiviId])).rows[0];
   if (!existe) throw httpError(404, 'Membre introuvable.');
+  // Lot 1 Connexion 2.0 : on ne suit pas un membre bloqué,
+  // dans un sens ou dans l'autre.
+  if (await murBloque(req.user.mid, suiviId)) {
+    throw httpError(403, 'Ce membre n’est pas disponible.');
+  }
   const cree = (await q(
     `INSERT INTO mur_suivis (suiveur_id, suivi_id) VALUES ($1, $2)
      ON CONFLICT (suiveur_id, suivi_id) DO NOTHING RETURNING id`,
@@ -9868,6 +9908,89 @@ app.delete('/mur/suivis/:id', { preHandler: membreG }, async (req) => {
   return { suivi: false };
 });
 
+// Blocage d'un membre, lot 1 Connexion 2.0, salve 28 nov.
+// 2026 : idempotent, 400 pour se bloquer soi-même, 404 pour
+// un membre inexistant. Bloquer retire aussi les suivis dans
+// les deux sens, pour que le blocage empêche vraiment toute
+// interaction. La table blocks existe déjà, messagerie.
+app.post('/mur/membres/:id/bloquer', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour bloquer.');
+  const cibleId = req.params.id;
+  if (!UUID_RE.test(cibleId ?? '')) throw httpError(404, 'Membre introuvable.');
+  if (cibleId === req.user.mid) throw httpError(400, 'Impossible de se bloquer soi-même.');
+  const existe = (await q(`SELECT id FROM membres WHERE id = $1`, [cibleId])).rows[0];
+  if (!existe) throw httpError(404, 'Membre introuvable.');
+  await q(
+    `INSERT INTO blocks (blocker_id, blocked_id) VALUES ($1, $2)
+     ON CONFLICT (blocker_id, blocked_id) DO NOTHING`,
+    [req.user.mid, cibleId],
+  );
+  await q(
+    `DELETE FROM mur_suivis WHERE (suiveur_id = $1 AND suivi_id = $2) OR (suiveur_id = $2 AND suivi_id = $1)`,
+    [req.user.mid, cibleId],
+  );
+  return { bloque: true };
+});
+
+app.delete('/mur/membres/:id/bloquer', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour débloquer.');
+  const cibleId = req.params.id;
+  if (!UUID_RE.test(cibleId ?? '')) throw httpError(404, 'Blocage introuvable.');
+  const effacees = (await q(
+    `DELETE FROM blocks WHERE blocker_id = $1 AND blocked_id = $2`,
+    [req.user.mid, cibleId],
+  )).rowCount;
+  if (effacees === 0) throw httpError(404, 'Blocage introuvable.');
+  return { bloque: false };
+});
+
+// Découvrir des membres, lot 1 Connexion 2.0, salve 28 nov.
+// 2026 : sans recherche, les membres les plus actifs du
+// réseau, par nombre de publications, 10 au plus, hors moi
+// et hors membres bloqués ; avec recherche, par mot dès
+// 1 caractère, comme la messagerie. Nom et établissement
+// seulement, sans photo en liste, sans aucune coordonnée.
+app.get('/mur/decouvrir', { preHandler: membreG }, async (req) => {
+  const mid = req.user.mid ?? null;
+  const saisie = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  const params = [mid];
+  const conditions = [`m.id <> $1`];
+  if (mid != null) {
+    conditions.push(`NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = $1 AND b.blocked_id = m.id) OR (b.blocker_id = m.id AND b.blocked_id = $1))`);
+  }
+  if (saisie !== '') {
+    const mots = saisie.split(/\s+/).filter(Boolean);
+    for (const mot of mots) {
+      const echappe = mot.replace(/[%_\\]/g, (c) => `\\${c}`);
+      params.push(`%${echappe}%`);
+      conditions.push(`m.nom_complet ILIKE $${params.length} ESCAPE '\\'`);
+    }
+  }
+  params.push(10);
+  const lignes = (await q(
+    `SELECT m.id, m.nom_complet, e.nom AS etablissement_nom,
+            (SELECT COUNT(*) FROM mur_publications WHERE auteur_id = m.id AND statut_moderation IN ('visible', 'en_examen')) AS nb_publications,
+            (SELECT COUNT(*) FROM mur_suivis WHERE suivi_id = m.id) AS nb_abonnes,
+            EXISTS (SELECT 1 FROM mur_suivis WHERE suiveur_id = $1 AND suivi_id = m.id) AS suivi_par_moi
+     FROM membres m
+     LEFT JOIN etablissements e ON e.id = m.etablissement_id
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY nb_publications DESC, m.nom_complet ASC
+     LIMIT $${params.length}`,
+    params,
+  )).rows;
+  return {
+    membres: lignes.map((l) => ({
+      id: l.id,
+      nom_complet: l.nom_complet ?? '',
+      etablissement_nom: l.etablissement_nom ?? '',
+      nb_publications: Number.parseInt(l.nb_publications ?? '0', 10) || 0,
+      nb_abonnes: Number.parseInt(l.nb_abonnes ?? '0', 10) || 0,
+      suivi_par_moi: l.suivi_par_moi === true,
+    })),
+  };
+});
+
 app.post('/mur', { preHandler: membreG }, async (req, reply) => {
   if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour publier.');
   // Administrateur d'établissement : seulement son établissement.
@@ -9878,16 +10001,28 @@ app.post('/mur', { preHandler: membreG }, async (req, reply) => {
     : req.user.eid;
   if (req.user.role === 'admin_etablissement' && !etablissementId) throw httpError(403, 'Accès refusé.');
   const body = req.body ?? {};
-  const refus = validerPublicationMur({ texte: body.texte, photo: body.photo, categorie: body.categorie });
+  const refus = validerPublicationMur({ texte: body.texte, photo: body.photo, photos: body.photos, categorie: body.categorie });
   if (refus) throw httpError(refus.statut, refus.message);
   const textePropre = String(body.texte ?? '').trim();
-  const photo = typeof body.photo === 'string' && body.photo !== '' ? body.photo : null;
+  // Photos multiples, lot 1 Connexion 2.0 : le champ photos
+  // remplace photo quand il est présent ; photo_donnees garde
+  // la première, pour l'ancienne application.
+  const photos = Array.isArray(body.photos)
+    ? body.photos.filter((p) => typeof p === 'string' && p !== '')
+    : (typeof body.photo === 'string' && body.photo !== '' ? [body.photo] : []);
+  const photo = photos.length > 0 ? photos[0] : null;
   const categorie = typeof body.categorie === 'string' && CATEGORIES_MUR.includes(body.categorie) ? body.categorie : 'autre';
   const cree = (await q(
     `INSERT INTO mur_publications (auteur_id, etablissement_id, texte, photo_donnees, categorie)
      VALUES ($1,$2,$3,$4,$5) RETURNING id`,
     [req.user.mid, etablissementId, textePropre, photo, categorie],
   )).rows[0];
+  for (let i = 0; i < photos.length; i++) {
+    await q(
+      `INSERT INTO mur_publication_photos (publication_id, donnees, ordre) VALUES ($1, $2, $3)`,
+      [cree.id, photos[i], i + 1],
+    );
+  }
   const ligne = (await q(
     `SELECT ${COLONNES_PUBLICATION_MUR}
      ${JOINTURES_PUBLICATION_MUR}
@@ -9895,6 +10030,32 @@ app.post('/mur', { preHandler: membreG }, async (req, reply) => {
     [req.user.mid ?? null, cree.id],
   )).rows[0];
   return reply.code(201).send({ publication: formaterPublicationMur(ligne) });
+});
+
+// Modifier sa publication, lot 1 Connexion 2.0, salve 28 nov.
+// 2026 : auteur seul, texte et catégorie seulement, jamais
+// les médias ni les compteurs. 404 quand la publication
+// n'existe pas, 403 quand on n'en est pas l'auteur.
+app.put('/mur/:id', { preHandler: membreG }, async (req) => {
+  if (!req.user.mid) throw httpError(403, 'Il faut une fiche membre pour modifier.');
+  const id = req.params.id;
+  if (!UUID_RE.test(id ?? '')) throw httpError(404, 'Publication introuvable.');
+  const body = req.body ?? {};
+  const textePropre = String(body.texte ?? '').trim();
+  if (textePropre.length === 0) throw httpError(400, 'Ajoutez un texte.');
+  if (textePropre.length > LONGUEUR_MAX_TEXTE_MUR) throw httpError(400, 'Texte trop long : 2000 caractères au plus.');
+  const categorie = typeof body.categorie === 'string' && CATEGORIES_MUR.includes(body.categorie) ? body.categorie : 'autre';
+  const ligne = (await q(`SELECT id, auteur_id FROM mur_publications WHERE id = $1`, [id])).rows[0];
+  if (!ligne) throw httpError(404, 'Publication introuvable.');
+  if (ligne.auteur_id !== req.user.mid) throw httpError(403, 'Seul l’auteur peut modifier sa publication.');
+  await q(`UPDATE mur_publications SET texte = $2, categorie = $3 WHERE id = $1`, [id, textePropre, categorie]);
+  const apres = (await q(
+    `SELECT ${COLONNES_PUBLICATION_MUR}
+     ${JOINTURES_PUBLICATION_MUR}
+     WHERE p.id = $2`,
+    [req.user.mid, id],
+  )).rows[0];
+  return { publication: formaterPublicationMur(apres) };
 });
 
 // Vidéo d'une publication, mur v2 tranche 2, 25 nov. 2026 :
@@ -11105,6 +11266,14 @@ app.post('/aimes', { preHandler: membreG }, async (req, reply) => {
   if (refus) throw httpError(refus.statut, refus.message);
   const b = req.body;
   if (!(await cibleAimeExiste(b.cible_type, b.cible_id))) throw httpError(404, 'Cible introuvable.');
+  // Lot 1 Connexion 2.0 : on ne réagit pas à la publication
+  // d'un membre bloqué, dans un sens ou dans l'autre.
+  if (b.cible_type === 'mur') {
+    const publication = (await q(`SELECT auteur_id FROM mur_publications WHERE id = $1`, [b.cible_id])).rows[0];
+    if (publication && await murBloque(req.user.mid, publication.auteur_id)) {
+      throw httpError(403, 'Cette publication n’est pas disponible.');
+    }
+  }
   const type = typeof b.type === 'string' && TYPES_REACTION.includes(b.type) ? b.type : 'jaime';
   // Notification de réaction, mur seulement : seulement quand
   // la réaction est nouvelle ou que son type change, pour ne
@@ -11197,6 +11366,14 @@ app.post('/commentaires', { preHandler: membreG }, async (req, reply) => {
   if (refus) throw httpError(refus.statut, refus.message);
   const b = req.body;
   if (!(await cibleAimeExiste(b.cible_type, b.cible_id))) throw httpError(404, 'Cible introuvable.');
+  // Lot 1 Connexion 2.0 : on ne commente pas la publication
+  // d'un membre bloqué, dans un sens ou dans l'autre.
+  if (b.cible_type === 'mur') {
+    const publication = (await q(`SELECT auteur_id FROM mur_publications WHERE id = $1`, [b.cible_id])).rows[0];
+    if (publication && await murBloque(req.user.mid, publication.auteur_id)) {
+      throw httpError(403, 'Cette publication n’est pas disponible.');
+    }
+  }
   // Réponse, mur v2 tranche 3 : le parent doit exister, viser
   // la même cible et être de premier niveau.
   let parent = null;
@@ -12080,22 +12257,32 @@ app.post('/messagerie/signalements', { preHandler: membreG }, async (req, reply)
 // ── GET /messagerie/membres : choix des participants.
 // Sécurité, 22 nov. 2026 : plus d'annuaire complet. Sans
 // recherche, seuls les membres avec qui l'appelant a déjà
-// une conversation active. Avec q, recherche par préfixe,
-// 3 caractères au moins, bornée à 50 résultats. Nom,
+// une conversation active. Avec q, recherche par mot, salve
+// 28 nov. 2026 : dès 1 caractère, chaque mot cherché comme
+// sous-chaîne du nom, pas seulement en préfixe, ou comme
+// début de matricule, bornée à 50 résultats. Nom,
 // matricule et établissement seulement, sans aucune
 // coordonnée de contact, jamais de photo en base64.
 app.get('/messagerie/membres', { preHandler: membreG }, async (req) => {
   const saisie = typeof req.query?.q === 'string' ? req.query.q.trim() : '';
   if (saisie !== '') {
-    if (saisie.length < 3) throw httpError(400, 'Saisissez au moins 3 caractères.');
-    const haut = saisie.toUpperCase();
-    const echappee = haut.replace(/[%_\\]/g, (c) => `\\${c}`);
+    const mots = saisie.split(/\s+/).filter(Boolean);
+    if (mots.length === 0) throw httpError(400, 'Saisissez au moins 1 caractère.');
+    const conditions = [];
+    const params = [];
+    for (const mot of mots) {
+      const haut = mot.toUpperCase();
+      const echappe = haut.replace(/[%_\\]/g, (c) => `\\${c}`);
+      conditions.push(`(m.matricule ILIKE $${params.length + 1} OR UPPER(m.nom_complet) LIKE $${params.length + 2} ESCAPE '\\')`);
+      params.push(`${haut}%`, `%${echappe}%`);
+    }
+    params.push(req.user.mid ?? null);
     return (await q(
       `SELECT m.id, m.nom_complet, m.matricule, COALESCE(e.nom, '') AS etablissement
          FROM membres m LEFT JOIN etablissements e ON e.id = m.etablissement_id
-        WHERE m.id IS DISTINCT FROM $3 AND (m.matricule = $1 OR UPPER(m.nom_complet) LIKE $2 ESCAPE '\\')
-        ORDER BY CASE WHEN m.matricule = $1 THEN 0 ELSE 1 END, m.nom_complet ASC LIMIT 50`,
-      [haut, `${echappee}%`, req.user.mid ?? null],
+        WHERE m.id IS DISTINCT FROM $${params.length} AND ${conditions.join(' AND ')}
+        ORDER BY m.nom_complet ASC LIMIT 50`,
+      params,
     )).rows;
   }
   if (!req.user.mid) return [];
@@ -13183,23 +13370,27 @@ try {
     cree_le timestamptz NOT NULL DEFAULT now()
   )`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS selections_audio (' }, 'Échec de migration — poursuite du démarrage'); }
-// Messages vocaux, 18 nov. 2026 : le type 'audio' rejoint les
-// types de message, sans toucher à schema.sql. La contrainte est
-// retirée puis recréée avec 'audio', la table garde les autres
-// types, et la migration se rejoue sans effet au démarrage
-// suivant.
+// Messages vocaux, 18 nov. 2026, et appel manqué, 19 nov. 2026 :
+// les types 'audio' et 'appel_manque' rejoignent les types de
+// message, sans toucher à schema.sql. Correctif salve 28 nov.
+// 2026 : l'ancienne migration 'audio' recréait la contrainte
+// SANS 'appel_manque', donc toute ligne de type 'appel_manque',
+// créée après la migration du 19 nov., violait la contrainte
+// au redémarrage suivant, erreur 23514 à chaque démarrage. La
+// migration est fusionnée : on lit la contrainte existante, on
+// ne touche à rien quand elle porte déjà les deux types, sinon
+// on la recrée avec la liste complète.
 try {
-  await q(`ALTER TABLE messages DROP CONSTRAINT IF EXISTS messages_type_check`);
-  await q(`ALTER TABLE messages ADD CONSTRAINT messages_type_check CHECK (type IN ('text', 'image', 'file', 'system', 'audio'))`);
-} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE messages type audio' }, 'Échec de migration — poursuite du démarrage'); }
-// Appel manqué, 19 nov. 2026 : le type 'appel_manque' rejoint les
-// types de message, même patron que 'audio' : la contrainte est
-// retirée puis recréée avec le nouveau type, sans toucher à
-// schema.sql, rejouable sans effet au démarrage suivant.
-try {
-  await q(`ALTER TABLE messages DROP CONSTRAINT IF EXISTS messages_type_check`);
-  await q(`ALTER TABLE messages ADD CONSTRAINT messages_type_check CHECK (type IN ('text', 'image', 'file', 'system', 'audio', 'appel_manque'))`);
-} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE messages type appel_manque' }, 'Échec de migration — poursuite du démarrage'); }
+  const def = (
+    await q(
+      `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'messages_type_check'`,
+    )
+  ).rows[0]?.def ?? '';
+  if (!def.includes("'audio'") || !def.includes("'appel_manque'")) {
+    await q(`ALTER TABLE messages DROP CONSTRAINT IF EXISTS messages_type_check`);
+    await q(`ALTER TABLE messages ADD CONSTRAINT messages_type_check CHECK (type IN ('text', 'image', 'file', 'system', 'audio', 'appel_manque'))`);
+  }
+} catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE messages type audio et appel_manque' }, 'Échec de migration — poursuite du démarrage'); }
 // Prochain culte, tranche 1, 19 nov. 2026 : le type 'culte'
 // rejoint l'énumération des événements, sans toucher à
 // schema.sql. ADD VALUE ne peut pas tourner dans une
@@ -13250,9 +13441,11 @@ try {
   await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS dates_texte text`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TABLE evenements ADD COLUMN IF NOT EXISTS dates_texte text' }, 'Échec de migration — poursuite du démarrage'); }
 // Réunions en ligne, 1er nov. 2026 : type 'reunion', nom de salle
-// Jitsi et heure de début.
+// Jitsi et heure de début. Correctif salve 28 nov. 2026 : IF NOT
+// EXISTS, sinon l'étiquette déjà existante échouait à chaque
+// démarrage, erreur 42710.
 try {
-  await q(`ALTER TYPE type_evenement ADD VALUE 'reunion'`);
+  await q(`ALTER TYPE type_evenement ADD VALUE IF NOT EXISTS 'reunion'`);
 } catch (e) { app.log.warn({ err: e, migration: 'ALTER TYPE type_evenement ADD VALUE \'reunion\'' }, 'Échec de migration — poursuite du démarrage'); }
 try {
   await q(`ALTER TABLE evenements ADD COLUMN IF NOT EXISTS salle_visio text`);
@@ -13608,6 +13801,22 @@ try {
   )`);
   await q(`CREATE INDEX IF NOT EXISTS ix_mur_publications_fil ON mur_publications (cree_le DESC)`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS mur_publications' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Photos multiples d'une publication, lot 1 Connexion 2.0,
+// salve 28 nov. 2026 : 4 photos au plus par publication, dans
+// l'ordre d'ajout, effacées avec la publication. La première
+// reste aussi dans photo_donnees, pour l'ancienne application.
+// Après mur_publications, la clé étrangère l'exige.
+try {
+  await q(`CREATE TABLE IF NOT EXISTS mur_publication_photos (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    publication_id uuid NOT NULL REFERENCES mur_publications(id) ON DELETE CASCADE,
+    donnees text NOT NULL,
+    ordre integer NOT NULL DEFAULT 1,
+    cree_le timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS ix_mur_publication_photos_pub ON mur_publication_photos (publication_id, ordre)`);
+} catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS mur_publication_photos' }, 'Échec de migration — poursuite du démarrage'); }
 
 // Chaîne de prière en direct, 21 nov. 2026, tranche 1 : un
 // créneau par heure du jour courant, un membre par créneau,
