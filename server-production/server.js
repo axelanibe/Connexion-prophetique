@@ -96,6 +96,7 @@ import {
   DUREE_URL_SIGNEE_SECONDES,
   TAILLE_MAX_PHOTO_OCTETS,
   TAILLE_MAX_VIDEO_OCTETS,
+  TAILLE_MAX_AUDIO_OCTETS,
   MIMES_VIDEO,
   configR2,
   cleStory,
@@ -1839,9 +1840,18 @@ app.get('/selections-audio', async () =>
 
 // Annonces audio, 29 oct. 2026 : seules les annonces actives, les
 // plus récentes d'abord. L'état d'écoute d'un membre n'est jamais
-// enregistré ici : il reste local sur son appareil.
-app.get('/annonces-audio', async () =>
-  (await q('SELECT id, titre, texte, audio_id, lien_audio, publiee_le FROM annonces_audio WHERE actif AND (programmee_le IS NULL OR programmee_le <= now()) ORDER BY publiee_le DESC, id DESC')).rows);
+// enregistré ici : il reste local sur son appareil. Correction de
+// suivi, 27 nov. 2026 : une annonce publiée pour un établissement
+// ne se voit que par ses membres, comme les documents ; une
+// annonce pour toute la structure se voit par tous.
+app.get('/annonces-audio', { preHandler: membreG }, async (req) => {
+  if (req.user.role === 'admin_general') {
+    return (await q('SELECT id, titre, texte, audio_id, lien_audio, publiee_le, etablissement_id FROM annonces_audio WHERE actif AND (programmee_le IS NULL OR programmee_le <= now()) ORDER BY publiee_le DESC, id DESC')).rows;
+  }
+  const m = req.user.mid ? (await q('SELECT etablissement_id FROM membres WHERE id = $1', [req.user.mid])).rows[0] : null;
+  const eid = m?.etablissement_id ?? null;
+  return (await q('SELECT id, titre, texte, audio_id, lien_audio, publiee_le, etablissement_id FROM annonces_audio WHERE actif AND (programmee_le IS NULL OR programmee_le <= now()) AND (etablissement_id IS NULL OR etablissement_id = $1) ORDER BY publiee_le DESC, id DESC', [eid])).rows;
+});
 
 // Catalogue : le fichier du livre n'apparaît JAMAIS ici.
 app.get('/livres', async () =>
@@ -2108,11 +2118,13 @@ app.post('/admin/rapports-activite/:id/valider', { preHandler: adminG }, async (
 // - aucune donnée d'incident, médicale, de prière, de secret, ni
 //   d'identifiant de paiement sensible n'est renvoyée ; aucune
 //   route de paiement ni règle de validation n'est changée ici.
-app.get('/admin/comptabilite', { preHandler: contenuG }, async (req) => {
-  const moisDemande = typeof req.query.mois === 'string' ? req.query.mois : null;
-  if (moisDemande && !/^\d{4}-(0[1-9]|1[0-2])$/.test(moisDemande)) throw httpError(400, 'Mois invalide, format attendu AAAA-MM.');
-  const etabDemande = typeof req.query.etablissement_id === 'string' && req.query.etablissement_id !== '' ? req.query.etablissement_id : null;
-  if (etabDemande && !/^[0-9a-f-]{36}$/i.test(etabDemande)) throw httpError(400, 'Établissement invalide.');
+// Lecture de la comptabilité d'un mois, correction de suivi
+// 27 nov. 2026 : extraite de GET /admin/comptabilite pour
+// servir aussi la route groupée GET /admin/tableau-de-bord,
+// sans dupliquer la lecture. Mêmes données, même périmètre,
+// mois courant et sans filtre d'établissement quand les
+// paramètres sont nuls.
+async function lireComptabilite(req, moisDemande, etabDemande) {
   const mois = moisDemande ?? (await q(`SELECT to_char(CURRENT_DATE, 'YYYY-MM') AS mois`)).rows[0].mois;
   const totauxVides = { entrees: 0, depenses: 0, solde: 0, offrandes_validees: 0, depenses_validees: 0, paiements_confirmes: 0, cotisations_enregistrees: 0, brouillon_offrandes: 0, brouillon_depenses: 0 };
   const parCategorieVide = { don: 0, achat: 0, carte: 0, cotisation: 0, camp: 0, offrande: 0, depense: 0, cotisation_enregistree: 0 };
@@ -2190,6 +2202,91 @@ app.get('/admin/comptabilite', { preHandler: contenuG }, async (req) => {
   totaux.depenses = totaux.depenses_validees;
   totaux.solde = totaux.entrees - totaux.depenses;
   return { mois, etablissement_id: filtre, etablissement: etabNom, totaux, par_categorie: parCategorie, doublons_cotisation_possibles: doublons, lignes, brouillon_lignes: brouillonLignes };
+}
+
+app.get('/admin/comptabilite', { preHandler: contenuG }, async (req) => {
+  const moisDemande = typeof req.query.mois === 'string' ? req.query.mois : null;
+  if (moisDemande && !/^\d{4}-(0[1-9]|1[0-2])$/.test(moisDemande)) throw httpError(400, 'Mois invalide, format attendu AAAA-MM.');
+  const etabDemande = typeof req.query.etablissement_id === 'string' && req.query.etablissement_id !== '' ? req.query.etablissement_id : null;
+  if (etabDemande && !/^[0-9a-f-]{36}$/i.test(etabDemande)) throw httpError(400, 'Établissement invalide.');
+  return lireComptabilite(req, moisDemande, etabDemande);
+});
+
+// Tableau de bord administrateur, correction de suivi
+// 27 nov. 2026 : UNE seule lecture groupée remplace les 6
+// lectures séquentielles du client, qui se faisaient 429 en
+// rafale (limite 120/min par IP) et laissaient des « — ».
+// La réponse porte les 6 chiffres et la comptabilité du mois
+// en cours, donc le Flux financier, dans le même appel.
+// Mêmes périmètres que les routes séparées : l'administrateur
+// d'établissement ne voit que son établissement, la portée
+// nomination s'applique comme sur les listes. Aucune écriture,
+// que des comptes.
+app.get('/admin/tableau-de-bord', { preHandler: contenuG }, async (req) => {
+  const perimetre = req.user.role === 'admin_etablissement' ? req.user.eid : null;
+  const [comptabilite, membres, presences, cotisations, prochain, liens, demandes, etablissements] = await Promise.all([
+    lireComptabilite(req, null, null),
+    q(
+      `SELECT COUNT(*)::int AS n FROM membres m
+       WHERE ($1::uuid IS NULL OR m.etablissement_id = $1)
+         AND ($2::uuid[] IS NULL OR EXISTS (SELECT 1 FROM inscriptions i WHERE i.membre_id = m.id AND i.evenement_id = ANY($2::uuid[])))`,
+      [perimetre, await activitesPourPermission(req, 'camp.lire')],
+    ).then((r) => r.rows[0].n),
+    q(
+      `SELECT COUNT(*)::int AS n FROM presences p JOIN membres m ON m.id = p.membre_id
+       WHERE ($1::uuid IS NULL OR m.etablissement_id = $1)
+         AND p.scanne_le >= date_trunc('month', now()) AND p.scanne_le < date_trunc('month', now()) + interval '1 month'`,
+      [perimetre],
+    ).then((r) => r.rows[0].n),
+    q(
+      `SELECT COALESCE(SUM(p.montant_fcfa) FILTER (WHERE p.statut = 'confirme'), 0)::int AS total FROM paiements p LEFT JOIN membres m ON m.id = p.membre_id
+       WHERE p.type = 'cotisation' AND ($1::uuid IS NULL OR m.etablissement_id = $1)
+         AND ($2::uuid[] IS NULL OR p.evenement_id = ANY($2::uuid[]) OR (p.type = 'camp' AND EXISTS (SELECT 1 FROM inscriptions i WHERE i.membre_id = (CASE WHEN p.beneficiaire_contact IS NOT NULL THEN p.beneficiaire_id ELSE p.membre_id END) AND i.evenement_id = ANY($2::uuid[]))))`,
+      [perimetre, await activitesPourPermission(req, 'finances.lire')],
+    ).then((r) => r.rows[0].total),
+    (async () => {
+      const avenir = (await q(`SELECT id FROM evenements WHERE date_debut IS NULL OR date_debut >= now() ORDER BY COALESCE(date_debut, '2100-01-01') ASC LIMIT 1`)).rows[0];
+      if (avenir) return avenir.id;
+      return (await q(`SELECT id FROM evenements ORDER BY COALESCE(date_debut, '2000-01-01') DESC LIMIT 1`)).rows[0]?.id ?? null;
+    })(),
+    req.user.role === 'admin_etablissement' && !req.user.eid
+      ? Promise.resolve(0)
+      : q(
+          `SELECT COUNT(*)::int AS n FROM liens_parent_enfant l JOIN membres e ON e.id = l.enfant_membre_id
+       WHERE l.statut = 'en_attente' AND ($1::uuid IS NULL OR e.etablissement_id = $1)`,
+          [perimetre],
+        ).then((r) => r.rows[0].n),
+    // Demandes de prière en attente : le serveur ne connaît
+    // pas « en_attente » pour les prières, seulement « ouvert »,
+    // « en cours » et « exaucée ». L'ancien comptage client
+    // cherchait « en_attente » et ne comptait donc jamais les
+    // prières. « Ouvert » est l'équivalent : rien n'a encore
+    // été pris en charge par le Bureau.
+    q(
+      `SELECT COUNT(*)::int AS n FROM demandes_priere d LEFT JOIN membres m ON m.id = d.membre_id
+       WHERE d.statut = 'ouvert' AND ($1::text = 'admin_general' OR m.etablissement_id = $2)`,
+      [req.user.role, req.user.eid ?? null],
+    ).then((r) => r.rows[0].n),
+    q(`SELECT COUNT(*)::int AS n FROM etablissements`).then((r) => r.rows[0].n),
+  ]);
+  const inscriptions = prochain
+    ? (await q(
+        `SELECT COUNT(*)::int AS n FROM inscriptions i LEFT JOIN membres m ON m.id = i.membre_id LEFT JOIN personnes_externes pe ON pe.id = i.personne_externe_id
+         WHERE i.evenement_id = $1 AND ($2::uuid IS NULL OR COALESCE(m.etablissement_id, pe.etablissement_id) = $2 OR ($3::boolean AND COALESCE(m.etablissement_id, pe.etablissement_id) IS NULL))`,
+        [prochain, perimetre, req.user.role === 'admin_etablissement'],
+      )).rows[0].n
+    : 0;
+  return {
+    chiffres: {
+      membres,
+      presences,
+      cotisations,
+      inscriptions,
+      demandes: liens + demandes,
+      etablissements,
+    },
+    comptabilite,
+  };
 });
 
 
@@ -4368,6 +4465,8 @@ app.get('/moi/inscriptions', { preHandler: membreG }, async (req) =>
   (
     await q(
       `SELECT i.code_pass, i.inscrit_le, i.versements_requis, e.id AS evenement_id, e.nom, e.date_debut, e.lieu, e.est_kairos, e.tarif_fcfa,
+              i.badge_numero, i.age, i.niveau_etude, i.structure_appartenance,
+              CASE WHEN e.est_kairos AND i.badge_numero IS NOT NULL THEN 'KP' || COALESCE(EXTRACT(YEAR FROM e.date_debut), EXTRACT(YEAR FROM CURRENT_DATE))::int::text || '-' || LPAD(i.badge_numero::text, 4, '0') END AS badge_id,
               (SELECT COUNT(DISTINCT numero_versement) FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'confirme')::int AS versements_valides,
               (SELECT COALESCE(SUM(montant_fcfa), 0) FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'confirme')::int AS montant_paye,
               (NOT i.versements_requis OR (SELECT COALESCE(SUM(montant_fcfa), 0) FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = i.membre_id AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'confirme') >= e.tarif_fcfa) AS pass_visible,
@@ -6407,6 +6506,7 @@ const annonceS = z.object({
   audio_id: opt(z.string().uuid()),
   lien_audio: opt(z.string().trim().max(1000)),
   programmee_le: opt(dateHeure),
+  etablissement_id: opt(z.string().uuid()),
 });
 
 function crud(route, table, schema, label, apresCreation) {
@@ -6629,7 +6729,7 @@ app.put('/admin/actualites/:id', { preHandler: adminG }, async (req) => {
 // leur date prévue, pour que la structure les voie et les modifie
 // avant publication.
 app.get('/admin/annonces-audio', { preHandler: adminG }, async () =>
-  (await q('SELECT id, titre, texte, audio_id, lien_audio, publiee_le, programmee_le, actif FROM annonces_audio ORDER BY publiee_le DESC, id DESC')).rows);
+  (await q('SELECT id, titre, texte, audio_id, lien_audio, publiee_le, programmee_le, actif, etablissement_id FROM annonces_audio ORDER BY publiee_le DESC, id DESC')).rows);
 
 app.get('/admin/actualites', { preHandler: contenuG }, async (req) => {
   const general = req.user.role === 'admin_general';
@@ -6673,15 +6773,24 @@ app.delete('/admin/selections-audio/:id', { preHandler: adminG }, async (req, re
   return { ok: true };
 });
 
-app.get('/cartes-video', async () =>
-  (await q('SELECT id, titre, explication, lien_video, publiee_le FROM cartes_video WHERE actif ORDER BY publiee_le DESC, id DESC')).rows);
+app.get('/cartes-video', { preHandler: membreG }, async (req) => {
+  // Correction de suivi, 27 nov. 2026 : même visibilité que les
+  // annonces audio, par établissement, et la programmation est
+  // respectée côté membres, comme pour les annonces audio.
+  if (req.user.role === 'admin_general') {
+    return (await q('SELECT id, titre, explication, lien_video, publiee_le, etablissement_id, programmee_le FROM cartes_video WHERE actif AND (programmee_le IS NULL OR programmee_le <= now()) ORDER BY publiee_le DESC, id DESC')).rows;
+  }
+  const m = req.user.mid ? (await q('SELECT etablissement_id FROM membres WHERE id = $1', [req.user.mid])).rows[0] : null;
+  const eid = m?.etablissement_id ?? null;
+  return (await q('SELECT id, titre, explication, lien_video, publiee_le, etablissement_id, programmee_le FROM cartes_video WHERE actif AND (programmee_le IS NULL OR programmee_le <= now()) AND (etablissement_id IS NULL OR etablissement_id = $1) ORDER BY publiee_le DESC, id DESC', [eid])).rows;
+});
 
 app.get('/admin/cartes-video', { preHandler: adminG }, async () =>
-  (await q('SELECT id, titre, explication, lien_video, publiee_le, actif FROM cartes_video ORDER BY publiee_le DESC, id DESC')).rows);
+  (await q('SELECT id, titre, explication, lien_video, publiee_le, actif, etablissement_id, programmee_le FROM cartes_video ORDER BY publiee_le DESC, id DESC')).rows);
 
 app.post('/admin/cartes-video', { preHandler: adminG }, async (req, reply) => {
   const b = clean(
-    z.object({ titre: z.string().trim().min(1).max(200).transform(texteMajuscules), explication: opt(txt), lien_video: z.string().trim().min(1).max(1000) }).parse(req.body),
+    z.object({ titre: z.string().trim().min(1).max(200).transform(texteMajuscules), explication: opt(txt), lien_video: z.string().trim().min(1).max(1000), etablissement_id: opt(z.string().uuid()), programmee_le: opt(dateHeure) }).parse(req.body),
   );
   const [sql, params] = insertSql('cartes_video', b);
   const row = (await q(sql, params)).rows[0];
@@ -6690,7 +6799,7 @@ app.post('/admin/cartes-video', { preHandler: adminG }, async (req, reply) => {
 
 app.put('/admin/cartes-video/:id', { preHandler: adminG }, async (req) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200).transform(texteMajuscules)), explication: opt(txt), lien_video: opt(z.string().trim().min(1).max(1000)) }).partial().parse(req.body));
+  const body = clean(z.object({ titre: opt(z.string().trim().min(1).max(200).transform(texteMajuscules)), explication: opt(txt), lien_video: opt(z.string().trim().min(1).max(1000)), etablissement_id: opt(z.string().uuid()), programmee_le: opt(dateHeure) }).partial().parse(req.body));
   if (!Object.keys(body).length) throw httpError(400, 'Aucune modification.');
   const [sql, params] = updateSql('cartes_video', id, body);
   const row = (await q(sql, params)).rows[0];
@@ -7189,6 +7298,10 @@ app.get('/admin/inscriptions', { preHandler: contenuG }, async (req) => {
   return (
     await q(
       `SELECT e.nom AS camp, COALESCE(m.nom_complet, pe.nom_complet) AS nom_complet, m.matricule, i.inscrit_le, i.contact_parent,
+              i.badge_numero, i.age, i.sexe, i.telephone, i.email, i.residence, i.niveau_etude, i.profession, i.structure_appartenance,
+              i.antecedents_medicaux, i.precisions_medicales, i.allergies, i.besoins_medicaux,
+              i.contact_urgence_nom, i.contact_urgence_lien, i.contact_urgence_telephone, i.observations,
+              CASE WHEN e.est_kairos AND i.badge_numero IS NOT NULL THEN 'KP' || COALESCE(EXTRACT(YEAR FROM e.date_debut), EXTRACT(YEAR FROM CURRENT_DATE))::int::text || '-' || LPAD(i.badge_numero::text, 4, '0') END AS badge_id,
               (NOT i.versements_requis OR (SELECT COALESCE(SUM(montant_fcfa), 0) FROM paiements WHERE (CASE WHEN beneficiaire_contact IS NOT NULL THEN beneficiaire_id ELSE membre_id END) = COALESCE(i.membre_id, i.personne_externe_id) AND evenement_id = i.evenement_id AND type = 'camp' AND statut = 'confirme') >= e.tarif_fcfa) AS pass_visible
        FROM inscriptions i LEFT JOIN membres m ON m.id = i.membre_id LEFT JOIN personnes_externes pe ON pe.id = i.personne_externe_id JOIN evenements e ON e.id = i.evenement_id
        WHERE i.evenement_id = $1 AND ($2::uuid IS NULL OR COALESCE(m.etablissement_id, pe.etablissement_id) = $2 OR ($3::boolean AND COALESCE(m.etablissement_id, pe.etablissement_id) IS NULL))
@@ -7209,14 +7322,36 @@ app.get('/admin/inscriptions', { preHandler: contenuG }, async (req) => {
 // camp au nom de la personne, comme aujourd'hui.
 app.post('/admin/evenements/:id/inscriptions', { preHandler: contenuG }, async (req, reply) => {
   const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+  // Formulaire KAIROS 2027, correction de suivi 27 nov. 2026 :
+  // les 5 sections du formulaire d'Axel. Le téléphone du
+  // campeur n'est pas obligatoire, le cas d'usage est le membre
+  // sans téléphone ; le contact d'urgence, lui, l'est, nom et
+  // téléphone. Le médical est confidentiel : il est stocké sur
+  // l'inscription et ne sort que par la liste administrateur.
   const body = z.object({
     membre_id: z.string().uuid().optional().nullable(),
     personne_externe_id: z.string().uuid().optional().nullable(),
     contact_parent: z.string().trim().max(200).optional().nullable(),
+    age: z.number().int().min(0).max(120).optional().nullable(),
+    sexe: z.enum(['Femme', 'Homme']).optional().nullable(),
+    telephone: z.string().trim().max(40).optional().nullable(),
+    email: z.string().trim().max(200).optional().nullable(),
+    residence: z.string().trim().max(200).optional().nullable(),
+    niveau_etude: z.string().trim().max(200).optional().nullable(),
+    profession: z.string().trim().max(200).optional().nullable(),
+    structure_appartenance: z.string().trim().max(200).optional().nullable(),
+    antecedents_medicaux: z.enum(['Oui', 'Non', 'Ne souhaite pas répondre']).optional().nullable(),
+    precisions_medicales: z.string().trim().max(1000).optional().nullable(),
+    allergies: z.string().trim().max(500).optional().nullable(),
+    besoins_medicaux: z.string().trim().max(500).optional().nullable(),
+    contact_urgence_nom: z.string().trim().min(1).max(200),
+    contact_urgence_lien: z.enum(['Père', 'Mère', 'Conjoint(e)', 'Frère-Sœur', 'Parent-Tuteur', 'Ami(e)', 'Autre']).optional().nullable(),
+    contact_urgence_telephone: z.string().trim().min(1).max(40),
+    observations: z.string().trim().max(1000).optional().nullable(),
   }).parse(req.body ?? {});
   if (!body.membre_id && !body.personne_externe_id) throw httpError(400, 'Choisissez un membre ou une personne hors système.');
   if (body.membre_id && body.personne_externe_id) throw httpError(400, 'Choisissez un membre ou une personne hors système, pas les deux.');
-  const ev = (await q('SELECT id, nom, type, est_kairos, tarif_fcfa FROM evenements WHERE id = $1 AND publie', [id])).rows[0];
+  const ev = (await q('SELECT id, nom, type, est_kairos, tarif_fcfa, date_debut FROM evenements WHERE id = $1 AND publie', [id])).rows[0];
   if (!ev) throw httpError(404, 'Camp introuvable.');
   await exigerNomination(req, 'camp.inscriptions', { evenementId: id, obligatoire: true });
   let nomComplet = null; let etablissementId = null;
@@ -7240,8 +7375,18 @@ app.post('/admin/evenements/:id/inscriptions', { preHandler: contenuG }, async (
   let r;
   try {
     r = (await q(
-      `INSERT INTO inscriptions (evenement_id, membre_id, personne_externe_id, versements_requis, contact_parent) VALUES ($1, $2, $3, $4, $5) RETURNING id, code_pass, inscrit_le, versements_requis`,
-      [id, body.membre_id ?? null, body.personne_externe_id ?? null, (ev.tarif_fcfa ?? 0) > 0, body.contact_parent ?? null],
+      `INSERT INTO inscriptions (evenement_id, membre_id, personne_externe_id, versements_requis, contact_parent,
+           age, sexe, telephone, email, residence, niveau_etude, profession, structure_appartenance,
+           antecedents_medicaux, precisions_medicales, allergies, besoins_medicaux,
+           contact_urgence_nom, contact_urgence_lien, contact_urgence_telephone, observations, badge_numero)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
+         (SELECT COALESCE(MAX(badge_numero), 0) + 1 FROM inscriptions WHERE evenement_id = $1))
+       RETURNING id, code_pass, inscrit_le, versements_requis, badge_numero`,
+      [id, body.membre_id ?? null, body.personne_externe_id ?? null, (ev.tarif_fcfa ?? 0) > 0, body.contact_parent ?? null,
+       body.age ?? null, body.sexe ?? null, body.telephone ?? null, body.email ?? null, body.residence ?? null,
+       body.niveau_etude ?? null, body.profession ?? null, body.structure_appartenance ?? null,
+       body.antecedents_medicaux ?? null, body.precisions_medicales ?? null, body.allergies ?? null, body.besoins_medicaux ?? null,
+       body.contact_urgence_nom, body.contact_urgence_lien ?? null, body.contact_urgence_telephone, body.observations ?? null],
     )).rows[0];
   } catch (e) {
     if (e.code === '23505') throw httpError(409, 'Cette personne est déjà inscrite à ce camp.');
@@ -7264,8 +7409,10 @@ app.post('/admin/evenements/:id/inscriptions', { preHandler: contenuG }, async (
       `Votre inscription à ${ev.nom} est enregistrée. Votre pass sera généré quand les 6 versements seront payés, soit ${fcfaTexte(montantVersement(tarif, 1))} par versement, ${fcfaTexte(tarif)} au total. Il vous reste ${fcfaTexte(tarif)} à payer.`,
     );
   }
-  await audit(pool, req, 'inscription_camp.creee', 'inscriptions', r.id, { evenement_id: id, membre_id: body.membre_id ?? null, personne_externe_id: body.personne_externe_id ?? null });
-  return reply.code(201).send({ evenement: ev.nom, badge: ev.est_kairos, code_pass: r.code_pass, inscrit_le: r.inscrit_le, versements, nom_complet: nomComplet });
+  await audit(pool, req, 'inscription_camp.creee', 'inscriptions', r.id, { evenement_id: id, membre_id: body.membre_id ?? null, personne_externe_id: body.personne_externe_id ?? null, badge_numero: r.badge_numero });
+  const anneeBadge = ev.date_debut ? new Date(ev.date_debut).getUTCFullYear() : new Date().getUTCFullYear();
+  const badgeId = ev.est_kairos ? `KP${anneeBadge}-${String(r.badge_numero).padStart(4, '0')}` : null;
+  return reply.code(201).send({ evenement: ev.nom, badge: ev.est_kairos, code_pass: r.code_pass, inscrit_le: r.inscrit_le, versements, nom_complet: nomComplet, badge_numero: r.badge_numero, badge_id: badgeId });
 });
 
 // Suivi des versements de camp, 2 nov. 2026, tranche 2 des 7
@@ -9139,7 +9286,7 @@ app.get('/stories/:id/media', async (req, reply) => {
 app.post('/stories', { preHandler: membreG }, async (req, reply) => {
   const config = configR2();
   if (!config) throw httpError(503, 'Les stories sont désactivées pour le moment.');
-  const { type } = z.object({ type: z.enum(['photo', 'video']) }).parse(req.query);
+  const { type } = z.object({ type: z.enum(['photo', 'video', 'audio']) }).parse(req.query);
   // Administrateur d'établissement : seulement son établissement.
   // Administrateur général : celui de la requête, ou la structure.
   // Membre : aucun établissement, la story porte seulement son nom.
@@ -9149,7 +9296,7 @@ app.post('/stories', { preHandler: membreG }, async (req, reply) => {
   if (req.user.role === 'admin_etablissement' && !etablissementId) throw httpError(403, 'Accès refusé.');
   const part = await req.file();
   if (!part) throw httpError(400, 'Aucun média reçu.');
-  const max = type === 'photo' ? TAILLE_MAX_PHOTO_OCTETS : TAILLE_MAX_VIDEO_OCTETS;
+  const max = type === 'photo' ? TAILLE_MAX_PHOTO_OCTETS : type === 'audio' ? TAILLE_MAX_AUDIO_OCTETS : TAILLE_MAX_VIDEO_OCTETS;
   // Lecture en mémoire, avec plafond : une story est courte,
   // jamais un gros fichier. Le flux est coupé dès le dépassement.
   const morceaux = [];
@@ -13795,6 +13942,47 @@ try {
     publiee_le timestamptz NOT NULL DEFAULT now()
   )`);
 } catch (e) { app.log.warn({ err: e, migration: 'CREATE TABLE IF NOT EXISTS cartes_video (' }, 'Échec de migration — poursuite du démarrage'); }
+
+// Correction de suivi, 27 nov. 2026 : formulaire d'inscription
+// au camp KAIROS 2027 (5 sections du formulaire d'Axel) et
+// numéro de badge par camp. Les champs vivent sur l'inscription,
+// un formulaire par camp : l'âge, le niveau et la structure
+// sont ceux du moment du camp, pas du profil. Le médical reste
+// confidentiel : il ne sort que par la liste administrateur,
+// jamais par la lecture membre ni par le badge. Le numéro de
+// badge est attribué à l'inscription, dans l'ordre
+// d'inscription, un par camp.
+await q(`ALTER TABLE inscriptions
+  ADD COLUMN IF NOT EXISTS age smallint,
+  ADD COLUMN IF NOT EXISTS sexe text,
+  ADD COLUMN IF NOT EXISTS telephone text,
+  ADD COLUMN IF NOT EXISTS email text,
+  ADD COLUMN IF NOT EXISTS residence text,
+  ADD COLUMN IF NOT EXISTS niveau_etude text,
+  ADD COLUMN IF NOT EXISTS profession text,
+  ADD COLUMN IF NOT EXISTS structure_appartenance text,
+  ADD COLUMN IF NOT EXISTS antecedents_medicaux text,
+  ADD COLUMN IF NOT EXISTS precisions_medicales text,
+  ADD COLUMN IF NOT EXISTS allergies text,
+  ADD COLUMN IF NOT EXISTS besoins_medicaux text,
+  ADD COLUMN IF NOT EXISTS contact_urgence_nom text,
+  ADD COLUMN IF NOT EXISTS contact_urgence_lien text,
+  ADD COLUMN IF NOT EXISTS contact_urgence_telephone text,
+  ADD COLUMN IF NOT EXISTS observations text,
+  ADD COLUMN IF NOT EXISTS badge_numero int`);
+await q(`UPDATE inscriptions i SET badge_numero = s.rn FROM (
+  SELECT id, ROW_NUMBER() OVER (PARTITION BY evenement_id ORDER BY inscrit_le NULLS LAST, id) AS rn FROM inscriptions
+) s WHERE s.id = i.id AND i.badge_numero IS NULL`);
+await q(`CREATE UNIQUE INDEX IF NOT EXISTS inscriptions_evenement_badge_numero ON inscriptions (evenement_id, badge_numero)`);
+
+// Correction de suivi, 27 nov. 2026 : une annonce audio ou une
+// carte vidéo se publie pour toute la structure ou pour un seul
+// établissement, comme les actualités et les documents. La carte
+// vidéo se programme comme l'annonce audio.
+await q(`ALTER TABLE annonces_audio ADD COLUMN IF NOT EXISTS etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL`);
+await q(`ALTER TABLE cartes_video ADD COLUMN IF NOT EXISTS etablissement_id uuid REFERENCES etablissements(id) ON DELETE SET NULL`);
+await q(`ALTER TABLE cartes_video ADD COLUMN IF NOT EXISTS programmee_le timestamptz`);
+
 // Documents institutionnels, 1er nov. 2026, version 1 : voir schema.sql.
 // La table est créée si elle manque, sans toucher aux autres tables.
 try {
