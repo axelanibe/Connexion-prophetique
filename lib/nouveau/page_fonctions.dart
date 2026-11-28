@@ -39,7 +39,7 @@ class _PageFonctionsState extends State<PageFonctions> {
     final actuelle = widget.service.membre?.fonction ?? '';
     final nominations = widget.service.mesNominations;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 24 + MediaQuery.paddingOf(context).bottom),
       children: [
         Card(
           color: PaletteNouvelle.bleuNuit,

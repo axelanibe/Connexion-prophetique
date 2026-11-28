@@ -106,6 +106,7 @@ class CartePublicationConnexion extends StatelessWidget {
     this.onPartager,
     this.onEnregistrer,
     this.onSignaler,
+    this.onModifier,
     this.onSupprimer,
     this.onSuivre,
   });
@@ -117,6 +118,9 @@ class CartePublicationConnexion extends StatelessWidget {
   final VoidCallback? onPartager;
   final VoidCallback? onEnregistrer;
   final VoidCallback? onSignaler;
+
+  /// Modifier sa publication, lot 1 Connexion 2.0, auteur seul.
+  final VoidCallback? onModifier;
   final VoidCallback? onSupprimer;
 
   /// Suivre l'auteur, bouton de la maquette, absent de la
@@ -220,14 +224,18 @@ class CartePublicationConnexion extends StatelessWidget {
                     color: PaletteNouvelle.bleuNuit),
                 onSelected: (v) {
                   if (v == 'signaler') onSignaler?.call();
+                  if (v == 'modifier') onModifier?.call();
                   if (v == 'supprimer') onSupprimer?.call();
                 },
                 itemBuilder: (_) => [
                   const PopupMenuItem(
                       value: 'signaler', child: Text('Signaler')),
-                  if (p.estAuteur)
+                  if (p.estAuteur) ...[
+                    const PopupMenuItem(
+                        value: 'modifier', child: Text('Modifier')),
                     const PopupMenuItem(
                         value: 'supprimer', child: Text('Supprimer')),
+                  ],
                 ],
               ),
             ],
@@ -240,7 +248,10 @@ class CartePublicationConnexion extends StatelessWidget {
                     fontSize: 15,
                     height: 1.4)),
           ],
-          if (p.photo != null) ...[
+          if (p.photos.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _PhotosPublication(photos: p.photos),
+          ] else if (p.photo != null) ...[
             const SizedBox(height: 10),
             _PhotoPublication(photo: p.photo!),
           ],
@@ -391,6 +402,50 @@ class _PhotoPublication extends StatelessWidget {
         constraints: const BoxConstraints(maxHeight: 320),
         child: SizedBox(width: double.infinity, child: image),
       ),
+    );
+  }
+}
+
+/// Photos multiples, lot 1 Connexion 2.0 : défilement
+/// horizontal avec compteur, une seule photo sinon.
+class _PhotosPublication extends StatefulWidget {
+  const _PhotosPublication({required this.photos});
+  final List<String> photos;
+
+  @override
+  State<_PhotosPublication> createState() => _PhotosPublicationState();
+}
+
+class _PhotosPublicationState extends State<_PhotosPublication> {
+  var _page = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.photos.length == 1) {
+      return _PhotoPublication(photo: widget.photos.first);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        SizedBox(
+          height: 320,
+          child: PageView(
+            onPageChanged: (i) => setState(() => _page = i),
+            children: [
+              for (final photo in widget.photos)
+                Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: _PhotoPublication(photo: photo),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '${_page + 1} sur ${widget.photos.length}',
+          style: const TextStyle(color: Colors.black54, fontSize: 12),
+        ),
+      ],
     );
   }
 }

@@ -137,27 +137,14 @@ class _TitreBloc extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 20, bottom: 8),
-      child: Row(
-        children: [
-          Container(
-            width: 18,
-            height: 4,
-            decoration: BoxDecoration(
-              color: PaletteNouvelle.or,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            texte,
-            style: const TextStyle(
-              fontFamily: 'Cinzel',
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-              color: PaletteNouvelle.bleuNuit,
-            ),
-          ),
-        ],
+      child: Text(
+        texte,
+        style: const TextStyle(
+          fontFamily: 'Cinzel',
+          fontSize: 17,
+          fontWeight: FontWeight.w700,
+          color: PaletteNouvelle.bleuNuit,
+        ),
       ),
     );
   }
@@ -655,7 +642,7 @@ class _PageComptabiliteAdminState extends State<PageComptabiliteAdmin> {
           : RefreshIndicator(
               onRefresh: _charger,
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                padding: EdgeInsets.fromLTRB(20, 16, 20, 32 + MediaQuery.paddingOf(context).bottom),
                 children: [
                   ..._fluxFinancier(service, compta),
                   const _TitreBloc('À valider'),
@@ -789,7 +776,7 @@ class _PageDetailCotisationsAdminState
           : RefreshIndicator(
               onRefresh: _charger,
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                padding: EdgeInsets.fromLTRB(20, 16, 20, 32 + MediaQuery.paddingOf(context).bottom),
                 children: [
                   const _TitreBloc('Totaux'),
                   _Ligne(
@@ -953,6 +940,7 @@ class PagePublierActualite extends StatefulWidget {
 }
 
 class _PagePublierActualiteState extends State<PagePublierActualite> {
+  final _formulaire = GlobalKey<FormState>();
   final _titre = TextEditingController();
   final _texte = TextEditingController();
   final _lien = TextEditingController();
@@ -997,24 +985,9 @@ class _PagePublierActualiteState extends State<PagePublierActualite> {
   }
 
   Future<void> _publier() async {
-    if (_titre.text.trim().isEmpty) {
-      _message(context, 'Le titre est obligatoire.');
-      return;
-    }
-    if (_mode == 'texte' && _texte.text.trim().isEmpty) {
-      _message(context, 'Le texte est obligatoire.');
-      return;
-    }
-    if (_mode == 'audio' &&
-        _audioOctets == null &&
-        _lien.text.trim().isEmpty) {
-      _message(context, 'Choisis un fichier audio ou un lien.');
-      return;
-    }
-    if (_mode == 'video' && _lien.text.trim().isEmpty) {
-      _message(context, 'Le lien de la vidéo est obligatoire.');
-      return;
-    }
+    // Salve 28 nov. 2026 : validation par champ, l'erreur
+    // s'affiche sous le champ, plus seulement par message.
+    if (!_formulaire.currentState!.validate()) return;
     setState(() => _enCours = true);
     var ok = false;
     if (_mode == 'texte') {
@@ -1071,123 +1044,249 @@ class _PagePublierActualiteState extends State<PagePublierActualite> {
   Widget build(BuildContext context) {
     return PageAdmin(
       titre: 'Publier une actualité',
-      enfant: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+      enfant: Form(
+        key: _formulaire,
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(20, 20, 20, 32 + MediaQuery.paddingOf(context).bottom),
+          children: [
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'texte', label: Text('Texte')),
+                ButtonSegment(value: 'audio', label: Text('Audio')),
+                ButtonSegment(value: 'video', label: Text('Vidéo')),
+              ],
+              selected: {_mode},
+              onSelectionChanged: (v) => setState(() {
+                _mode = v.first;
+              }),
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _titre,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Titre *',
+                helperText: 'Le titre s’affiche dans la liste des actualités.',
+                border: OutlineInputBorder(),
+              ),
+              validator: (v) =>
+                  (v ?? '').trim().isEmpty ? 'Le titre est obligatoire.' : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _texte,
+              onChanged: (_) => setState(() {}),
+              maxLines: _mode == 'video' ? 3 : 6,
+              decoration: InputDecoration(
+                labelText: _mode == 'video'
+                    ? 'Explication (facultatif)'
+                    : _mode == 'audio'
+                        ? 'Texte (facultatif)'
+                        : 'Texte *',
+                helperText: _mode == 'texte'
+                    ? 'Le texte de l’actualité.'
+                    : 'Un court texte d’accompagnement, si besoin.',
+                border: const OutlineInputBorder(),
+              ),
+              validator: (v) => _mode == 'texte' && (v ?? '').trim().isEmpty
+                  ? 'Le texte est obligatoire.'
+                  : null,
+            ),
+            if (_mode == 'audio') ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _choisirAudio,
+                icon: const Icon(Icons.audio_file_outlined),
+                label: Text(
+                  _audioNom ?? 'Choisir un fichier audio',
+                ),
+              ),
+              if (_audioNom != null)
+                TextButton(
+                  onPressed: () => setState(() {
+                    _audioOctets = null;
+                    _audioNom = null;
+                  }),
+                  child: const Text('Retirer le fichier'),
+                ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _lien,
+                decoration: const InputDecoration(
+                  labelText: 'Lien audio (facultatif, sans fichier)',
+                  helperText: 'Un fichier audio ou un lien, au choix.',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (v) =>
+                    _audioOctets == null && (v ?? '').trim().isEmpty
+                        ? 'Choisis un fichier audio ou un lien.'
+                        : null,
+              ),
+            ],
+            if (_mode == 'video') ...[
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _lien,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  labelText: 'Lien de la vidéo *',
+                  helperText: 'Lien complet, par exemple YouTube.',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (v) {
+                  final lien = (v ?? '').trim();
+                  if (lien.isEmpty) return 'Le lien de la vidéo est obligatoire.';
+                  if (!lien.startsWith('http://') &&
+                      !lien.startsWith('https://')) {
+                    return 'Le lien doit commencer par http:// ou https://.';
+                  }
+                  return null;
+                },
+              ),
+            ],
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String?>(
+              value: _etablissementId,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Établissement (facultatif)',
+                helperText: 'Sans choix, l’actualité vaut pour la structure.',
+                border: OutlineInputBorder(),
+              ),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('Structure')),
+                for (final e in widget.service.etablissements)
+                  DropdownMenuItem(value: e.id, child: Text(e.nom)),
+              ],
+              onChanged: (v) => setState(() => _etablissementId = v),
+            ),
+            const SizedBox(height: 12),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Programmation'),
+              subtitle: Text(
+                _programmeeLe == null
+                    ? 'Publication immédiate'
+                    : 'Programmée pour le ${afficherDate(_programmeeLe!)}',
+              ),
+              trailing: _programmeeLe == null
+                  ? TextButton(
+                      onPressed: () async {
+                        final d = await _choisirDate(
+                          context,
+                          DateTime.now(),
+                        );
+                        if (d != null) {
+                          setState(() => _programmeeLe = d);
+                        }
+                      },
+                      child: const Text('Programmer'),
+                    )
+                  : TextButton(
+                      onPressed: () => setState(() => _programmeeLe = null),
+                      child: const Text('Retirer'),
+                    ),
+            ),
+            const SizedBox(height: 16),
+            // Aperçu avant publication, salve 28 nov. 2026.
+            _ApercuActualite(
+              mode: _mode,
+              titre: _titre.text.trim(),
+              texte: _texte.text.trim(),
+              audioNom: _audioNom,
+              lien: _lien.text.trim(),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: _enCours ? null : _publier,
+              child: Text(_enCours ? 'Publication…' : 'Publier'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Aperçu de l'actualité telle qu'elle paraîtra, salve
+/// 28 nov. 2026 : titre, texte et mode, avant de publier.
+class _ApercuActualite extends StatelessWidget {
+  const _ApercuActualite({
+    required this.mode,
+    required this.titre,
+    required this.texte,
+    required this.audioNom,
+    required this.lien,
+  });
+  final String mode;
+  final String titre;
+  final String texte;
+  final String? audioNom;
+  final String lien;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = mode == 'audio'
+        ? (audioNom ?? (lien.isEmpty ? '' : lien))
+        : mode == 'video'
+            ? lien
+            : '';
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE3E7EE)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'texte', label: Text('Texte')),
-              ButtonSegment(value: 'audio', label: Text('Audio')),
-              ButtonSegment(value: 'video', label: Text('Vidéo')),
-            ],
-            selected: {_mode},
-            onSelectionChanged: (v) => setState(() {
-              _mode = v.first;
-            }),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _titre,
-            decoration: const InputDecoration(
-              labelText: 'Titre',
-              border: OutlineInputBorder(),
+          const Text(
+            'Aperçu',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: PaletteNouvelle.orFonce,
             ),
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _texte,
-            maxLines: _mode == 'video' ? 3 : 6,
-            decoration: InputDecoration(
-              labelText: _mode == 'video'
-                  ? 'Explication (facultatif)'
-                  : _mode == 'audio'
-                      ? 'Texte (facultatif)'
-                      : 'Texte',
-              border: const OutlineInputBorder(),
+          const SizedBox(height: 6),
+          Text(
+            titre.isEmpty ? 'Titre' : titre,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: titre.isEmpty ? Colors.black38 : PaletteNouvelle.bleuNuit,
             ),
           ),
-          if (_mode == 'audio') ...[
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _choisirAudio,
-              icon: const Icon(Icons.audio_file_outlined),
-              label: Text(
-                _audioNom ?? 'Choisir un fichier audio',
-              ),
-            ),
-            if (_audioNom != null)
-              TextButton(
-                onPressed: () => setState(() {
-                  _audioOctets = null;
-                  _audioNom = null;
-                }),
-                child: const Text('Retirer le fichier'),
-              ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _lien,
-              decoration: const InputDecoration(
-                labelText: 'Lien audio (facultatif, sans fichier)',
-                border: OutlineInputBorder(),
-              ),
-            ),
+          if (texte.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(texte, maxLines: 3, overflow: TextOverflow.ellipsis),
           ],
-          if (_mode == 'video') ...[
-            const SizedBox(height: 12),
-            TextField(
-              controller: _lien,
-              decoration: const InputDecoration(
-                labelText: 'Lien de la vidéo',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String?>(
-            value: _etablissementId,
-            decoration: const InputDecoration(
-              labelText: 'Établissement (facultatif)',
-              border: OutlineInputBorder(),
-            ),
-            items: [
-              const DropdownMenuItem(value: null, child: Text('Structure')),
-              for (final e in widget.service.etablissements)
-                DropdownMenuItem(value: e.id, child: Text(e.nom)),
-            ],
-            onChanged: (v) => setState(() => _etablissementId = v),
-          ),
-          const SizedBox(height: 12),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Programmation'),
-            subtitle: Text(
-              _programmeeLe == null
-                  ? 'Publication immédiate'
-                  : 'Programmée pour le ${afficherDate(_programmeeLe!)}',
-            ),
-            trailing: _programmeeLe == null
-                ? TextButton(
-                    onPressed: () async {
-                      final d = await _choisirDate(
-                        context,
-                        DateTime.now(),
-                      );
-                      if (d != null) {
-                        setState(() => _programmeeLe = d);
-                      }
-                    },
-                    child: const Text('Programmer'),
-                  )
-                : TextButton(
-                    onPressed: () => setState(() => _programmeeLe = null),
-                    child: const Text('Retirer'),
+          if (media.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(
+                  mode == 'audio'
+                      ? Icons.audio_file_outlined
+                      : Icons.play_circle_outlined,
+                  size: 16,
+                  color: PaletteNouvelle.bleuNuit,
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    media,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Colors.black54,
+                    ),
                   ),
-          ),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: _enCours ? null : _publier,
-            child: Text(_enCours ? 'Publication…' : 'Publier'),
-          ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -1283,42 +1382,92 @@ class _PageActualitesAdminState extends State<PageActualitesAdmin> {
   @override
   Widget build(BuildContext context) {
     final actualites = widget.service.actualitesAdmin;
+    final enEchec = widget.service.erreurActualitesAdmin;
     return PageAdmin(
       titre: 'Actualités',
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
-          : actualites.isEmpty
-              ? const Center(child: _Vide('Aucune actualité.'))
-              : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-                  itemCount: actualites.length,
-                  itemBuilder: (context, index) {
-                    final a = actualites[index];
-                    return _Ligne(
-                      titre: a.titre,
-                      sousTitre: [
-                        if (a.estProgrammee)
-                          'Programmée pour le ${afficherDate(a.programmeeLe!)}'
-                        else if (a.publieeLe != null)
-                          afficherDate(a.publieeLe!),
-                        a.texte,
-                      ].join(' · '),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit_outlined),
-                            onPressed: () => _modifier(a),
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => PagePublierActualite(
+                              service: widget.service,
+                            ),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outlined),
-                            onPressed: () => _supprimer(a),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+                        );
+                        _charger();
+                      },
+                      icon: const Icon(Icons.campaign_outlined),
+                      label: const Text('Publier une actualité'),
+                    ),
+                  ),
                 ),
+                Expanded(
+                  child: enEchec
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text(
+                                  'Les actualités ne peuvent pas être chargées pour le moment.',
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 12),
+                                FilledButton(
+                                  onPressed: _charger,
+                                  child: const Text('Réessayer'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : actualites.isEmpty
+                          ? const Center(child: _Vide('Aucune actualité.'))
+                          : ListView.builder(
+                              padding:
+                                  const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                              itemCount: actualites.length,
+                              itemBuilder: (context, index) {
+                                final a = actualites[index];
+                                return _Ligne(
+                                  titre: a.titre,
+                                  sousTitre: [
+                                    if (a.estProgrammee)
+                                      'Programmée pour le ${afficherDate(a.programmeeLe!)}'
+                                    else if (a.publieeLe != null)
+                                      afficherDate(a.publieeLe!),
+                                    a.texte,
+                                  ].join(' · '),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon:
+                                            const Icon(Icons.edit_outlined),
+                                        onPressed: () => _modifier(a),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(
+                                            Icons.delete_outlined),
+                                        onPressed: () => _supprimer(a),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                ),
+              ],
+            ),
     );
   }
 }
@@ -1354,6 +1503,64 @@ class _ChoixCamp extends StatelessWidget {
           ),
       ],
       onChanged: onChoisir,
+    );
+  }
+}
+
+/// Camp, une seule entrée, salve 28 nov. 2026 : Prochain camp,
+/// Inscriptions et Badges regroupés, trois tuiles pour une seule
+/// activité, une seule entrée reste dans l'Espace structure.
+class PageCampAdmin extends StatelessWidget {
+  const PageCampAdmin({
+    super.key,
+    required this.service,
+    this.onOuvrirCamps,
+  });
+  final ServiceT18 service;
+
+  /// Ouverture de la destination Camps, pour « Prochain camp ».
+  final VoidCallback? onOuvrirCamps;
+
+  @override
+  Widget build(BuildContext context) {
+    return PageAdmin(
+      titre: 'Camp',
+      enfant: ListView(
+        padding: EdgeInsets.fromLTRB(20, 16, 20, 32 + MediaQuery.paddingOf(context).bottom),
+        children: [
+          _Ligne(
+            titre: 'Prochain camp',
+            sousTitre: 'La page publique du camp.',
+            trailing: const Icon(Icons.chevron_right),
+            onTap: onOuvrirCamps == null
+                ? null
+                : () {
+                    Navigator.of(context).pop();
+                    onOuvrirCamps!();
+                  },
+          ),
+          _Ligne(
+            titre: 'Inscriptions au camp',
+            sousTitre: 'Inscrire, programme, versements, inscrits.',
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => PageInscriptionsCamp(service: service),
+              ),
+            ),
+          ),
+          _Ligne(
+            titre: 'Badges du camp',
+            sousTitre: 'Pass des inscrits, visibles ou masqués.',
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => PageBadgesCamp(service: service),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1420,7 +1627,7 @@ class _PageInscriptionsCampState extends State<PageInscriptionsCamp> {
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 32 + MediaQuery.paddingOf(context).bottom),
               children: [
                 _ChoixCamp(
                   service: service,
@@ -1659,7 +1866,7 @@ class _PageInscriptionCampState extends State<PageInscriptionCamp> {
     return PageAdmin(
       titre: 'Inscrire ${widget.personne.nom}',
       enfant: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+        padding: EdgeInsets.fromLTRB(20, 20, 20, 32 + MediaQuery.paddingOf(context).bottom),
         children: [
           const _TitreBloc('01 · Informations personnelles'),
           _champ(_age, 'Âge', clavier: TextInputType.number),
@@ -1770,7 +1977,7 @@ class _PageBadgesCampState extends State<PageBadgesCamp> {
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 32 + MediaQuery.paddingOf(context).bottom),
               children: [
                 _ChoixCamp(
                   service: service,
@@ -1844,28 +2051,48 @@ class _PagePresencesAdminState extends State<PagePresencesAdmin> {
       titre: 'Présences',
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
-          : parActivite.isEmpty
-              ? const Center(child: _Vide('Aucune présence scannée.'))
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-                  children: [
-                    for (final entree in parActivite.entries)
-                      _Ligne(
-                        titre: noms[entree.key] ?? 'Activité',
-                        sousTitre: '${entree.value.length} présence(s)',
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => PagePresencesActiviteDetail(
-                              service: service,
-                              activiteId: entree.key,
-                              nom: noms[entree.key] ?? 'Activité',
+          : service.erreurPresences
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Les présences ne peuvent pas être chargées pour le moment.',
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 12),
+                        FilledButton(
+                          onPressed: _charger,
+                          child: const Text('Réessayer'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : parActivite.isEmpty
+                  ? const Center(child: _Vide('Aucune présence scannée.'))
+                  : ListView(
+                      padding: EdgeInsets.fromLTRB(20, 16, 20, 32 + MediaQuery.paddingOf(context).bottom),
+                      children: [
+                        for (final entree in parActivite.entries)
+                          _Ligne(
+                            titre: noms[entree.key] ?? 'Activité',
+                            sousTitre: '${entree.value.length} présence(s)',
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => PagePresencesActiviteDetail(
+                                  service: service,
+                                  activiteId: entree.key,
+                                  nom: noms[entree.key] ?? 'Activité',
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                      ),
-                  ],
-                ),
+                      ],
+                    ),
     );
   }
 }
@@ -1914,7 +2141,7 @@ class _PagePresencesActiviteDetailState
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 32 + MediaQuery.paddingOf(context).bottom),
               children: [
                 if (taux != null)
                   _Ligne(
@@ -2070,7 +2297,7 @@ class _PageDocumentsAdminState extends State<PageDocumentsAdmin> {
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 32 + MediaQuery.paddingOf(context).bottom),
               children: [
                 TextField(
                   controller: _titre,
@@ -2222,7 +2449,7 @@ class _PageAttestationsAdminState extends State<PageAttestationsAdmin> {
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 32 + MediaQuery.paddingOf(context).bottom),
               children: [
                 const _TitreBloc('Délivrer une attestation'),
                 DropdownButtonFormField<String>(
@@ -2399,7 +2626,7 @@ class _PageExportsAdminState extends State<PageExportsAdmin> {
     return PageAdmin(
       titre: 'Exports complets',
       enfant: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+        padding: EdgeInsets.fromLTRB(20, 20, 20, 32 + MediaQuery.paddingOf(context).bottom),
         children: [
           DropdownButtonFormField<String>(
             value: _format,
@@ -2767,7 +2994,7 @@ class _PageAdministrateursState extends State<PageAdministrateurs> {
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 32 + MediaQuery.paddingOf(context).bottom),
               children: [
                 FilledButton.icon(
                   onPressed: _definirRole,
@@ -2992,7 +3219,7 @@ class _PageNominationsAdminState extends State<PageNominationsAdmin> {
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 32 + MediaQuery.paddingOf(context).bottom),
               children: [
                 FilledButton.icon(
                   onPressed: _creer,
@@ -3160,7 +3387,7 @@ class _PageElectionsAdminState extends State<PageElectionsAdmin> {
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 32 + MediaQuery.paddingOf(context).bottom),
               children: [
                 FilledButton.icon(
                   onPressed: _creer,
@@ -3285,7 +3512,7 @@ class _PageElectionDetailState extends State<PageElectionDetail> {
           : election == null
               ? const Center(child: _Vide('Élection introuvable.'))
               : ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                  padding: EdgeInsets.fromLTRB(20, 16, 20, 32 + MediaQuery.paddingOf(context).bottom),
                   children: [
                     if (election.description.isNotEmpty)
                       Text(
@@ -3410,7 +3637,7 @@ class _PageLiensAdminState extends State<PageLiensAdmin> {
                   child: _Vide('Aucun lien en attente de validation.'),
                 )
               : ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                  padding: EdgeInsets.fromLTRB(20, 16, 20, 32 + MediaQuery.paddingOf(context).bottom),
                   children: [
                     for (final l in liens)
                       _Ligne(
@@ -3621,7 +3848,7 @@ class _PageDepartementScolaireState extends State<PageDepartementScolaire> {
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 32 + MediaQuery.paddingOf(context).bottom),
               children: [
                 FilledButton.icon(
                   onPressed: _creer,
@@ -3782,7 +4009,7 @@ class _PageTremplinBureauState extends State<PageTremplinBureau> {
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 32 + MediaQuery.paddingOf(context).bottom),
               children: [
                 const Text(
                   'Les offres sont stockées sur cet appareil, en '
@@ -4073,7 +4300,7 @@ class _PagePlanningResponsablesState extends State<PagePlanningResponsables> {
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 32 + MediaQuery.paddingOf(context).bottom),
               children: [
                 FilledButton.icon(
                   onPressed: _creer,
@@ -4148,7 +4375,7 @@ class _PageReglagesNotificationsState extends State<PageReglagesNotifications> {
     return PageAdmin(
       titre: 'Réglages des notifications',
       enfant: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        padding: EdgeInsets.fromLTRB(20, 16, 20, 32 + MediaQuery.paddingOf(context).bottom),
         children: [
           const Text(
             'Les catégories désactivées ne sont plus envoyées par '

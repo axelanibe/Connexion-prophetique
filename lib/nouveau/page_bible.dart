@@ -340,7 +340,7 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
   Widget _accueil() {
     final ancien = _ongletAncien;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      padding: EdgeInsets.fromLTRB(16, 16, 16, 24 + MediaQuery.paddingOf(context).bottom),
       children: [
         const Text(
           'Bible',
@@ -689,6 +689,7 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
           Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 6),
           SingleChildScrollView(
+            padding: EdgeInsets.zero,
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [

@@ -47,7 +47,7 @@ class _PageCroissanceState extends State<PageCroissance> {
     final luAujourdhui = s.joursLus.contains(jour);
     final badges = badgesLectureGagnes(lus);
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 24 + MediaQuery.paddingOf(context).bottom),
       children: [
         Card(
           color: PaletteNouvelle.bleuNuit,

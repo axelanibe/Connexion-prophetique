@@ -368,7 +368,7 @@ class _PageCampsState extends State<PageCamps> {
     final retraites =
         widget.activites.where((a) => a.type == 'retraite').toList();
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 24 + MediaQuery.paddingOf(context).bottom),
       children: [
         const Text(
           'Camps',
@@ -617,7 +617,7 @@ class _DetailCamp extends StatelessWidget {
     final badgeVisible = inscrite?.passVisible ?? false;
     final versementEnAttente = (inscrite?.versementEnAttenteMontant ?? 0) > 0;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 24 + MediaQuery.paddingOf(context).bottom),
       children: [
         Align(
           alignment: Alignment.centerLeft,

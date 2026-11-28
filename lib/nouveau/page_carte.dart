@@ -855,7 +855,7 @@ class _PageCarteNouvelleState extends State<PageCarteNouvelle> {
     }
     final etat = _service.etatCarte;
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+      padding: EdgeInsets.fromLTRB(20, 20, 20, 24 + MediaQuery.paddingOf(context).bottom),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

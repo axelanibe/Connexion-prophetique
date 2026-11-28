@@ -24,6 +24,15 @@ import 'palette.dart';
 import 'tiroir.dart';
 import 'veille_reseau.dart';
 
+// Marge basse de la coquille, point 17, 28 nov. 2026 : 120 px
+// pour que le bas de chaque liste reste au-dessus du bouton
+// flottant Assistant. Elle vit DANS le contenu défilant, via
+// la marge MediaQuery du corps, jamais hors de lui : hors du
+// défilement, elle peignait une bande opaque au-dessus de la
+// barre du bas. Les listes la reprennent en bas, soit par
+// leur marge par défaut, soit par MediaQuery.paddingOf.
+const double margeBasseCoquille = 120.0;
+
 class NouvelleCoquille extends StatefulWidget {
   const NouvelleCoquille({
     super.key,
@@ -60,6 +69,7 @@ class NouvelleCoquille extends StatefulWidget {
     this.aide,
     this.cotisations,
     this.paroleVivante,
+    this.elections,
     this.camps,
     this.etatCarte,
   });
@@ -138,6 +148,7 @@ class NouvelleCoquille extends StatefulWidget {
   final Widget? aide;
   final Widget? cotisations;
   final Widget? paroleVivante;
+  final Widget? elections;
 
   /// Page Camps, tranche T20.
   final Widget? camps;
@@ -294,6 +305,8 @@ class NouvelleCoquilleState extends State<NouvelleCoquille> {
         widget.cotisations!,
       DestinationNouvelle.paroleVivante when widget.paroleVivante != null =>
         widget.paroleVivante!,
+      DestinationNouvelle.elections when widget.elections != null =>
+        widget.elections!,
       DestinationNouvelle.camps when widget.camps != null => widget.camps!,
       _ => PageNeutre(destination.titre),
     };
@@ -458,11 +471,24 @@ class NouvelleCoquilleState extends State<NouvelleCoquille> {
                   ),
                 ],
               ),
-        // Correctif global, 27 nov. 2026 : marge basse de 120 px, la
-        // bande de 64 px du bouton flottant Assistant ne suffit pas,
-        // le bouton recouvrait le bas des listes, 80 px avant.
-        body:
-            Padding(padding: const EdgeInsets.only(bottom: 120), child: _corps),
+        // Point 17, 28 nov. 2026 : la marge basse vit dans le
+        // contenu défilant, pas hors de lui. La marge MediaQuery
+        // du corps porte les 120 px : chaque liste les reprend
+        // en bas, le texte reste visible pendant tout le
+        // défilement et ne disparaît que derrière la barre du
+        // bas elle-même. Parole vivante est plein écran, sans
+        // barre ni bouton flottant, elle n'en a pas besoin.
+        body: _pleinEcranParole
+            ? _corps
+            : MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                  padding: MediaQuery.of(context).padding.copyWith(
+                        bottom: MediaQuery.of(context).padding.bottom +
+                            margeBasseCoquille,
+                      ),
+                ),
+                child: _corps,
+              ),
         // Sur Parole vivante le bouton flottant Assistant est
         // masqué : il recouvrirait le mini-lecteur, tranche T13.
         floatingActionButton: _pleinEcranParole ? null : widget.boutonFlottant,

@@ -31,6 +31,7 @@ enum DestinationNouvelle {
   bureau('Le Bureau'),
   cotisations('Cotisations'),
   paroleVivante('Parole vivante'),
+  elections('Élections'),
   camps('Camps');
 
   const DestinationNouvelle(this.titre);

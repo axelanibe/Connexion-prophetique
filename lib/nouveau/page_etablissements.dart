@@ -98,7 +98,7 @@ class _PageEtablissementsState extends State<PageEtablissements> {
   Widget build(BuildContext context) {
     final etablissements = widget.service.etablissements;
     final contenu = ListView(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+      padding: EdgeInsets.fromLTRB(20, 24, 20, 32 + MediaQuery.paddingOf(context).bottom),
       children: [
         const Text(
           'Chaque établissement a ses activités, événements et '
@@ -436,10 +436,15 @@ class PageFicheEtablissement extends StatefulWidget {
     super.key,
     required this.service,
     required this.etablissement,
+    this.saisieActivite = false,
   });
 
   final ServiceT18 service;
   final EtablissementAdmin etablissement;
+
+  /// Vrai quand on arrive pour publier une activité, salve
+  /// 28 nov. 2026 : le champ de saisie prend le focus.
+  final bool saisieActivite;
 
   @override
   State<PageFicheEtablissement> createState() => _PageFicheEtablissementState();
@@ -514,7 +519,7 @@ class _PageFicheEtablissementState extends State<PageFicheEtablissement> {
       body: !_charge
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+              padding: EdgeInsets.fromLTRB(20, 20, 20, 32 + MediaQuery.paddingOf(context).bottom),
               children: [
                 const _TitreSectionFiche('Actualités'),
                 const SizedBox(height: 10),
@@ -550,6 +555,7 @@ class _PageFicheEtablissementState extends State<PageFicheEtablissement> {
                       Expanded(
                         child: TextField(
                           controller: _titreActivite,
+                          autofocus: widget.saisieActivite,
                           decoration: const InputDecoration(
                             labelText: 'Nouvelle activité',
                             border: OutlineInputBorder(),
@@ -689,27 +695,14 @@ class _TitreSectionFiche extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 18,
-          height: 4,
-          decoration: BoxDecoration(
-            color: PaletteNouvelle.or,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          texte,
-          style: const TextStyle(
-            fontFamily: 'Cinzel',
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: PaletteNouvelle.bleuNuit,
-          ),
-        ),
-      ],
+    return Text(
+      texte,
+      style: const TextStyle(
+        fontFamily: 'Cinzel',
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+        color: PaletteNouvelle.bleuNuit,
+      ),
     );
   }
 }

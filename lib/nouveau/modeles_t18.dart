@@ -734,6 +734,96 @@ class CandidatElection {
       );
 }
 
+/// Une élection en cours pour un membre, GET /elections/actuelle,
+/// salve 28 nov. 2026 : candidats avec leurs voix en direct et
+/// total, son propre vote. Jamais qui a voté pour qui, seuls
+/// les chiffres.
+class ElectionMembre {
+  const ElectionMembre({
+    required this.id,
+    required this.titre,
+    this.description = '',
+    this.poste = '',
+    this.dateDebut,
+    this.dateFin,
+    this.candidats = const [],
+    this.totalVoix = 0,
+    this.aVote = false,
+    this.monCandidatId,
+  });
+  final String id;
+  final String titre;
+  final String description;
+  final String poste;
+  final DateTime? dateDebut;
+  final DateTime? dateFin;
+  final List<CandidatMembre> candidats;
+  final int totalVoix;
+  final bool aVote;
+  final String? monCandidatId;
+
+  factory ElectionMembre.depuisJson(Map<String, dynamic> j) {
+    final e = (j['election'] as Map<String, dynamic>?) ?? j;
+    final lignes = (e['candidats'] as List?) ?? const [];
+    final candidats = [
+      for (final c in lignes)
+        if (c is Map<String, dynamic>) CandidatMembre.depuisJson(c),
+    ];
+    final total = (e['total_voix'] as num?)?.toInt() ??
+        (j['total_voix'] as num?)?.toInt() ??
+        candidats.fold<int>(0, (s, c) => s + c.voix);
+    return ElectionMembre(
+      id: (e['id'] ?? '').toString(),
+      titre: (e['titre'] ?? '').toString(),
+      description: (e['description'] ?? '').toString(),
+      poste: (e['poste'] ?? '').toString(),
+      dateDebut: DateTime.tryParse((e['date_debut'] ?? '').toString()),
+      dateFin: DateTime.tryParse((e['date_fin'] ?? '').toString()),
+      candidats: candidats,
+      totalVoix: total,
+      aVote: e['a_vote'] == true,
+      monCandidatId: (e['mon_candidat_id'] as String?)?.isEmpty == true
+          ? null
+          : e['mon_candidat_id'] as String?,
+    );
+  }
+
+  /// En cours quand la date de fin n'est pas passée.
+  bool get enCours => dateFin == null || dateFin!.isAfter(DateTime.now());
+
+  String? get nomMonCandidat {
+    if (monCandidatId == null) return null;
+    for (final c in candidats) {
+      if (c.id == monCandidatId) return c.nom;
+    }
+    return null;
+  }
+}
+
+/// Un candidat vu par un membre, avec ses voix en direct.
+class CandidatMembre {
+  const CandidatMembre({
+    required this.id,
+    required this.nom,
+    this.fonction = '',
+    this.voix = 0,
+  });
+  final String id;
+  final String nom;
+  final String fonction;
+  final int voix;
+
+  factory CandidatMembre.depuisJson(Map<String, dynamic> j) =>
+      CandidatMembre(
+        id: (j['id'] ?? '').toString(),
+        nom: (j['nom'] ?? '').toString(),
+        fonction: (j['fonction'] ?? '').toString(),
+        voix: (j['voix'] as num?)?.toInt() ??
+            (j['nb_votes'] as num?)?.toInt() ??
+            0,
+      );
+}
+
 /// Une personne hors système, GET /admin/personnes-externes.
 /// Correctif global 27 nov. 2026 : fiche personne sans compte
 /// application (nom, fonction, contact), utilisable dans

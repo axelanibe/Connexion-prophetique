@@ -188,13 +188,7 @@ class _PageConversationMessagerieState
     final autorise = await autorisationsAppel(video: type == 'video');
     if (!autorise) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(type == 'video'
-              ? 'Micro ou caméra refusé : autorise le micro et la caméra dans les réglages pour appeler en vidéo.'
-              : 'Micro refusé : autorise le micro dans les réglages pour appeler.'),
-        ),
-      );
+      await expliquerAutorisationsRefusees(context, video: type == 'video');
       return;
     }
     if (!mounted) return;

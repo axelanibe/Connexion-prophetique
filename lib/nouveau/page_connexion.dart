@@ -14,9 +14,11 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'carte_publication.dart';
 import 'modeles_connexion.dart';
+import 'page_decouvrir.dart';
 import 'page_detail_connexion.dart';
 import 'page_enregistrements.dart';
 import 'page_notifications_connexion.dart';
@@ -59,7 +61,9 @@ class _PageConnexionState extends State<PageConnexion> {
   final _texte = TextEditingController();
   late FiltreConnexion _filtre;
   CategorieConnexion _categorie = CategorieConnexion.temoignage;
-  MediaChoisi? _photo;
+
+  /// Photos du compositeur, lot 1 Connexion 2.0 : 4 au plus.
+  final List<MediaChoisi> _photosCompositeur = [];
   MediaChoisi? _video;
   List<PublicationConnexion> _publications = [];
   List<PublicationConnexion> _epinglees = [];
@@ -76,12 +80,44 @@ class _PageConnexionState extends State<PageConnexion> {
     super.initState();
     _filtre = widget.filtreInitial ?? FiltreConnexion.tous;
     VeilleReseau.partage.ajouterReprise(_recharger);
+    _texte.addListener(_sauverBrouillon);
+    _restaurerBrouillon();
     _charger();
+  }
+
+  /// Brouillon local, lot 1 Connexion 2.0 : le texte non publié
+  /// reste sur l'appareil et revient à la réouverture, jamais
+  /// envoyé au serveur. Effacé après la publication.
+  void _sauverBrouillon() {
+    final texte = _texte.text;
+    final categorie = _categorie.code;
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setString('brouillon_connexion_texte', texte);
+      prefs.setString('brouillon_connexion_categorie', categorie);
+    });
+  }
+
+  Future<void> _restaurerBrouillon() async {
+    final prefs = await SharedPreferences.getInstance();
+    final texte = prefs.getString('brouillon_connexion_texte') ?? '';
+    if (!mounted || texte.isEmpty) return;
+    setState(() {
+      _texte.text = texte;
+      final categorie = prefs.getString('brouillon_connexion_categorie');
+      if (categorie != null) _categorie = CategorieConnexion.depuis(categorie);
+    });
+  }
+
+  Future<void> _effacerBrouillon() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('brouillon_connexion_texte');
+    await prefs.remove('brouillon_connexion_categorie');
   }
 
   @override
   void dispose() {
     VeilleReseau.partage.retirerReprise(_recharger);
+    _texte.removeListener(_sauverBrouillon);
     _recherche.dispose();
     _texte.dispose();
     super.dispose();
@@ -222,17 +258,45 @@ class _PageConnexionState extends State<PageConnexion> {
   }
 
   Future<void> _choisirMedia(bool estVideo) async {
-    final media =
-        await (widget.onChoisirMedia ?? _choisirMediaParDefaut).call(estVideo);
-    if (media == null || !mounted) return;
-    setState(() {
-      if (estVideo) {
+    if (estVideo) {
+      final media =
+          await (widget.onChoisirMedia ?? _choisirMediaParDefaut).call(true);
+      if (media == null || !mounted) return;
+      setState(() {
         _video = media;
-        _photo = null;
-      } else {
-        _photo = media;
+        _photosCompositeur.clear();
+      });
+      return;
+    }
+    // Photos multiples, lot 1 Connexion 2.0 : 4 au plus. Le
+    // choix injecté en test reste à une seule photo.
+    if (widget.onChoisirMedia != null) {
+      final media = await widget.onChoisirMedia!.call(false);
+      if (media == null || !mounted) return;
+      setState(() {
         _video = null;
-      }
+        if (_photosCompositeur.length < 4) _photosCompositeur.add(media);
+      });
+      return;
+    }
+    final picker = ImagePicker();
+    final fichiers = await picker.pickMultiImage(imageQuality: 80);
+    if (fichiers.isEmpty || !mounted) return;
+    final ajouts = <MediaChoisi>[];
+    for (final fichier in fichiers) {
+      if (_photosCompositeur.length + ajouts.length >= 4) break;
+      final bytes = await fichier.readAsBytes();
+      ajouts.add(MediaChoisi(
+        bytes: bytes,
+        nom: 'photo.jpg',
+        estVideo: false,
+        dataUrl: MediaChoisi.dataUrlPhoto(bytes),
+      ));
+    }
+    if (!mounted) return;
+    setState(() {
+      _video = null;
+      _photosCompositeur.addAll(ajouts);
     });
   }
 
@@ -254,7 +318,10 @@ class _PageConnexionState extends State<PageConnexion> {
       var publication = await widget.service.publier(
         texte: texte,
         categorie: _categorie.code,
-        photo: _photo?.dataUrl,
+        photos: _photosCompositeur
+            .map((m) => m.dataUrl)
+            .whereType<String>()
+            .toList(),
       );
       final video = _video;
       if (video != null) {
@@ -268,11 +335,12 @@ class _PageConnexionState extends State<PageConnexion> {
       setState(() {
         _publications = [publication, ..._publications];
         _texte.clear();
-        _photo = null;
+        _photosCompositeur.clear();
         _video = null;
         _categorie = CategorieConnexion.temoignage;
         _publicationEnCours = false;
       });
+      _effacerBrouillon();
       _chargerPhotos([publication]);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Publication partagée.')),
@@ -378,6 +446,82 @@ class _PageConnexionState extends State<PageConnexion> {
     }
   }
 
+  /// Modifier sa publication, lot 1 Connexion 2.0 : auteur
+  /// seul, texte et catégorie seulement, jamais les médias.
+  Future<void> _modifier(PublicationConnexion p) async {
+    final controleur = TextEditingController(text: p.texte);
+    var categorie = p.categorieEnum;
+    var texteModifie = p.texte;
+    final confirmer = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Modifier la publication'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: controleur,
+                maxLines: null,
+                minLines: 3,
+                onChanged: (v) => texteModifie = v,
+                decoration: const InputDecoration(
+                  hintText: 'Texte',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final c in CategorieConnexion.values)
+                    ChoiceChip(
+                      label: Text(c.libelle),
+                      selected: categorie == c,
+                      onSelected: (_) =>
+                          setDialogState(() => categorie = c),
+                    ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Enregistrer'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmer != true || !mounted) return;
+    final texte = texteModifie.trim();
+    if (texte.isEmpty) return;
+    try {
+      final modifiee = await widget.service.modifierPublication(
+        p.id,
+        texte: texte,
+        categorie: categorie.code,
+      );
+      if (!mounted) return;
+      setState(() {
+        _publications = _publications
+            .map((x) => x.id == p.id ? modifiee : x)
+            .toList();
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('La publication n’a pas pu être modifiée.')),
+      );
+    }
+  }
+
   Future<void> _supprimer(PublicationConnexion p) async {
     final confirmer = await showDialog<bool>(
       context: context,
@@ -461,6 +605,14 @@ class _PageConnexionState extends State<PageConnexion> {
     }
   }
 
+  void _ouvrirDecouvrir() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PageDecouvrir(service: widget.service),
+      ),
+    );
+  }
+
   void _ouvrirEnregistrements() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -479,10 +631,12 @@ class _PageConnexionState extends State<PageConnexion> {
     return Scaffold(
       backgroundColor: PaletteNouvelle.papier,
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             _Bande(
               onRetour: widget.onRetour,
+              onDecouvrir: _ouvrirDecouvrir,
               onNotifications: _ouvrirNotifications,
               onEnregistrements: _ouvrirEnregistrements,
             ),
@@ -502,7 +656,7 @@ class _PageConnexionState extends State<PageConnexion> {
                   : _erreur != null
                       ? _EtatErreur(message: _erreur!, onReessayer: _charger)
                       : ListView(
-                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                          padding: EdgeInsets.fromLTRB(12, 12, 12, 24 + MediaQuery.paddingOf(context).bottom),
                           children: [
                             _Compositeur(
                               controleur: _texte,
@@ -510,10 +664,11 @@ class _PageConnexionState extends State<PageConnexion> {
                               onCategorie: (c) =>
                                   setState(() => _categorie = c),
                               onTexteChange: () => setState(() {}),
-                              photo: _photo,
+                              photos: _photosCompositeur,
                               video: _video,
+                              onRetirerPhoto: (index) => setState(
+                                  () => _photosCompositeur.removeAt(index)),
                               onRetirerMedia: () => setState(() {
-                                _photo = null;
                                 _video = null;
                               }),
                               onPhoto: () => _choisirMedia(false),
@@ -550,6 +705,9 @@ class _PageConnexionState extends State<PageConnexion> {
                                     .share(ShareParams(text: p.texte)),
                                 onEnregistrer: () => _basculerEnregistrement(p),
                                 onSignaler: () => _signaler(p),
+                                onModifier: p.estAuteur
+                                    ? () => _modifier(p)
+                                    : null,
                                 onSupprimer: () => _supprimer(p),
                                 onSuivre: () => _basculerSuivi(p),
                               ),
@@ -580,9 +738,11 @@ class _PageConnexionState extends State<PageConnexion> {
 class _Bande extends StatelessWidget {
   const _Bande(
       {required this.onRetour,
+      required this.onDecouvrir,
       required this.onNotifications,
       required this.onEnregistrements});
   final VoidCallback? onRetour;
+  final VoidCallback onDecouvrir;
   final VoidCallback onNotifications;
   final VoidCallback onEnregistrements;
 
@@ -608,6 +768,12 @@ class _Bande extends StatelessWidget {
                   fontSize: 25,
                   fontWeight: FontWeight.w700),
             ),
+          ),
+          IconButton(
+            tooltip: 'Découvrir',
+            icon: const Icon(LucideIcons.users,
+                color: PaletteNouvelle.bleuNuit),
+            onPressed: onDecouvrir,
           ),
           IconButton(
             tooltip: 'Enregistrements',
@@ -691,8 +857,9 @@ class _Compositeur extends StatelessWidget {
     required this.categorie,
     required this.onCategorie,
     required this.onTexteChange,
-    required this.photo,
+    required this.photos,
     required this.video,
+    required this.onRetirerPhoto,
     required this.onRetirerMedia,
     required this.onPhoto,
     required this.onVideo,
@@ -705,8 +872,11 @@ class _Compositeur extends StatelessWidget {
   final CategorieConnexion categorie;
   final ValueChanged<CategorieConnexion> onCategorie;
   final VoidCallback onTexteChange;
-  final MediaChoisi? photo;
+
+  /// Photos choisies, lot 1 Connexion 2.0 : 4 au plus.
+  final List<MediaChoisi> photos;
   final MediaChoisi? video;
+  final ValueChanged<int> onRetirerPhoto;
   final VoidCallback onRetirerMedia;
   final VoidCallback onPhoto;
   final VoidCallback onVideo;
@@ -769,9 +939,13 @@ class _Compositeur extends StatelessWidget {
               border: InputBorder.none,
             ),
           ),
-          if (photo != null)
+          for (var i = 0; i < photos.length; i++)
             _ApercuMedia(
-                nom: photo!.nom, estVideo: false, onRetirer: onRetirerMedia),
+                nom: photos.length == 1
+                    ? photos[i].nom
+                    : 'Photo ${i + 1} sur ${photos.length}',
+                estVideo: false,
+                onRetirer: () => onRetirerPhoto(i)),
           if (video != null)
             _ApercuMedia(
                 nom: video!.nom, estVideo: true, onRetirer: onRetirerMedia),
@@ -998,6 +1172,7 @@ class _FeuilleVersetsState extends State<_FeuilleVersets> {
           ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 320),
             child: ListView(
+              padding: EdgeInsets.zero,
               shrinkWrap: true,
               children: [
                 for (final v in _resultats)

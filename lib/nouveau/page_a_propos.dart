@@ -252,34 +252,22 @@ class PageAPropos extends StatelessWidget {
   }
 }
 
-/// Titre de section avec barre dorée à gauche, comme la maquette.
+/// Titre de section, sans barre dorée : la barre se lisait
+/// comme un tiret au début du titre, salve 28 nov. 2026.
 class _TitreSection extends StatelessWidget {
   const _TitreSection(this.texte);
   final String texte;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 18,
-          height: 4,
-          decoration: BoxDecoration(
-            color: PaletteNouvelle.or,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          texte,
-          style: const TextStyle(
-            fontFamily: 'Cinzel',
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: PaletteNouvelle.bleuNuit,
-          ),
-        ),
-      ],
+    return Text(
+      texte,
+      style: const TextStyle(
+        fontFamily: 'Cinzel',
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+        color: PaletteNouvelle.bleuNuit,
+      ),
     );
   }
 }

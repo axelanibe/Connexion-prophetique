@@ -197,7 +197,7 @@ class PageAccueil extends StatelessWidget {
     final quizActuel = quiz;
     final aVenir = activites.where((a) => !a.terminee).toList();
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      padding: EdgeInsets.fromLTRB(16, 16, 16, 24 + MediaQuery.paddingOf(context).bottom),
       children: [
         _BarreRecherche(onSearch: onSearch),
         const SizedBox(height: 12),

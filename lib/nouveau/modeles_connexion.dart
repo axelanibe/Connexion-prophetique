@@ -71,6 +71,7 @@ class PublicationConnexion {
     this.etablissementNom = '',
     this.texte = '',
     this.photo,
+    this.photos = const [],
     this.videoUrl,
     this.audioUrl,
     this.categorie = 'autre',
@@ -104,6 +105,13 @@ class PublicationConnexion {
       photo: (j['photo'] as String?)?.isEmpty == true
           ? null
           : j['photo'] as String?,
+      photos: [
+        for (final p in (j['photos'] as List?) ?? const [])
+          if (p is String && p.isNotEmpty) p,
+        if (((j['photos'] as List?) ?? const []).isEmpty &&
+            (j['photo'] as String?)?.isNotEmpty == true)
+          j['photo'] as String,
+      ],
       videoUrl: (video?['url'] as String?)?.isEmpty == true
           ? null
           : video?['url'] as String?,
@@ -145,6 +153,10 @@ class PublicationConnexion {
   final String etablissementNom;
   final String texte;
   final String? photo;
+
+  /// Photos de la publication, lot 1 Connexion 2.0, 4 au plus.
+  /// photo reste la première, pour l'ancienne application.
+  final List<String> photos;
   final String? videoUrl;
   final String? audioUrl;
   final String categorie;
@@ -224,6 +236,7 @@ class PublicationConnexion {
       etablissementNom: etablissementNom,
       texte: texte,
       photo: photo,
+      photos: photos,
       videoUrl: videoUrl,
       audioUrl: audioUrl,
       categorie: categorie,
@@ -231,6 +244,37 @@ class PublicationConnexion {
       nbJaime: jaime,
       nbAmen: amen,
       nbPriere: priere,
+      monType: monType,
+      nbCommentaires: nbCommentaires,
+      enregistre: enregistre,
+      estAuteur: estAuteur,
+      suiviParMoi: suiviParMoi,
+      creeLe: creeLe,
+      epinglee: epinglee,
+      titre: titre,
+    );
+  }
+
+  /// Copie avec un texte et une catégorie modifiés, lot 1
+  /// Connexion 2.0 : la modification ne touche jamais les
+  /// médias ni les compteurs.
+  PublicationConnexion avecModification(
+      {required String texte, required String categorie}) {
+    return PublicationConnexion(
+      id: id,
+      auteurId: auteurId,
+      auteurNom: auteurNom,
+      etablissementNom: etablissementNom,
+      texte: texte,
+      photo: photo,
+      photos: photos,
+      videoUrl: videoUrl,
+      audioUrl: audioUrl,
+      categorie: categorie,
+      statutModeration: statutModeration,
+      nbJaime: nbJaime,
+      nbAmen: nbAmen,
+      nbPriere: nbPriere,
       monType: monType,
       nbCommentaires: nbCommentaires,
       enregistre: enregistre,
@@ -250,6 +294,7 @@ class PublicationConnexion {
       etablissementNom: etablissementNom,
       texte: texte,
       photo: photo,
+      photos: photos,
       videoUrl: videoUrl,
       audioUrl: audioUrl,
       categorie: categorie,
@@ -276,6 +321,7 @@ class PublicationConnexion {
       etablissementNom: etablissementNom,
       texte: texte,
       photo: photo,
+      photos: photos,
       videoUrl: videoUrl,
       audioUrl: audioUrl,
       categorie: categorie,
@@ -302,6 +348,7 @@ class PublicationConnexion {
       etablissementNom: etablissementNom,
       texte: texte,
       photo: photo,
+      photos: photos,
       videoUrl: videoUrl,
       audioUrl: audioUrl,
       categorie: categorie,
@@ -388,20 +435,45 @@ class CommentaireConnexion {
 /// coordonnée de contact.
 class MembreConnexion {
   MembreConnexion(
-      {required this.id, this.nomComplet = '', this.etablissementNom = ''});
+      {required this.id,
+      this.nomComplet = '',
+      this.etablissementNom = '',
+      this.nbPublications = 0,
+      this.nbAbonnes = 0,
+      this.suiviParMoi = false});
 
   factory MembreConnexion.fromJson(Map<String, dynamic> j) {
+    int nombre(Object? v) =>
+        v is int ? v : int.tryParse((v ?? '').toString()) ?? 0;
     return MembreConnexion(
       id: (j['id'] ?? j['membre_id'] ?? '').toString(),
       nomComplet: (j['nom_complet'] ?? j['nom'] ?? '').toString(),
       etablissementNom:
           (j['etablissement_nom'] ?? j['etablissement'] ?? '').toString(),
+      nbPublications: nombre(j['nb_publications']),
+      nbAbonnes: nombre(j['nb_abonnes']),
+      suiviParMoi: j['suivi_par_moi'] == true,
     );
   }
 
   final String id;
   final String nomComplet;
   final String etablissementNom;
+
+  /// Découvrir, lot 1 Connexion 2.0 : nombre de publications
+  /// et d'abonnés, et mon suivi.
+  final int nbPublications;
+  final int nbAbonnes;
+  final bool suiviParMoi;
+
+  MembreConnexion avecSuivi(bool valeur) => MembreConnexion(
+        id: id,
+        nomComplet: nomComplet,
+        etablissementNom: etablissementNom,
+        nbPublications: nbPublications,
+        nbAbonnes: nbAbonnes + (valeur ? 1 : -1),
+        suiviParMoi: valeur,
+      );
 }
 
 /// Profil public d'un membre du mur.
@@ -419,6 +491,7 @@ class ProfilConnexion {
     this.nbAbonnes = 0,
     this.nbAbonnements = 0,
     this.suiviParMoi = false,
+    this.bloqueParMoi = false,
     this.estMoi = false,
   });
 
@@ -440,6 +513,7 @@ class ProfilConnexion {
       nbAbonnes: _nombre(j['nb_abonnes']),
       nbAbonnements: _nombre(j['nb_abonnements']),
       suiviParMoi: j['suivi_par_moi'] == true,
+      bloqueParMoi: j['bloque_par_moi'] == true,
       estMoi: j['est_moi'] == true,
     );
   }
@@ -456,6 +530,9 @@ class ProfilConnexion {
   final int nbAbonnes;
   final int nbAbonnements;
   final bool suiviParMoi;
+
+  /// Je l'ai bloqué, lot 1 Connexion 2.0.
+  final bool bloqueParMoi;
   final bool estMoi;
 
   ProfilConnexion avecSuivi(bool valeur) {
@@ -472,6 +549,26 @@ class ProfilConnexion {
       nbAbonnes: nbAbonnes + (valeur ? 1 : -1),
       nbAbonnements: nbAbonnements,
       suiviParMoi: valeur,
+      bloqueParMoi: bloqueParMoi,
+      estMoi: estMoi,
+    );
+  }
+
+  ProfilConnexion avecBloque(bool valeur) {
+    return ProfilConnexion(
+      id: id,
+      nomComplet: nomComplet,
+      fonction: fonction,
+      etablissementNom: etablissementNom,
+      photo: photo,
+      presentation: presentation,
+      inscritLe: inscritLe,
+      nbPublications: nbPublications,
+      nbReactions: nbReactions,
+      nbAbonnes: nbAbonnes,
+      nbAbonnements: nbAbonnements,
+      suiviParMoi: valeur ? false : suiviParMoi,
+      bloqueParMoi: valeur,
       estMoi: estMoi,
     );
   }
@@ -577,7 +674,20 @@ abstract class ServiceConnexion {
   Future<List<PublicationConnexion>> chargerActualites();
   Future<PublicationConnexion> chargerDetail(String id);
   Future<PublicationConnexion> publier(
-      {required String texte, required String categorie, String? photo});
+      {required String texte, required String categorie, String? photo, List<String>? photos});
+
+  /// Modifier sa publication, lot 1 Connexion 2.0 : auteur
+  /// seul, texte et catégorie seulement.
+  Future<PublicationConnexion> modifierPublication(String id,
+      {required String texte, required String categorie});
+
+  /// Bloquer et débloquer un membre, lot 1 Connexion 2.0.
+  Future<void> bloquerMembre(String membreId);
+  Future<void> debloquerMembre(String membreId);
+
+  /// Découvrir des membres, lot 1 Connexion 2.0 : sans
+  /// recherche, les plus actifs ; avec recherche, par mot.
+  Future<List<MembreConnexion>> chargerDecouvrir({String? q});
   Future<PublicationConnexion> publierVideo(String id,
       {required List<int> bytes, required String filename});
   Future<void> supprimerVideo(String id);
