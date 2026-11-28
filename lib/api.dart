@@ -1163,14 +1163,54 @@ class ApiClient {
   /// données, réduite côté application comme la photo de profil.
   /// Tranche T3 : catégorie obligatoire côté application, le
   /// texte aussi ; le serveur garde 'autre' par défaut pour
-  /// ne pas casser l'ancienne application.
+  /// ne pas casser l'ancienne application. Photos multiples,
+  /// lot 1 Connexion 2.0 : photos remplace photo, 4 au plus.
   Future<Map<String, dynamic>> publierMur(
-          {String? texte, String? photo, String? categorie}) =>
+          {String? texte,
+          String? photo,
+          List<String>? photos,
+          String? categorie}) =>
       _post('/mur', {
         'texte': texte ?? '',
-        if (photo != null) 'photo': photo,
+        if (photos != null) 'photos': photos,
+        if (photos == null && photo != null) 'photo': photo,
         if (categorie != null && categorie.isNotEmpty) 'categorie': categorie,
       });
+
+  /// Modifier sa publication, lot 1 Connexion 2.0 : auteur
+  /// seul, texte et catégorie seulement.
+  Future<Map<String, dynamic>> modifierPublicationMur(
+    String id, {
+    required String texte,
+    required String categorie,
+  }) =>
+      _put('/mur/${Uri.encodeComponent(id)}', {
+        'texte': texte,
+        'categorie': categorie,
+      });
+
+  /// Bloquer un membre, lot 1 Connexion 2.0 : ses publications
+  /// disparaissent de mon fil, suivre, réagir et commenter
+  /// sont refusés côté serveur, dans les deux sens.
+  Future<Map<String, dynamic>> bloquerMembre(String membreId) =>
+      _post('/mur/membres/${Uri.encodeComponent(membreId)}/bloquer', {});
+
+  /// Débloquer un membre, lot 1 Connexion 2.0.
+  Future<Map<String, dynamic>> debloquerMembre(String membreId) =>
+      _delete('/mur/membres/${Uri.encodeComponent(membreId)}/bloquer');
+
+  /// Découvrir des membres, lot 1 Connexion 2.0 : sans
+  /// recherche, les membres les plus actifs ; avec recherche,
+  /// par mot dès 1 caractère.
+  Future<List<Map<String, dynamic>>> fetchDecouvrir({String? q}) async {
+    final query = q != null && q.trim().isNotEmpty
+        ? '?q=${Uri.encodeComponent(q.trim())}'
+        : '';
+    final data = await _get('/mur/decouvrir$query');
+    final liste = data['membres'];
+    if (liste is! List) return const [];
+    return liste.whereType<Map<String, dynamic>>().toList();
+  }
 
   /// Vidéo courte d'une publication, POST /mur/:id/video en
   /// multipart, sur le modèle de publierStory : 60 s au plus
@@ -2833,8 +2873,10 @@ class ApiClient {
   // Élections, carte 76, 7 nov. 2026 : visible seulement pendant
   // la période décidée par la structure. Hors période, le serveur
   // renvoie { election: null } : aucune tuile, aucun menu, aucune
-  // trace. Pendant le vote, aucun résultat n'est renvoyé, ni total,
-  // ni voix par candidat. Un vote par membre, imposé côté serveur.
+  // trace. Pendant le vote, les membres voient les scores en
+  // direct, salve 28 nov. 2026, totaux par candidat et total des
+  // voix, sans jamais exposer qui a voté pour qui. Un vote par
+  // membre, imposé côté serveur.
   Future<Map<String, dynamic>> fetchElectionActuelle() async {
     final data = await _get('/elections/actuelle');
     if (data is Map<String, dynamic>) return data;
@@ -3693,8 +3735,8 @@ class ApiClient {
   /// Membres de la structure pour le choix des participants : nom,
   /// matricule et établissement seulement. Sans recherche, le
   /// serveur ne renvoie que les membres avec qui l'appelant a
-  /// déjà une conversation ; avec q, 3 caractères au moins,
-  /// recherche par préfixe sur le nom ou le matricule.
+  /// déjà une conversation ; avec q, dès 1 caractère, recherche
+  /// par mot sur le nom ou le matricule.
   Future<List<Map<String, dynamic>>> fetchMembresMessagerie({String? q}) =>
       _list(q == null || q.trim().isEmpty
           ? '/messagerie/membres'

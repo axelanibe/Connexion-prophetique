@@ -25,9 +25,13 @@ import 'api.dart';
 import 'galerie_story.dart';
 import 'i18n.dart';
 import 'magnetophone.dart';
+import 'nouveau/palette.dart';
 
-const _nuit = Color(0xFF0F1C2E);
-const _or = Color(0xFFE5C158);
+// Palette nouvelle, salve 28 nov. 2026 : l'ancienne palette
+// bleu nuit 0F1C2E et or E5C158 est remplacée par celle de la
+// maquette, bleu nuit 0B1F3A et or D4A72C.
+const _nuit = PaletteNouvelle.bleuNuit;
+const _or = PaletteNouvelle.or;
 const _grisTexte = Color(0xFF5E687C);
 
 const _tailleMaxPhoto = 5 * 1024 * 1024;
@@ -48,8 +52,8 @@ Future<Uint8List> compresserPhotoStory(Uint8List octets) async {
 
 /// Fonds proposés pour une story en texte, palette de l'application.
 const fondsStoryTexte = <Color>[
-  Color(0xFF0F1C2E),
-  Color(0xFFE5C158),
+  PaletteNouvelle.bleuNuit,
+  PaletteNouvelle.or,
   Color(0xFF000000),
   Color(0xFF1B6B3A),
   Color(0xFF7A1F2B),
@@ -362,16 +366,31 @@ class _CreationStoryPageState extends State<CreationStoryPage> {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton(
-              onPressed: _peutPublier ? _publier : null,
-              style: ElevatedButton.styleFrom(backgroundColor: _or, foregroundColor: _nuit),
-              child: _publicationEnCours
-                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: _nuit, strokeWidth: 2.5))
-                  : Text(tr('Publier la story'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: _peutPublier ? _publier : null,
+                  style: ElevatedButton.styleFrom(backgroundColor: _or, foregroundColor: _nuit),
+                  child: _publicationEnCours
+                      ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: _nuit, strokeWidth: 2.5))
+                      : Text(tr('Publier la story'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                ),
+              ),
+              if (!_peutPublier)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    _mode == 'texte'
+                        ? tr('Écris un texte pour publier.')
+                        : tr('Choisis une photo, une vidéo ou un audio pour publier.'),
+                    style: const TextStyle(color: _grisTexte, fontSize: 12),
+                  ),
+                ),
+            ],
           ),
         ),
       ),
@@ -492,7 +511,14 @@ class _CreationStoryPageState extends State<CreationStoryPage> {
           icon: const Icon(Icons.photo_library_outlined),
           label: Text(tr('Choisir dans la galerie')),
         ),
+        const SizedBox(height: 8),
+        Text(
+          tr('Photo 5 Mo au plus, vidéo 25 Mo et 60 s au plus.'),
+          style: const TextStyle(color: _grisTexte, fontSize: 12),
+        ),
         const SizedBox(height: 16),
+        // Salve 28 nov. 2026 : plus de grand vide sur le web,
+        // l'emplacement de l'aperçu est visible avant le choix.
         if (_apercuOctets != null)
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
@@ -511,6 +537,27 @@ class _CreationStoryPageState extends State<CreationStoryPage> {
                       ],
                     ),
                   ),
+          )
+        else
+          Container(
+            width: double.infinity,
+            height: 200,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE4E7EF)),
+            ),
+            child: const Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.photo_outlined, color: _grisTexte, size: 40),
+                SizedBox(height: 8),
+                Text(
+                  'L’aperçu s’affiche ici.',
+                  style: TextStyle(color: _grisTexte, fontSize: 14),
+                ),
+              ],
+            ),
           ),
       ];
     }
