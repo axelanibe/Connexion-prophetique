@@ -26,7 +26,24 @@ const seuilsBadgesLecture = [7, 30, 100, 365];
 
 /// Identifiants des badges, dans l'ordre d'affichage : jours
 /// lus, puis plan terminé.
-const List<String> idsBadgesLecture = ['jours_7', 'jours_30', 'jours_100', 'jours_365', 'termine'];
+const List<String> idsBadgesLecture = [
+  'jours_7',
+  'jours_30',
+  'jours_100',
+  'jours_365',
+  'termine'
+];
+
+/// Libellé lisible d'un badge de lecture, jamais son
+/// identifiant brut (« jours_7 »).
+String libelleBadgeLecture(String id) => switch (id) {
+      'jours_7' => '7 jours',
+      'jours_30' => '30 jours',
+      'jours_100' => '100 jours',
+      'jours_365' => '365 jours',
+      'termine' => 'Plan terminé',
+      _ => id,
+    };
 
 /// Badges gagnés pour ce nombre de jours lus.
 List<String> badgesLectureGagnes(int joursLus) {
@@ -78,7 +95,8 @@ String libelleJourPlanAnnuel(List<(int, int)> jour, List<String> nomsLivres) {
   var livreCourant = jour.first.$1;
   var debut = jour.first.$2;
   var fin = jour.first.$2;
-  String nom(int livre) => livre >= 0 && livre < nomsLivres.length ? nomsLivres[livre] : '';
+  String nom(int livre) =>
+      livre >= 0 && livre < nomsLivres.length ? nomsLivres[livre] : '';
   void fermer() {
     final nomLivre = nom(livreCourant);
     parties.add(debut == fin ? '$nomLivre $debut' : '$nomLivre $debut–$fin');
@@ -153,7 +171,8 @@ class _ParcoursBiblePageState extends State<ParcoursBiblePage> {
         if (!mounted) return;
         final livres = BibleService.instance.books(widget.lang);
         setState(() {
-          _jours = joursPlanAnnuel(livres.map((b) => b.chapters.length).toList());
+          _jours =
+              joursPlanAnnuel(livres.map((b) => b.chapters.length).toList());
           _noms = livres.map((b) => b.name).toList();
         });
       });
@@ -207,51 +226,68 @@ class _ParcoursBiblePageState extends State<ParcoursBiblePage> {
           : Column(children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(
-                    tr('Toute la Bible en 1 an, quelques chapitres par jour, dans l’ordre. Touchez un jour pour lire, puis marquez-le comme lu.'),
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(children: [
-                    Expanded(child: Text(tr('Votre progression'), style: Theme.of(context).textTheme.titleMedium)),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(color: _or, borderRadius: BorderRadius.circular(20)),
-                      child: Text(
-                        '${_lus.length} / $nbJoursPlanAnnuel',
-                        style: Theme.of(context).textTheme.labelLarge?.copyWith(color: _nuit, fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                  ]),
-                  const SizedBox(height: 8),
-                  LinearProgressIndicator(
-                    value: _lus.length / nbJoursPlanAnnuel,
-                    color: _or,
-                    backgroundColor: const Color(0xFFD8DEE8),
-                    minHeight: 8,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(tr('Badges de lecture'), style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      for (final id in idsBadgesLecture)
-                        Chip(
-                          avatar: Icon(
-                            gagnes.contains(id) ? Icons.check_circle_outlined : Icons.lock_outlined,
-                            size: 18,
-                            color: gagnes.contains(id) ? _nuit : _grisTexte,
+                      Text(
+                        tr('Toute la Bible en 1 an, quelques chapitres par jour, dans l’ordre. Touchez un jour pour lire, puis marquez-le comme lu.'),
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(children: [
+                        Expanded(
+                            child: Text(tr('Votre progression'),
+                                style:
+                                    Theme.of(context).textTheme.titleMedium)),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                              color: _or,
+                              borderRadius: BorderRadius.circular(20)),
+                          child: Text(
+                            '${_lus.length} / $nbJoursPlanAnnuel',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelLarge
+                                ?.copyWith(
+                                    color: _nuit, fontWeight: FontWeight.w800),
                           ),
-                          label: Text(_libelleBadge(id)),
-                          backgroundColor: gagnes.contains(id) ? _or : const Color(0xFFEAF0F6),
                         ),
-                    ],
-                  ),
-                ]),
+                      ]),
+                      const SizedBox(height: 8),
+                      LinearProgressIndicator(
+                        value: _lus.length / nbJoursPlanAnnuel,
+                        color: _or,
+                        backgroundColor: const Color(0xFFD8DEE8),
+                        minHeight: 8,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(tr('Badges de lecture'),
+                          style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final id in idsBadgesLecture)
+                            Chip(
+                              avatar: Icon(
+                                gagnes.contains(id)
+                                    ? Icons.check_circle_outlined
+                                    : Icons.lock_outlined,
+                                size: 18,
+                                color: gagnes.contains(id) ? _nuit : _grisTexte,
+                              ),
+                              label: Text(_libelleBadge(id)),
+                              backgroundColor: gagnes.contains(id)
+                                  ? _or
+                                  : const Color(0xFFEAF0F6),
+                            ),
+                        ],
+                      ),
+                    ]),
               ),
               Expanded(
                 child: ListView.builder(
@@ -262,22 +298,29 @@ class _ParcoursBiblePageState extends State<ParcoursBiblePage> {
                     final lu = _lus.contains(jour);
                     final libelle = libelleJourPlanAnnuel(chapitres, _noms);
                     return ListTile(
-                      title: Text('${tr('Jour')} $jour', style: const TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: libelle.isEmpty ? null : Text(libelle, maxLines: 2, overflow: TextOverflow.ellipsis),
+                      title: Text('${tr('Jour')} $jour',
+                          style: const TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: libelle.isEmpty
+                          ? null
+                          : Text(libelle,
+                              maxLines: 2, overflow: TextOverflow.ellipsis),
                       trailing: lu
                           ? OutlinedButton(
                               onPressed: () => _basculer(jour),
-                              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 36)),
+                              style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size(0, 36)),
                               child: Text(tr('Lu')),
                             )
                           : FilledButton(
                               onPressed: () => _basculer(jour),
-                              style: FilledButton.styleFrom(minimumSize: const Size(0, 36)),
+                              style: FilledButton.styleFrom(
+                                  minimumSize: const Size(0, 36)),
                               child: Text(tr('Marquer lu')),
                             ),
                       onTap: chapitres.isEmpty
                           ? null
-                          : () => widget.onOuvrirChapitre(chapitres.first.$1, chapitres.first.$2),
+                          : () => widget.onOuvrirChapitre(
+                              chapitres.first.$1, chapitres.first.$2),
                     );
                   },
                 ),
