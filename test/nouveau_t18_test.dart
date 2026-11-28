@@ -104,6 +104,9 @@ class FauxServiceT18 implements ServiceT18 {
   Future<void> chargerChiffres() async {}
 
   @override
+  Future<void> chargerTableauDeBord() async {}
+
+  @override
   ComptabiliteAdmin? comptabilite;
 
   @override
@@ -152,6 +155,30 @@ class FauxServiceT18 implements ServiceT18 {
     DateTime? programmeeLe,
   }) async =>
       true;
+
+  @override
+  Future<bool> publierAnnonceAudio({
+    required String titre,
+    String? texte,
+    String? audioId,
+    String? lienAudio,
+    String? etablissementId,
+    DateTime? programmeeLe,
+  }) async =>
+      true;
+
+  @override
+  Future<bool> publierCarteVideo({
+    required String titre,
+    String? explication,
+    required String lienVideo,
+    String? etablissementId,
+    DateTime? programmeeLe,
+  }) async =>
+      true;
+
+  @override
+  Future<String?> televerserAudio(List<int> octets, String nomFichier) async => null;
 
   @override
   Future<bool> modifierActualite(
@@ -409,6 +436,15 @@ class FauxServiceT18 implements ServiceT18 {
 
   @override
   Future<void> chargerPaiementsTous({String? statut}) async {}
+
+  @override
+  List<PaiementAdmin> paiementsCotisations = const [];
+
+  @override
+  Map<String, dynamic> totauxCotisations = const {};
+
+  @override
+  Future<void> chargerPaiementsCotisations() async {}
 
   @override
   String exporterMembresCsv(List<MembreAdmin> membres) =>
@@ -838,7 +874,7 @@ void main() {
   });
 
   group('T18 Espace structure', () {
-    testWidgets('plus de section En chiffres, 3 actions', (tester) async {
+    testWidgets('section En chiffres en haut, 3 actions', (tester) async {
       await telephone(tester);
       final serviceT18 = FauxServiceT18();
       await tester.pumpWidget(
@@ -852,11 +888,11 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      // Correctif global, 27 nov. 2026 : la section En chiffres
-      // est dans la Comptabilité, plus ici.
-      expect(find.text('En chiffres'), findsNothing);
-      expect(find.text('128'), findsNothing);
-      expect(find.text('—'), findsNothing);
+      // Correction de suivi, 27 nov. 2026 : les chiffres sont
+      // en haut de l'Espace structure, et seulement ici.
+      expect(find.text('En chiffres'), findsOneWidget);
+      expect(find.text('128'), findsOneWidget);
+      expect(find.text('Membres inscrits'), findsOneWidget);
       await voir(tester, 'Valider les paiements');
       await voir(tester, 'Gérer les membres');
       await voir(tester, 'Publier une actualité');

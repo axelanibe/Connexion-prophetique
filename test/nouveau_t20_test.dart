@@ -191,14 +191,16 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('cotisation payée : aucun bouton de paiement',
+    testWidgets('cotisation payée : rien ne s’affiche',
         (tester) async {
       await _pomperAccueil(
         tester,
         cotisationChargee: true,
         cotisationPayee: true,
       );
-      expect(find.textContaining('payée'), findsOneWidget);
+      // Correction de suivi, 27 nov. 2026 : quand la cotisation
+      // est payée, rien ne s'affiche sur l'accueil.
+      expect(find.textContaining('payée'), findsNothing);
       expect(find.text('Payer ma cotisation : 1 000 FCFA'), findsNothing);
       expect(tester.takeException(), isNull);
     });

@@ -10,6 +10,7 @@ import 'package:image/image.dart' as img;
 import 'package:connexion_prophetique/api.dart';
 import 'package:connexion_prophetique/creation_story.dart';
 import 'package:connexion_prophetique/galerie_story.dart';
+import 'package:connexion_prophetique/magnetophone.dart';
 import 'package:connexion_prophetique/stories.dart';
 
 class _ClientPublieFaux extends ApiClient {
@@ -64,6 +65,33 @@ class _ChargeurFaux implements ChargeurGalerie {
   Future<GalerieChargee> charger() async => GalerieChargee(elements: elements, autorisee: autorisee);
 }
 
+class _EnregistreurFaux implements EnregistreurAudio {
+  @override
+  Stream<double> get niveaux => const Stream<double>.empty();
+
+  @override
+  Future<bool> demarrer() async => true;
+
+  @override
+  Future<void> mettreEnPause() async {}
+
+  @override
+  Future<void> reprendre() async {}
+
+  @override
+  Future<SonEnregistre?> arreter() async => SonEnregistre(
+        octets: Uint8List.fromList([0x1A, 0x45, 0xDF, 0xA3]),
+        mime: 'audio/webm',
+        dureeMs: 5000,
+      );
+
+  @override
+  Future<void> annuler() async {}
+
+  @override
+  Future<void> liberer() async {}
+}
+
 Uint8List _vignette() {
   final image = img.Image(width: 4, height: 4);
   img.fill(image, color: img.ColorRgb8(11, 31, 58));
@@ -103,7 +131,7 @@ void main() {
   });
 
   group('CreationStoryPage, modes', () {
-    testWidgets('affiche les trois cartes de mode', (tester) async {
+    testWidgets('affiche les deux cartes de mode', (tester) async {
       final client = _ClientPublieFaux();
       await tester.pumpWidget(
         MaterialApp(
@@ -116,9 +144,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Créer une story'), findsOneWidget);
-      expect(find.text('Photo'), findsOneWidget);
-      expect(find.text('Vidéo'), findsOneWidget);
+      expect(find.text('Photo ou vidéo'), findsOneWidget);
       expect(find.text('Texte'), findsOneWidget);
+      expect(find.text('Photo'), findsNothing);
+      expect(find.text('Vidéo'), findsNothing);
       expect(find.text('Aucune photo ou vidéo.'), findsOneWidget);
     });
 
@@ -227,8 +256,6 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Vidéo'));
-      await tester.pumpAndSettle();
       await tester.tap(find.byType(Image).first);
       await tester.pumpAndSettle();
       expect(find.text('0:30'), findsOneWidget);
@@ -238,6 +265,34 @@ void main() {
       expect(client.dernierType, 'video');
       expect(client.dernierNom, 'video.mp4');
       expect(client.derniersOctets, octetsVideo);
+    });
+
+    testWidgets('audio : enregistrement puis Publier envoie un son', (tester) async {
+      final client = _ClientPublieFaux();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CreationStoryPage(
+            client: client,
+            chargeur: _ChargeurFaux([]),
+            surWeb: false,
+            enregistreur: _EnregistreurFaux(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Enregistrer un audio'), findsOneWidget);
+      await tester.tap(find.text('Enregistrer un audio'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Arrêter'), findsOneWidget);
+      await tester.tap(find.textContaining('Arrêter'));
+      await tester.pumpAndSettle();
+      expect(find.text('Retirer l’audio'), findsOneWidget);
+      await tester.tap(find.text('Publier la story'));
+      await tester.pumpAndSettle();
+      expect(client.appels, 1);
+      expect(client.dernierType, 'audio');
+      expect(client.dernierNom, 'story-audio.webm');
+      expect(client.derniersOctets, [0x1A, 0x45, 0xDF, 0xA3]);
     });
 
     testWidgets('galerie refusée : message affiché, sans grille', (tester) async {

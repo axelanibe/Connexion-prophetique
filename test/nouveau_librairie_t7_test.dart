@@ -161,7 +161,7 @@ void main() {
     expect(find.text('Prière (2)'), findsOneWidget);
     expect(find.text('Livre test trois'), findsOneWidget);
     expect(find.text('Livre test un'), findsOneWidget);
-    expect(find.text('Nouveau'), findsOneWidget);
+    expect(find.text('NOUVEAU'), findsOneWidget);
     // La section Étude biblique est sous le pli, on fait défiler.
     await tester.scrollUntilVisible(find.text('Étude biblique (1)'), 200);
     await tester.pump();
@@ -233,8 +233,8 @@ void main() {
     await tester.tap(find.text('Acheter').first);
     await tester.pump();
     expect(find.text('Ajouté au panier.'), findsOneWidget);
-    expect(find.text('Déjà dans le panier'), findsOneWidget);
-    await tester.tap(find.text('Déjà dans le panier'));
+    expect(find.text('Dans le panier'), findsOneWidget);
+    await tester.tap(find.text('Dans le panier'));
     await tester.pumpAndSettle();
     expect(find.text('Panier'), findsOneWidget);
     expect(find.text('Total à régler'), findsOneWidget);

@@ -416,11 +416,20 @@ void main() {
       MaterialApp(home: Scaffold(body: PageGalerie(service: service))),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Camp National Kairos'), findsOneWidget);
-    await tester.tap(find.text('Camp National Kairos'));
+    // Correction de suivi, 27 nov. 2026 : badge selon le modèle
+    // officiel KAIROS 2027, KAIROS 2027, bande CAMPEUR, devise.
+    // Le titre et l'étiquette du QR portent tous les deux
+    // « KAIROS 2027 ».
+    expect(find.text('KAIROS 2027'), findsWidgets);
+    expect(find.text('CAMPEUR'), findsOneWidget);
+    expect(
+      find.text('Se disposer • S’aligner • Rayonner'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('CAMPEUR'));
     await tester.pumpAndSettle();
     expect(find.text('Télécharger'), findsOneWidget);
-    expect(find.text('CP-AA-2526'), findsWidgets);
+    expect(find.textContaining('CP-AA-2526'), findsWidgets);
   });
 
   testWidgets('structure, bureau et liaison parents et enfants',
