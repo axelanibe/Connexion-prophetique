@@ -580,6 +580,7 @@ class _RacineNouvelleState extends State<RacineNouvelle>
       notifications: Builder(
         builder: (context) => PageNotificationsConnexion(
           service: _serviceConnexion,
+          onOuvrirCotisation: _payerCotisation,
           onOuvrirPublication: (id) async {
             try {
               final publication = await _serviceConnexion.chargerDetail(id);

@@ -192,6 +192,10 @@ class InscriptionBadge {
     this.versementEnAttenteReference = '',
     this.versementEnAttenteMontant = 0,
     this.versementEnAttenteNumero = 0,
+    this.badgeId = '',
+    this.age,
+    this.niveauEtude = '',
+    this.structureAppartenance = '',
   });
   final String evenementId;
   final String nom;
@@ -210,6 +214,14 @@ class InscriptionBadge {
   final int versementEnAttenteMontant;
   final int versementEnAttenteNumero;
 
+  /// Badge KAIROS 2027, correction de suivi 27 nov. 2026 :
+  /// identifiant KP-année-numéros et mentions du modèle
+  /// officiel. Le médical ne sort jamais ici.
+  final String badgeId;
+  final int? age;
+  final String niveauEtude;
+  final String structureAppartenance;
+
   factory InscriptionBadge.depuisJson(Map<String, dynamic> j) =>
       InscriptionBadge(
         evenementId: (j['evenement_id'] ?? '').toString(),
@@ -227,6 +239,11 @@ class InscriptionBadge {
             (j['versement_en_attente_montant'] as num?)?.toInt() ?? 0,
         versementEnAttenteNumero:
             (j['versement_en_attente_numero'] as num?)?.toInt() ?? 0,
+        badgeId: (j['badge_id'] ?? '').toString(),
+        age: (j['age'] as num?)?.toInt(),
+        niveauEtude: (j['niveau_etude'] ?? '').toString(),
+        structureAppartenance:
+            (j['structure_appartenance'] ?? '').toString(),
       );
 
   /// Donnée du QR : le code du pass, sinon matricule et camp.

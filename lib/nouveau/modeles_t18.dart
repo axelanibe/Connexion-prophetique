@@ -249,6 +249,9 @@ class EvenementAdmin {
 }
 
 /// Une inscription à un camp, GET /admin/inscriptions.
+/// Formulaire KAIROS 2027, correction de suivi 27 nov. 2026 :
+/// les 5 sections vivent sur l'inscription, le médical ne
+/// sort que par cette liste administrateur.
 class InscriptionCampAdmin {
   const InscriptionCampAdmin({
     required this.nomComplet,
@@ -256,12 +259,48 @@ class InscriptionCampAdmin {
     this.inscritLe,
     this.passVisible = false,
     this.contactParent = '',
+    this.badgeId = '',
+    this.badgeNumero = 0,
+    this.age,
+    this.sexe = '',
+    this.telephone = '',
+    this.email = '',
+    this.residence = '',
+    this.niveauEtude = '',
+    this.profession = '',
+    this.structureAppartenance = '',
+    this.antecedentsMedicaux = '',
+    this.precisionsMedicales = '',
+    this.allergies = '',
+    this.besoinsMedicaux = '',
+    this.contactUrgenceNom = '',
+    this.contactUrgenceLien = '',
+    this.contactUrgenceTelephone = '',
+    this.observations = '',
   });
   final String nomComplet;
   final String matricule;
   final DateTime? inscritLe;
   final bool passVisible;
   final String contactParent;
+  final String badgeId;
+  final int badgeNumero;
+  final int? age;
+  final String sexe;
+  final String telephone;
+  final String email;
+  final String residence;
+  final String niveauEtude;
+  final String profession;
+  final String structureAppartenance;
+  final String antecedentsMedicaux;
+  final String precisionsMedicales;
+  final String allergies;
+  final String besoinsMedicaux;
+  final String contactUrgenceNom;
+  final String contactUrgenceLien;
+  final String contactUrgenceTelephone;
+  final String observations;
 
   factory InscriptionCampAdmin.depuisJson(Map<String, dynamic> j) =>
       InscriptionCampAdmin(
@@ -270,6 +309,26 @@ class InscriptionCampAdmin {
         inscritLe: DateTime.tryParse((j['inscrit_le'] ?? '').toString()),
         passVisible: j['pass_visible'] == true,
         contactParent: (j['contact_parent'] ?? '').toString(),
+        badgeId: (j['badge_id'] ?? '').toString(),
+        badgeNumero: (j['badge_numero'] as num?)?.toInt() ?? 0,
+        age: (j['age'] as num?)?.toInt(),
+        sexe: (j['sexe'] ?? '').toString(),
+        telephone: (j['telephone'] ?? '').toString(),
+        email: (j['email'] ?? '').toString(),
+        residence: (j['residence'] ?? '').toString(),
+        niveauEtude: (j['niveau_etude'] ?? '').toString(),
+        profession: (j['profession'] ?? '').toString(),
+        structureAppartenance:
+            (j['structure_appartenance'] ?? '').toString(),
+        antecedentsMedicaux: (j['antecedents_medicaux'] ?? '').toString(),
+        precisionsMedicales: (j['precisions_medicales'] ?? '').toString(),
+        allergies: (j['allergies'] ?? '').toString(),
+        besoinsMedicaux: (j['besoins_medicaux'] ?? '').toString(),
+        contactUrgenceNom: (j['contact_urgence_nom'] ?? '').toString(),
+        contactUrgenceLien: (j['contact_urgence_lien'] ?? '').toString(),
+        contactUrgenceTelephone:
+            (j['contact_urgence_telephone'] ?? '').toString(),
+        observations: (j['observations'] ?? '').toString(),
       );
 }
 

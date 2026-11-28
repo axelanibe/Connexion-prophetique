@@ -72,6 +72,7 @@ class PublicationConnexion {
     this.texte = '',
     this.photo,
     this.videoUrl,
+    this.audioUrl,
     this.categorie = 'autre',
     this.statutModeration = 'visible',
     this.nbJaime = 0,
@@ -145,6 +146,7 @@ class PublicationConnexion {
   final String texte;
   final String? photo;
   final String? videoUrl;
+  final String? audioUrl;
   final String categorie;
   final String statutModeration;
   final int nbJaime;
@@ -168,6 +170,44 @@ class PublicationConnexion {
   CategorieConnexion get categorieEnum => CategorieConnexion.depuis(categorie);
   TypeReaction? get maReaction => TypeReaction.depuis(monType);
 
+  /// Annonce audio de la structure, épinglée comme une
+  /// actualité, correction de suivi 27 nov. 2026. L'adresse
+  /// audio arrive déjà résolue, lien ou /fichiers/<id>.
+  factory PublicationConnexion.annonceAudio(
+    Map<String, dynamic> j,
+    String? audioUrl,
+  ) {
+    return PublicationConnexion(
+      id: 'annonce-audio-${(j['id'] ?? '').toString()}',
+      auteurNom: 'CONNEXION PROPHÉTIQUE',
+      texte: (j['texte'] ?? '').toString(),
+      titre: (j['titre'] ?? '').toString(),
+      audioUrl: audioUrl,
+      creeLe: j['publiee_le'] == null
+          ? null
+          : DateTime.tryParse(j['publiee_le'].toString()),
+      epinglee: true,
+    );
+  }
+
+  /// Carte vidéo de la structure, épinglée comme une
+  /// actualité, correction de suivi 27 nov. 2026.
+  factory PublicationConnexion.carteVideo(Map<String, dynamic> j) {
+    return PublicationConnexion(
+      id: 'carte-video-${(j['id'] ?? '').toString()}',
+      auteurNom: 'CONNEXION PROPHÉTIQUE',
+      texte: (j['explication'] ?? '').toString(),
+      titre: (j['titre'] ?? '').toString(),
+      videoUrl: (j['lien_video'] as String?)?.isEmpty == true
+          ? null
+          : j['lien_video'] as String?,
+      creeLe: j['publiee_le'] == null
+          ? null
+          : DateTime.tryParse(j['publiee_le'].toString()),
+      epinglee: true,
+    );
+  }
+
   /// Actualité de la structure, jamais une publication de
   /// membre : la fabrique actualite préfixe son identifiant.
   bool get estActualite => id.startsWith('actualite-');
@@ -185,6 +225,7 @@ class PublicationConnexion {
       texte: texte,
       photo: photo,
       videoUrl: videoUrl,
+      audioUrl: audioUrl,
       categorie: categorie,
       statutModeration: statutModeration,
       nbJaime: jaime,
@@ -210,6 +251,7 @@ class PublicationConnexion {
       texte: texte,
       photo: photo,
       videoUrl: videoUrl,
+      audioUrl: audioUrl,
       categorie: categorie,
       statutModeration: statutModeration,
       nbJaime: nbJaime,
@@ -235,6 +277,7 @@ class PublicationConnexion {
       texte: texte,
       photo: photo,
       videoUrl: videoUrl,
+      audioUrl: audioUrl,
       categorie: categorie,
       statutModeration: statutModeration,
       nbJaime: nbJaime,
@@ -260,6 +303,7 @@ class PublicationConnexion {
       texte: texte,
       photo: photo,
       videoUrl: videoUrl,
+      audioUrl: audioUrl,
       categorie: categorie,
       statutModeration: statutModeration,
       nbJaime: nbJaime,

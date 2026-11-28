@@ -34,8 +34,35 @@ class ServiceConnexionApi implements ServiceConnexion {
 
   @override
   Future<List<PublicationConnexion>> chargerActualites() async {
-    final liste = await _api.fetchActualites();
-    return liste.map(PublicationConnexion.actualite).toList();
+    // Correction de suivi 27 nov. 2026 : les annonces audio
+    // et les cartes vidéo s'affichent avec les actualités,
+    // épinglées en tête du fil. Une seule lecture groupée.
+    final resultats = await Future.wait([
+      _api.fetchActualites(),
+      _api.fetchAnnoncesAudio(),
+      _api.fetchCartesVideo(),
+    ]);
+    final actualites =
+        resultats[0].map(PublicationConnexion.actualite);
+    final audios = resultats[1].map((j) {
+      final lien = (j['lien_audio'] as String?)?.isEmpty == true
+          ? null
+          : j['lien_audio'] as String?;
+      final audioId = (j['audio_id'] as String?)?.isEmpty == true
+          ? null
+          : j['audio_id'] as String?;
+      final url = lien ??
+          (audioId == null ? null : '$kApiBaseUrl/fichiers/$audioId');
+      return PublicationConnexion.annonceAudio(j, url);
+    });
+    final videos = resultats[2].map(PublicationConnexion.carteVideo);
+    final toutes = [...actualites, ...audios, ...videos];
+    toutes.sort((a, b) {
+      final da = a.creeLe ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final db = b.creeLe ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return db.compareTo(da);
+    });
+    return toutes;
   }
 
   @override

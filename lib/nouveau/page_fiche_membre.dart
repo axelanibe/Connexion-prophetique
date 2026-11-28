@@ -7,8 +7,11 @@
 // déjà dans lib/api.dart, aucun ajout serveur.
 import 'package:flutter/material.dart';
 
+import '../app_models.dart';
 import 'modeles_profil.dart' show afficherDate;
 import 'modeles_t14.dart';
+import 'modeles_t15.dart';
+import 'page_carte.dart';
 import 'palette.dart';
 import 'service_t14.dart';
 
@@ -140,6 +143,34 @@ class _PageFicheMembreAdminState extends State<PageFicheMembreAdmin> {
     } else {
       _toast('Action impossible. Vérifiez votre connexion.');
     }
+  }
+
+  /// Carte du membre, correction de suivi 27 nov. 2026 :
+  /// la carte du membre, avec ses vraies données, depuis
+  /// sa fiche. L'état vient de son adhésion.
+  void _voirCarte(MembreAdmin detail) {
+    final membre = Member(
+      detail.nomComplet,
+      detail.matricule,
+      detail.etablissement,
+      DateTime.tryParse(detail.inscritLe) ?? DateTime.now(),
+      fonction: detail.fonction,
+      photoData: detail.photo ?? '',
+      validUntilOverride: DateTime.tryParse(detail.valideJusqua),
+      telephone: detail.telephone,
+      email: detail.email,
+      statutAdhesion: detail.statutAdhesion,
+    );
+    final etat = switch (detail.statutAdhesion) {
+      'validee' => EtatCarte.validee,
+      'en_attente' => EtatCarte.enAttente,
+      _ => EtatCarte.verrouillee,
+    };
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _PageCarteMembre(membre: membre, etat: etat),
+      ),
+    );
   }
 
   @override
@@ -283,10 +314,21 @@ class _PageFicheMembreAdminState extends State<PageFicheMembreAdmin> {
                         ),
                       ),
                     ),
-                    OutlinedButton.icon(
-                      onPressed: _corriger,
-                      icon: const Icon(Icons.edit_outlined),
-                      label: const Text('Corriger'),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _corriger,
+                          icon: const Icon(Icons.edit_outlined),
+                          label: const Text('Corriger'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () => _voirCarte(detail),
+                          icon: const Icon(Icons.badge_outlined),
+                          label: const Text('Voir la carte'),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -509,6 +551,39 @@ class _SuspendreDialogState extends State<_SuspendreDialog> {
             onPressed: () => Navigator.pop(context, _motifCtrl.text.trim()),
             child: const Text('Suspendre')),
       ],
+    );
+  }
+}
+
+/// Carte d'un membre, vue par le Bureau, correction de
+/// suivi 27 nov. 2026. Visuel seul, sans modification.
+class _PageCarteMembre extends StatelessWidget {
+  const _PageCarteMembre({required this.membre, required this.etat});
+  final Member membre;
+  final EtatCarte etat;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: PaletteNouvelle.papier,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        title: Text(
+          'Carte de ${membre.name}',
+          style: const TextStyle(color: PaletteNouvelle.bleuNuit),
+        ),
+        iconTheme: const IconThemeData(color: PaletteNouvelle.bleuNuit),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: CartePremium(
+            membre: membre,
+            etat: etat,
+            apercuDebloque: false,
+          ),
+        ),
+      ),
     );
   }
 }

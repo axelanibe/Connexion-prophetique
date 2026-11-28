@@ -232,7 +232,11 @@ class PageAccueil extends StatelessWidget {
           onCotisations: onCotisations,
           onParoleVivante: onParoleVivante,
         ),
-        if (cotisationChargee) ...[
+        // Correction de suivi, 27 nov. 2026 : quand la
+        // cotisation est payée, rien ne s'affiche. Le rappel
+        // ne part que par notification, quand elle n'est pas
+        // payée.
+        if (cotisationChargee && !cotisationPayee) ...[
           const SizedBox(height: 12),
           _CarteCotisation(
             payee: cotisationPayee,

@@ -8,10 +8,12 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:video_player/video_player.dart';
 
 import '../api.dart' show kApiBaseUrl;
+import '../magnetophone.dart';
 import 'modeles_connexion.dart';
 import 'palette.dart';
 
@@ -246,6 +248,10 @@ class CartePublicationConnexion extends StatelessWidget {
             const SizedBox(height: 10),
             _TuileVideo(url: p.videoUrl!),
           ],
+          if (p.audioUrl != null) ...[
+            const SizedBox(height: 10),
+            _TuileAudio(url: p.audioUrl!),
+          ],
           const SizedBox(height: 8),
           _LigneReactions(
             publication: p,
@@ -391,6 +397,31 @@ class _PhotoPublication extends StatelessWidget {
 
 /// Tuile vidéo : lecture paresseuse, le lecteur ne se crée
 /// qu'au toucher, comme les stories.
+/// Tuile audio d'une annonce, correction de suivi 27 nov.
+/// 2026 : l'audio s'écoute dans le fil, comme un message
+/// vocal, sans quitter la publication.
+class _TuileAudio extends StatelessWidget {
+  const _TuileAudio({required this.url});
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F6F9),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: LecteurAudio(
+        chargerSource: () async => AudioSource.uri(Uri.parse(url)),
+        duree: Duration.zero,
+        couleur: PaletteNouvelle.bleuNuit,
+        couleurTexte: PaletteNouvelle.bleuNuit,
+      ),
+    );
+  }
+}
+
 class _TuileVideo extends StatelessWidget {
   const _TuileVideo({required this.url});
   final String url;

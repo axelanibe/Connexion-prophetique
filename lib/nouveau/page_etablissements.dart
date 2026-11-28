@@ -166,7 +166,10 @@ class _PageEtablissementsState extends State<PageEtablissements> {
     return Scaffold(
       backgroundColor: PaletteNouvelle.papier,
       appBar: AppBar(
-        title: const Text('Nos établissements'),
+        title: const Text(
+          'Nos établissements',
+          style: TextStyle(color: PaletteNouvelle.bleuNuit),
+        ),
         backgroundColor: Colors.white,
         foregroundColor: PaletteNouvelle.bleuNuit,
       ),
@@ -501,7 +504,10 @@ class _PageFicheEtablissementState extends State<PageFicheEtablissement> {
     return Scaffold(
       backgroundColor: PaletteNouvelle.papier,
       appBar: AppBar(
-        title: Text(widget.etablissement.nom),
+        title: Text(
+          widget.etablissement.nom,
+          style: const TextStyle(color: PaletteNouvelle.bleuNuit),
+        ),
         backgroundColor: Colors.white,
         foregroundColor: PaletteNouvelle.bleuNuit,
       ),

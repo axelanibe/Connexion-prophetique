@@ -355,7 +355,10 @@ class _PageMessagerieState extends State<PageMessagerie> {
       body: SafeArea(
         child: Column(
           children: [
-            _Bande(onRetour: widget.onRetour),
+            _Bande(
+              onRetour: widget.onRetour,
+              onNouvelleDiscussion: _nouvelleDiscussion,
+            ),
             _Onglets(
               volet: _volet,
               nbManques: _nbManques,
@@ -400,10 +403,13 @@ class _PageMessagerieState extends State<PageMessagerie> {
   }
 }
 
-/// Bande propre : retour à gauche, titre Messagerie.
+/// Bande propre : retour à gauche, titre Messagerie, crayon
+/// Nouvelle discussion à droite, correction de suivi
+/// 27 nov. 2026 : entamer une discussion doit se voir.
 class _Bande extends StatelessWidget {
-  const _Bande({required this.onRetour});
+  const _Bande({required this.onRetour, required this.onNouvelleDiscussion});
   final VoidCallback? onRetour;
+  final VoidCallback onNouvelleDiscussion;
 
   @override
   Widget build(BuildContext context) {
@@ -425,6 +431,12 @@ class _Bande extends StatelessWidget {
                   fontSize: 20,
                   fontWeight: FontWeight.w800),
             ),
+          ),
+          IconButton(
+            tooltip: 'Nouvelle discussion',
+            icon: const Icon(LucideIcons.squarePen,
+                color: PaletteNouvelle.bleuNuit),
+            onPressed: onNouvelleDiscussion,
           ),
         ],
       ),
@@ -804,6 +816,15 @@ class _LigneConversation extends StatelessWidget {
   }
 }
 
+/// Durée d'un appel terminé, «, 12 min », vide sans réponse.
+String _dureeAppel(AppelMessagerie appel) {
+  if (appel.creeLe == null || appel.reponduLe == null) return '';
+  final secondes =
+      appel.reponduLe!.difference(appel.creeLe!).inSeconds;
+  if (secondes < 60) return ', $secondes s';
+  return ', ${secondes ~/ 60} min';
+}
+
 class _VoletAppels extends StatelessWidget {
   const _VoletAppels({
     required this.appels,
@@ -828,10 +849,25 @@ class _VoletAppels extends StatelessWidget {
         ),
       );
     }
-    return ListView.builder(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text(
+            'Récents',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: PaletteNouvelle.bleuNuit,
+            ),
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
       // T17 : bas ramené de 96 à 16, la coquille ajoute
       // déjà 80 px, sinon 176 px de vide en bas de liste.
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
       itemCount: appels.length,
       itemBuilder: (_, i) {
         final appel = appels[i];
@@ -858,11 +894,9 @@ class _VoletAppels extends StatelessWidget {
               nom,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
+              style: const TextStyle(
                   fontWeight: FontWeight.w600,
-                  color: appel.manque
-                      ? PaletteNouvelle.rougeBadge
-                      : PaletteNouvelle.bleuNuit),
+                  color: PaletteNouvelle.bleuNuit),
             ),
             subtitle: Row(
               children: [
@@ -876,7 +910,7 @@ class _VoletAppels extends StatelessWidget {
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
-                    '${appel.libelle(monMembreId)} · ${dateCourte(appel.creeLe)}',
+                    '${appel.libelle(monMembreId)}${_dureeAppel(appel)} · ${dateCourte(appel.creeLe)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -887,28 +921,29 @@ class _VoletAppels extends StatelessWidget {
                 ),
               ],
             ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  appel.estVideo
-                      ? LucideIcons.video
-                      : LucideIcons.phone,
-                  color: PaletteNouvelle.bleuNuit,
-                  size: 20,
-                ),
-                IconButton(
-                  key: ValueKey('rappeler-${appel.id}'),
-                  tooltip: 'Rappeler',
-                  icon: const Icon(LucideIcons.phone,
-                      color: PaletteNouvelle.bleuNuit),
-                  onPressed: () => onRappeler(appel),
-                ),
-              ],
+            // Correction de suivi 27 nov. 2026 : un seul
+            // bouton Rappeler, comme la maquette, plus
+            // d'icône de type en doublon.
+            trailing: OutlinedButton.icon(
+              key: ValueKey('rappeler-${appel.id}'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(0, 38),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                side: const BorderSide(color: Color(0xFFE3E7EE)),
+                foregroundColor: PaletteNouvelle.bleuNuit,
+              ),
+              icon: const Icon(LucideIcons.phone, size: 16),
+              label: const Text('Rappeler',
+                  style: TextStyle(fontSize: 12)),
+              onPressed: () => onRappeler(appel),
             ),
           ),
         );
       },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -928,6 +963,22 @@ class _FeuilleMembres extends StatefulWidget {
 class _FeuilleMembresState extends State<_FeuilleMembres> {
   List<MembreMessagerie> _resultats = [];
   bool _rechercheEnCours = false;
+  Timer? _delaiRecherche;
+
+  @override
+  void dispose() {
+    _delaiRecherche?.cancel();
+    super.dispose();
+  }
+
+  void _rechercherEnDirect(String q) {
+    _delaiRecherche?.cancel();
+    if (q.trim().length < 3) return;
+    _delaiRecherche = Timer(
+      const Duration(milliseconds: 400),
+      () => _rechercher(q),
+    );
+  }
 
   Future<void> _rechercher(String q) async {
     final saisie = q.trim();
@@ -967,6 +1018,7 @@ class _FeuilleMembresState extends State<_FeuilleMembres> {
           TextField(
             autofocus: true,
             textInputAction: TextInputAction.search,
+            onChanged: _rechercherEnDirect,
             onSubmitted: _rechercher,
             decoration: const InputDecoration(
               hintText: 'Rechercher un membre…',

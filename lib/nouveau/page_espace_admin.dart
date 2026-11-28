@@ -16,7 +16,6 @@ import 'modeles_profil.dart';
 import 'modeles_t14.dart';
 import 'modeles_t18.dart';
 import 'modeles_t9.dart';
-import 'page_etablissements.dart';
 import 'page_chronogramme.dart';
 import 'page_scanner_presence.dart';
 import 'palette.dart';
@@ -54,15 +53,9 @@ Future<bool> _confirmer(
   return ok == true;
 }
 
-/// Mois courant au format « 2026-11 ».
-String _moisCourant() {
-  final m = DateTime.now();
-  return '${m.year}-${m.month.toString().padLeft(2, '0')}';
-}
-
 /// Page admin dans la coquille : barre de titre, fond papier.
-class _PageAdmin extends StatelessWidget {
-  const _PageAdmin({required this.titre, required this.enfant});
+class PageAdmin extends StatelessWidget {
+  const PageAdmin({required this.titre, required this.enfant});
   final String titre;
   final Widget enfant;
 
@@ -70,10 +63,14 @@ class _PageAdmin extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: PaletteNouvelle.papier,
-      // Correctif global, 27 nov. 2026 : flèche et titre en bleu
-      // nuit, le thème mettait blanc sur fond blanc.
+      // Correction de suivi, 27 nov. 2026 : le thème met le
+      // titre en blanc, foregroundColor ne le change pas, il
+      // faut un style explicite bleu nuit sur le titre.
       appBar: AppBar(
-        title: Text(titre),
+        title: Text(
+          titre,
+          style: const TextStyle(color: PaletteNouvelle.bleuNuit),
+        ),
         backgroundColor: Colors.white,
         foregroundColor: PaletteNouvelle.bleuNuit,
       ),
@@ -503,16 +500,8 @@ Future<DateTime?> _choisirDate(
 
 /// 1. Comptabilité complète.
 class PageComptabiliteAdmin extends StatefulWidget {
-  const PageComptabiliteAdmin({
-    super.key,
-    required this.service,
-    this.onOuvrirMembres,
-  });
+  const PageComptabiliteAdmin({super.key, required this.service});
   final ServiceT18 service;
-
-  /// Ouverture de Gérer les membres, pour le chiffre Membres
-  /// du tableau de bord : l'Espace structure, pas une copie.
-  final VoidCallback? onOuvrirMembres;
 
   @override
   State<PageComptabiliteAdmin> createState() => _PageComptabiliteAdminState();
@@ -529,82 +518,25 @@ class _PageComptabiliteAdminState extends State<PageComptabiliteAdmin> {
   }
 
   Future<void> _charger() async {
-    await widget.service.chargerChiffres();
-    await widget.service.chargerComptabilite(mois: _moisCourant());
+    // Correction de suivi, 27 nov. 2026 : la lecture groupée
+    // apporte le Flux financier, les chiffres vivent seulement
+    // dans l'Espace structure.
+    await widget.service.chargerTableauDeBord();
     await widget.service.chargerPaiementsEnAttente();
     await widget.service.chargerTotauxPaiements();
     await widget.service.chargerPaiementsTous(statut: _filtreStatut);
     if (mounted) setState(() => _charge = true);
   }
 
-  /// Toucher d'un chiffre du tableau de bord : le détail rattaché.
-  void _ouvrirChiffre(int index) {
-    final service = widget.service;
-    switch (index) {
-      case 0:
-        final ouvrirMembres = widget.onOuvrirMembres;
-        if (ouvrirMembres != null) {
-          ouvrirMembres();
-        } else {
-          _message(context, 'Voir dans l’Espace structure.');
-        }
-      case 1:
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => PagePresencesAdmin(service: service),
-          ),
-        );
-      case 2:
-        // Cotisations : l'historique filtré sur les confirmés.
-        setState(() => _filtreStatut = 'confirme');
-        _charger();
-      case 3:
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => PageInscriptionsCamp(service: service),
-          ),
-        );
-      case 4:
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => PageLiensAdmin(service: service),
-          ),
-        );
-      case 5:
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => PageEtablissements(service: service, poussee: true),
-          ),
-        );
-    }
-  }
-
-  /// Tableau de bord, correctif global 27 nov. 2026 : les 6
-  /// chiffres, tactiles, puis le flux financier du mois, vert
-  /// pour les entrées, rouge pour les dépenses, par établissement.
-  List<Widget> _tableauDeBord(
+  /// Flux financier du mois, correction de suivi 27 nov. 2026 :
+  /// les chiffres ne vivent plus ici, seulement dans l'Espace
+  /// structure. Vert pour les entrées, rouge pour les dépenses,
+  /// par établissement.
+  List<Widget> _fluxFinancier(
     ServiceT18 service,
     ComptabiliteAdmin? compta,
   ) {
-    final enfants = <Widget>[
-      const _TitreBloc('Tableau de bord'),
-      _GrilleChiffres(
-        chiffres: service.chiffres,
-        onOuvrir: _ouvrirChiffre,
-      ),
-    ];
-    if (service.chiffres.any((c) => c.valeur == '—')) {
-      enfants.add(
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: _charger,
-            icon: const Icon(Icons.refresh_outlined),
-            label: const Text('Réessayer'),
-          ),
-        ),
-      );
-    }
+    final enfants = <Widget>[];
     if (compta != null) {
       final totaux = compta.totaux;
       final entrees = (totaux['entrees'] as num?)?.toInt() ?? 0;
@@ -716,7 +648,7 @@ class _PageComptabiliteAdminState extends State<PageComptabiliteAdmin> {
     final service = widget.service;
     final compta = service.comptabilite;
     final totaux = service.totauxPaiements;
-    return _PageAdmin(
+    return PageAdmin(
       titre: 'Comptabilité',
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
@@ -725,7 +657,7 @@ class _PageComptabiliteAdminState extends State<PageComptabiliteAdmin> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
                 children: [
-                  ..._tableauDeBord(service, compta),
+                  ..._fluxFinancier(service, compta),
                   const _TitreBloc('À valider'),
                   if (service.paiementsEnAttente.isEmpty)
                     const _Vide('Aucun paiement en attente.')
@@ -818,10 +750,86 @@ class _PageComptabiliteAdminState extends State<PageComptabiliteAdmin> {
   }
 }
 
+/// Détail des cotisations et paiements, correction de suivi
+/// 27 nov. 2026 : la carte Cotisations du tableau de bord
+/// ouvre ce vrai détail, au lieu de filtrer l'historique
+/// sur place.
+class PageDetailCotisationsAdmin extends StatefulWidget {
+  const PageDetailCotisationsAdmin({super.key, required this.service});
+  final ServiceT18 service;
+
+  @override
+  State<PageDetailCotisationsAdmin> createState() =>
+      _PageDetailCotisationsAdminState();
+}
+
+class _PageDetailCotisationsAdminState
+    extends State<PageDetailCotisationsAdmin> {
+  var _charge = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _charger();
+  }
+
+  Future<void> _charger() async {
+    await widget.service.chargerPaiementsCotisations();
+    if (mounted) setState(() => _charge = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final service = widget.service;
+    final totaux = service.totauxCotisations;
+    return PageAdmin(
+      titre: 'Cotisations',
+      enfant: !_charge
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _charger,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                children: [
+                  const _TitreBloc('Totaux'),
+                  _Ligne(
+                    titre: 'Confirmé',
+                    sousTitre: formaterFcfa(
+                      (totaux['total_confirme'] as num?)?.toInt() ?? 0,
+                    ),
+                  ),
+                  _Ligne(
+                    titre: 'En attente',
+                    sousTitre: formaterFcfa(
+                      (totaux['total_en_attente'] as num?)?.toInt() ?? 0,
+                    ),
+                  ),
+                  const _TitreBloc('Paiements'),
+                  if (service.paiementsCotisations.isEmpty)
+                    const _Vide('Aucune cotisation.')
+                  else
+                    for (final p in service.paiementsCotisations)
+                      _Ligne(
+                        titre:
+                            '${p.libelle} · ${formaterFcfa(p.montantFcfa)}',
+                        sousTitre: [
+                          p.libelleStatut,
+                          if (p.nomMembre.isNotEmpty) p.nomMembre,
+                          if (p.matricule.isNotEmpty) p.matricule,
+                          if (p.creeLe != null) afficherDate(p.creeLe!),
+                        ].join(' · '),
+                      ),
+                ],
+              ),
+            ),
+    );
+  }
+}
+
 /// Grille des 6 chiffres du tableau de bord, chaque carte
 /// s'ouvre au toucher sur le détail rattaché.
-class _GrilleChiffres extends StatelessWidget {
-  const _GrilleChiffres({required this.chiffres, required this.onOuvrir});
+class GrilleChiffresAdmin extends StatelessWidget {
+  const GrilleChiffresAdmin({required this.chiffres, required this.onOuvrir});
   final List<ChiffreAdmin> chiffres;
   final void Function(int index) onOuvrir;
 
@@ -932,7 +940,10 @@ class _BarreFlux extends StatelessWidget {
   }
 }
 
-/// 2. Publier une actualité.
+/// 2. Publier une actualité, un seul outil, correction de
+/// suivi 27 nov. 2026 : texte, audio ou vidéo selon le choix,
+/// établissement, programmation. L'audio revient, il existait
+/// dans la version précédente.
 class PagePublierActualite extends StatefulWidget {
   const PagePublierActualite({super.key, required this.service});
   final ServiceT18 service;
@@ -944,8 +955,12 @@ class PagePublierActualite extends StatefulWidget {
 class _PagePublierActualiteState extends State<PagePublierActualite> {
   final _titre = TextEditingController();
   final _texte = TextEditingController();
+  final _lien = TextEditingController();
+  String _mode = 'texte';
   String? _etablissementId;
   DateTime? _programmeeLe;
+  List<int>? _audioOctets;
+  String? _audioNom;
   var _enCours = false;
 
   @override
@@ -958,21 +973,91 @@ class _PagePublierActualiteState extends State<PagePublierActualite> {
   void dispose() {
     _titre.dispose();
     _texte.dispose();
+    _lien.dispose();
     super.dispose();
   }
 
+  Future<void> _choisirAudio() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['mp3', 'm4a', 'wav', 'aac', 'ogg'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty || !mounted) return;
+    final fichier = result.files.single;
+    final octets = fichier.bytes;
+    if (octets == null || octets.isEmpty) {
+      _message(context, 'Impossible de lire ce fichier.');
+      return;
+    }
+    setState(() {
+      _audioOctets = octets;
+      _audioNom = fichier.name;
+    });
+  }
+
   Future<void> _publier() async {
-    if (_titre.text.trim().isEmpty || _texte.text.trim().isEmpty) {
-      _message(context, 'Titre et texte sont obligatoires.');
+    if (_titre.text.trim().isEmpty) {
+      _message(context, 'Le titre est obligatoire.');
+      return;
+    }
+    if (_mode == 'texte' && _texte.text.trim().isEmpty) {
+      _message(context, 'Le texte est obligatoire.');
+      return;
+    }
+    if (_mode == 'audio' &&
+        _audioOctets == null &&
+        _lien.text.trim().isEmpty) {
+      _message(context, 'Choisis un fichier audio ou un lien.');
+      return;
+    }
+    if (_mode == 'video' && _lien.text.trim().isEmpty) {
+      _message(context, 'Le lien de la vidéo est obligatoire.');
       return;
     }
     setState(() => _enCours = true);
-    final ok = await widget.service.publierActualite(
-      titre: _titre.text.trim(),
-      texte: _texte.text.trim(),
-      etablissementId: _etablissementId,
-      programmeeLe: _programmeeLe,
-    );
+    var ok = false;
+    if (_mode == 'texte') {
+      ok = await widget.service.publierActualite(
+        titre: _titre.text.trim(),
+        texte: _texte.text.trim(),
+        etablissementId: _etablissementId,
+        programmeeLe: _programmeeLe,
+      );
+    } else if (_mode == 'audio') {
+      String? audioId;
+      if (_audioOctets != null) {
+        audioId = await widget.service.televerserAudio(
+          _audioOctets!,
+          _audioNom ?? 'annonce-audio',
+        );
+        if (audioId == null) {
+          if (mounted) {
+            setState(() => _enCours = false);
+            _message(context, 'Téléversement de l’audio impossible.');
+          }
+          return;
+        }
+      }
+      ok = await widget.service.publierAnnonceAudio(
+        titre: _titre.text.trim(),
+        texte: _texte.text.trim().isEmpty ? null : _texte.text.trim(),
+        audioId: audioId,
+        lienAudio:
+            _lien.text.trim().isEmpty ? null : _lien.text.trim(),
+        etablissementId: _etablissementId,
+        programmeeLe: _programmeeLe,
+      );
+    } else {
+      ok = await widget.service.publierCarteVideo(
+        titre: _titre.text.trim(),
+        explication:
+            _texte.text.trim().isEmpty ? null : _texte.text.trim(),
+        lienVideo: _lien.text.trim(),
+        etablissementId: _etablissementId,
+        programmeeLe: _programmeeLe,
+      );
+    }
     if (!mounted) return;
     setState(() => _enCours = false);
     _message(
@@ -984,11 +1069,23 @@ class _PagePublierActualiteState extends State<PagePublierActualite> {
 
   @override
   Widget build(BuildContext context) {
-    return _PageAdmin(
+    return PageAdmin(
       titre: 'Publier une actualité',
       enfant: ListView(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
         children: [
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: 'texte', label: Text('Texte')),
+              ButtonSegment(value: 'audio', label: Text('Audio')),
+              ButtonSegment(value: 'video', label: Text('Vidéo')),
+            ],
+            selected: {_mode},
+            onSelectionChanged: (v) => setState(() {
+              _mode = v.first;
+            }),
+          ),
+          const SizedBox(height: 16),
           TextField(
             controller: _titre,
             decoration: const InputDecoration(
@@ -999,12 +1096,52 @@ class _PagePublierActualiteState extends State<PagePublierActualite> {
           const SizedBox(height: 12),
           TextField(
             controller: _texte,
-            maxLines: 6,
-            decoration: const InputDecoration(
-              labelText: 'Texte',
-              border: OutlineInputBorder(),
+            maxLines: _mode == 'video' ? 3 : 6,
+            decoration: InputDecoration(
+              labelText: _mode == 'video'
+                  ? 'Explication (facultatif)'
+                  : _mode == 'audio'
+                      ? 'Texte (facultatif)'
+                      : 'Texte',
+              border: const OutlineInputBorder(),
             ),
           ),
+          if (_mode == 'audio') ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _choisirAudio,
+              icon: const Icon(Icons.audio_file_outlined),
+              label: Text(
+                _audioNom ?? 'Choisir un fichier audio',
+              ),
+            ),
+            if (_audioNom != null)
+              TextButton(
+                onPressed: () => setState(() {
+                  _audioOctets = null;
+                  _audioNom = null;
+                }),
+                child: const Text('Retirer le fichier'),
+              ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _lien,
+              decoration: const InputDecoration(
+                labelText: 'Lien audio (facultatif, sans fichier)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+          if (_mode == 'video') ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _lien,
+              decoration: const InputDecoration(
+                labelText: 'Lien de la vidéo',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           DropdownButtonFormField<String?>(
             value: _etablissementId,
@@ -1146,7 +1283,7 @@ class _PageActualitesAdminState extends State<PageActualitesAdmin> {
   @override
   Widget build(BuildContext context) {
     final actualites = widget.service.actualitesAdmin;
-    return _PageAdmin(
+    return PageAdmin(
       titre: 'Actualités',
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
@@ -1250,62 +1387,35 @@ class _PageInscriptionsCampState extends State<PageInscriptionsCamp> {
     if (mounted) setState(() => _charge = true);
   }
 
-  /// Formulaire pro d'inscription au camp, correctif global
-  /// 27 nov. 2026 : membre sans téléphone ou personne hors
-  /// système, avec le contact du parent ou tuteur.
+  /// Inscription au camp, correction de suivi 27 nov. 2026 :
+  /// le formulaire KAIROS 2027, 5 sections, pour un membre
+  /// sans téléphone ou une personne hors système. Le téléphone
+  /// du campeur n'est pas obligatoire, le contact d'urgence
+  /// l'est.
   Future<void> _inscrire() async {
     if (_campId == null) {
       _message(context, 'Choisissez un camp.');
       return;
     }
     final personne = await _choisirPersonne(context, widget.service);
-    if (personne == null) return;
-    final contactParent = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Inscrire ${personne.nom}'),
-        content: TextField(
-          controller: contactParent,
-          decoration: const InputDecoration(
-            labelText: 'Contact du parent ou tuteur (facultatif)',
-            border: OutlineInputBorder(),
-          ),
+    if (personne == null || !mounted) return;
+    final inscrit = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => PageInscriptionCamp(
+          service: widget.service,
+          campId: _campId!,
+          personne: personne,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Inscrire'),
-          ),
-        ],
       ),
     );
-    if (ok != true) return;
-    final inscrite = await widget.service.inscrireAuCampAdmin(_campId!, {
-      if (!personne.externe) 'membre_id': personne.id,
-      if (personne.externe) 'personne_externe_id': personne.id,
-      if (contactParent.text.trim().isNotEmpty)
-        'contact_parent': contactParent.text.trim(),
-    });
-    if (!mounted) return;
-    _message(
-      context,
-      inscrite != null
-          ? '${personne.nom} inscrit(e) au camp.'
-          : 'Inscription impossible.',
-    );
-    if (inscrite != null) _charger();
+    if (inscrit == true && mounted) _charger();
   }
 
   @override
   Widget build(BuildContext context) {
     final service = widget.service;
     final suivi = service.suiviVersements;
-    return _PageAdmin(
+    return PageAdmin(
       titre: 'Inscriptions au camp',
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
@@ -1368,6 +1478,7 @@ class _PageInscriptionsCampState extends State<PageInscriptionsCamp> {
                       titre: i.nomComplet,
                       sousTitre: [
                         if (i.matricule.isNotEmpty) i.matricule,
+                        if (i.badgeId.isNotEmpty) i.badgeId,
                         if (i.inscritLe != null) afficherDate(i.inscritLe!),
                         if (i.passVisible) 'Pass visible',
                         if (i.contactParent.isNotEmpty)
@@ -1376,6 +1487,247 @@ class _PageInscriptionsCampState extends State<PageInscriptionsCamp> {
                     ),
               ],
             ),
+    );
+  }
+}
+
+/// Formulaire d'inscription au camp, correction de suivi
+/// 27 nov. 2026 : les 5 sections du formulaire KAIROS 2027
+/// d'Axel. Le nom vient de la personne choisie, le téléphone
+/// du campeur n'est pas obligatoire, le contact d'urgence
+/// l'est, nom et téléphone. Le médical est confidentiel.
+class PageInscriptionCamp extends StatefulWidget {
+  const PageInscriptionCamp({
+    super.key,
+    required this.service,
+    required this.campId,
+    required this.personne,
+  });
+  final ServiceT18 service;
+  final String campId;
+  final PersonneChoisie personne;
+
+  @override
+  State<PageInscriptionCamp> createState() => _PageInscriptionCampState();
+}
+
+class _PageInscriptionCampState extends State<PageInscriptionCamp> {
+  final _age = TextEditingController();
+  final _telephone = TextEditingController();
+  final _email = TextEditingController();
+  final _residence = TextEditingController();
+  final _niveauEtude = TextEditingController();
+  final _profession = TextEditingController();
+  final _structure = TextEditingController();
+  final _precisionsMedicales = TextEditingController();
+  final _allergies = TextEditingController();
+  final _besoinsMedicaux = TextEditingController();
+  final _urgenceNom = TextEditingController();
+  final _urgenceTelephone = TextEditingController();
+  final _observations = TextEditingController();
+  String? _sexe;
+  String? _antecedents;
+  String? _urgenceLien;
+  var _consentement = false;
+  var _enCours = false;
+
+  @override
+  void dispose() {
+    _age.dispose();
+    _telephone.dispose();
+    _email.dispose();
+    _residence.dispose();
+    _niveauEtude.dispose();
+    _profession.dispose();
+    _structure.dispose();
+    _precisionsMedicales.dispose();
+    _allergies.dispose();
+    _besoinsMedicaux.dispose();
+    _urgenceNom.dispose();
+    _urgenceTelephone.dispose();
+    _observations.dispose();
+    super.dispose();
+  }
+
+  Future<void> _inscrire() async {
+    if (_urgenceNom.text.trim().isEmpty ||
+        _urgenceTelephone.text.trim().isEmpty) {
+      _message(context, 'Le contact d’urgence est obligatoire.');
+      return;
+    }
+    if (!_consentement) {
+      _message(context, 'Le consentement est obligatoire.');
+      return;
+    }
+    final age = int.tryParse(_age.text.trim());
+    if (_age.text.trim().isNotEmpty && age == null) {
+      _message(context, 'L’âge doit être un nombre.');
+      return;
+    }
+    setState(() => _enCours = true);
+    final inscrite = await widget.service.inscrireAuCampAdmin(
+      widget.campId,
+      {
+        if (!widget.personne.externe) 'membre_id': widget.personne.id,
+        if (widget.personne.externe)
+          'personne_externe_id': widget.personne.id,
+        if (age != null) 'age': age,
+        if (_sexe != null) 'sexe': _sexe,
+        if (_telephone.text.trim().isNotEmpty)
+          'telephone': _telephone.text.trim(),
+        if (_email.text.trim().isNotEmpty) 'email': _email.text.trim(),
+        if (_residence.text.trim().isNotEmpty)
+          'residence': _residence.text.trim(),
+        if (_niveauEtude.text.trim().isNotEmpty)
+          'niveau_etude': _niveauEtude.text.trim(),
+        if (_profession.text.trim().isNotEmpty)
+          'profession': _profession.text.trim(),
+        if (_structure.text.trim().isNotEmpty)
+          'structure_appartenance': _structure.text.trim(),
+        if (_antecedents != null) 'antecedents_medicaux': _antecedents,
+        if (_precisionsMedicales.text.trim().isNotEmpty)
+          'precisions_medicales': _precisionsMedicales.text.trim(),
+        if (_allergies.text.trim().isNotEmpty)
+          'allergies': _allergies.text.trim(),
+        if (_besoinsMedicaux.text.trim().isNotEmpty)
+          'besoins_medicaux': _besoinsMedicaux.text.trim(),
+        'contact_urgence_nom': _urgenceNom.text.trim(),
+        if (_urgenceLien != null) 'contact_urgence_lien': _urgenceLien,
+        'contact_urgence_telephone': _urgenceTelephone.text.trim(),
+        if (_observations.text.trim().isNotEmpty)
+          'observations': _observations.text.trim(),
+      },
+    );
+    if (!mounted) return;
+    setState(() => _enCours = false);
+    if (inscrite == null) {
+      _message(context, 'Inscription impossible.');
+      return;
+    }
+    final badgeId = (inscrite['badge_id'] ?? '').toString();
+    _message(
+      context,
+      badgeId.isEmpty
+          ? '${widget.personne.nom} inscrit(e) au camp.'
+          : '${widget.personne.nom} inscrit(e) au camp. Badge $badgeId.',
+    );
+    Navigator.of(context).pop(true);
+  }
+
+  Widget _champ(
+    TextEditingController controleur,
+    String libelle, {
+    TextInputType clavier = TextInputType.text,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: controleur,
+        keyboardType: clavier,
+        decoration: InputDecoration(
+          labelText: libelle,
+          border: const OutlineInputBorder(),
+        ),
+      ),
+    );
+  }
+
+  Widget _choix(
+    String libelle,
+    String? valeur,
+    List<String> options,
+    ValueChanged<String?> onChoisir,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        value: valeur,
+        decoration: InputDecoration(
+          labelText: libelle,
+          border: const OutlineInputBorder(),
+        ),
+        items: [
+          for (final o in options) DropdownMenuItem(value: o, child: Text(o)),
+        ],
+        onChanged: onChoisir,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PageAdmin(
+      titre: 'Inscrire ${widget.personne.nom}',
+      enfant: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+        children: [
+          const _TitreBloc('01 · Informations personnelles'),
+          _champ(_age, 'Âge', clavier: TextInputType.number),
+          _choix('Sexe', _sexe, const ['Femme', 'Homme'],
+              (v) => setState(() => _sexe = v)),
+          _champ(_telephone, 'Téléphone (facultatif)',
+              clavier: TextInputType.phone),
+          _champ(_email, 'E-mail', clavier: TextInputType.emailAddress),
+          _champ(_residence, 'Lieu de résidence'),
+          const _TitreBloc('02 · Études et situation professionnelle'),
+          _champ(_niveauEtude, 'Niveau d’étude'),
+          _champ(_profession, 'Profession / fonction'),
+          _champ(_structure, 'Église / structure d’appartenance'),
+          const _TitreBloc('03 · Informations médicales, confidentielles'),
+          _choix(
+            'Antécédents médicaux',
+            _antecedents,
+            const ['Oui', 'Non', 'Ne souhaite pas répondre'],
+            (v) => setState(() => _antecedents = v),
+          ),
+          if (_antecedents == 'Oui')
+            _champ(_precisionsMedicales, 'Précisions'),
+          _champ(_allergies, 'Allergies'),
+          _champ(_besoinsMedicaux, 'Autres besoins'),
+          const _TitreBloc('04 · Contact en cas d’urgence'),
+          _champ(_urgenceNom, 'Nom du contact *'),
+          _choix(
+            'Lien',
+            _urgenceLien,
+            const [
+              'Père',
+              'Mère',
+              'Conjoint(e)',
+              'Frère-Sœur',
+              'Parent-Tuteur',
+              'Ami(e)',
+              'Autre',
+            ],
+            (v) => setState(() => _urgenceLien = v),
+          ),
+          _champ(_urgenceTelephone, 'Téléphone du contact *',
+              clavier: TextInputType.phone),
+          const _TitreBloc('05 · Observations'),
+          TextField(
+            controller: _observations,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Observations',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            value: _consentement,
+            onChanged: (v) => setState(() => _consentement = v ?? false),
+            title: const Text(
+              'Je confirme l’exactitude de ces informations et l’usage confidentiel des informations médicales.',
+              style: TextStyle(fontSize: 13),
+            ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: _enCours ? null : _inscrire,
+            child: Text(_enCours ? 'Inscription…' : 'Inscrire au camp'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1413,7 +1765,7 @@ class _PageBadgesCampState extends State<PageBadgesCamp> {
   @override
   Widget build(BuildContext context) {
     final service = widget.service;
-    return _PageAdmin(
+    return PageAdmin(
       titre: 'Badges du camp',
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
@@ -1435,7 +1787,10 @@ class _PageBadgesCampState extends State<PageBadgesCamp> {
                   for (final i in service.inscriptionsCamp)
                     _Ligne(
                       titre: i.nomComplet,
-                      sousTitre: i.matricule,
+                      sousTitre: [
+                        if (i.badgeId.isNotEmpty) i.badgeId,
+                        if (i.matricule.isNotEmpty) i.matricule,
+                      ].join(' · '),
                       trailing: Chip(
                         label: Text(
                           i.passVisible ? 'Pass visible' : 'Pass masqué',
@@ -1485,7 +1840,7 @@ class _PagePresencesAdminState extends State<PagePresencesAdmin> {
     for (final p in service.presences) {
       parActivite.putIfAbsent(p.activiteId, () => []).add(p);
     }
-    return _PageAdmin(
+    return PageAdmin(
       titre: 'Présences',
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
@@ -1554,7 +1909,7 @@ class _PagePresencesActiviteDetailState
   Widget build(BuildContext context) {
     final service = widget.service;
     final taux = service.tauxPresence;
-    return _PageAdmin(
+    return PageAdmin(
       titre: widget.nom,
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
@@ -1710,7 +2065,7 @@ class _PageDocumentsAdminState extends State<PageDocumentsAdmin> {
   @override
   Widget build(BuildContext context) {
     final documents = widget.service.documents;
-    return _PageAdmin(
+    return PageAdmin(
       titre: 'Documents',
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
@@ -1862,7 +2217,7 @@ class _PageAttestationsAdminState extends State<PageAttestationsAdmin> {
   @override
   Widget build(BuildContext context) {
     final attestations = widget.service.attestations;
-    return _PageAdmin(
+    return PageAdmin(
       titre: 'Attestations',
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
@@ -1961,7 +2316,7 @@ class _PageAuditAdminState extends State<PageAuditAdmin> {
   @override
   Widget build(BuildContext context) {
     final audit = widget.service.audit;
-    return _PageAdmin(
+    return PageAdmin(
       titre: 'Journal d’audit',
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
@@ -2041,7 +2396,7 @@ class _PageExportsAdminState extends State<PageExportsAdmin> {
   @override
   Widget build(BuildContext context) {
     final service = widget.service;
-    return _PageAdmin(
+    return PageAdmin(
       titre: 'Exports complets',
       enfant: ListView(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
@@ -2407,7 +2762,7 @@ class _PageAdministrateursState extends State<PageAdministrateurs> {
     final externes = widget.service.personnesExternes
         .where((p) => p.roleAdmin.isNotEmpty)
         .toList();
-    return _PageAdmin(
+    return PageAdmin(
       titre: 'Administrateurs',
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
@@ -2632,7 +2987,7 @@ class _PageNominationsAdminState extends State<PageNominationsAdmin> {
   @override
   Widget build(BuildContext context) {
     final nominations = widget.service.nominations;
-    return _PageAdmin(
+    return PageAdmin(
       titre: 'Nominations',
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
@@ -2800,7 +3155,7 @@ class _PageElectionsAdminState extends State<PageElectionsAdmin> {
   @override
   Widget build(BuildContext context) {
     final elections = widget.service.elections;
-    return _PageAdmin(
+    return PageAdmin(
       titre: 'Élections',
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
@@ -2923,7 +3278,7 @@ class _PageElectionDetailState extends State<PageElectionDetail> {
     final resultats = _resultats == null
         ? null
         : (_resultats!['resultats'] as List?) ?? const [];
-    return _PageAdmin(
+    return PageAdmin(
       titre: election?.titre ?? 'Élection',
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
@@ -3046,7 +3401,7 @@ class _PageLiensAdminState extends State<PageLiensAdmin> {
   @override
   Widget build(BuildContext context) {
     final liens = widget.service.liensEnAttente;
-    return _PageAdmin(
+    return PageAdmin(
       titre: 'Liens parent-enfant',
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
@@ -3261,7 +3616,7 @@ class _PageDepartementScolaireState extends State<PageDepartementScolaire> {
   @override
   Widget build(BuildContext context) {
     final suivis = widget.service.suivisScolaires;
-    return _PageAdmin(
+    return PageAdmin(
       titre: 'Département scolaire',
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
@@ -3422,7 +3777,7 @@ class _PageTremplinBureauState extends State<PageTremplinBureau> {
   @override
   Widget build(BuildContext context) {
     final offres = widget.service.offresLocales;
-    return _PageAdmin(
+    return PageAdmin(
       titre: 'Tremplin professionnel',
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
@@ -3713,7 +4068,7 @@ class _PagePlanningResponsablesState extends State<PagePlanningResponsables> {
   @override
   Widget build(BuildContext context) {
     final plannings = widget.service.plannings;
-    return _PageAdmin(
+    return PageAdmin(
       titre: 'Planning des responsables',
       enfant: !_charge
           ? const Center(child: CircularProgressIndicator())
@@ -3790,7 +4145,7 @@ class _PageReglagesNotificationsState extends State<PageReglagesNotifications> {
 
   @override
   Widget build(BuildContext context) {
-    return _PageAdmin(
+    return PageAdmin(
       titre: 'Réglages des notifications',
       enfant: ListView(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),

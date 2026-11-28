@@ -11,6 +11,7 @@ import 'modeles_t18.dart';
 import 'modeles_t9.dart';
 import 'page_espace_admin.dart';
 import 'page_etablissements.dart';
+import '../print_doc.dart';
 import 'page_fiche_membre.dart';
 import 'palette.dart';
 import 'service_t14.dart';
@@ -133,20 +134,7 @@ class _PageStructureState extends State<PageStructure> {
       child: InkWell(
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => PageComptabiliteAdmin(
-              service: service,
-              onOuvrirMembres: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => PageEspaceStructure(
-                    service: widget.service,
-                    serviceT14: widget.serviceT14,
-                    serviceT18: service,
-                    onOuvrirCamps: widget.onOuvrirCamps,
-                    poussee: true,
-                  ),
-                ),
-              ),
-            ),
+            builder: (_) => PageComptabiliteAdmin(service: service),
           ),
         ),
         child: Padding(
@@ -901,7 +889,6 @@ class PageEspaceStructure extends StatefulWidget {
 class _PageEspaceStructureState extends State<PageEspaceStructure> {
   var _charge = false;
   final _defilement = ScrollController();
-  final _cleMembres = GlobalKey();
 
   @override
   void initState() {
@@ -917,6 +904,7 @@ class _PageEspaceStructureState extends State<PageEspaceStructure> {
 
   Future<void> _charger() async {
     await widget.service.chargerEspaceStructure();
+    await widget.serviceT18?.chargerTableauDeBord();
     if (mounted) setState(() => _charge = true);
   }
 
@@ -926,21 +914,30 @@ class _PageEspaceStructureState extends State<PageEspaceStructure> {
     );
   }
 
-  void _allerMembres() {
-    final contexte = _cleMembres.currentContext;
-    if (contexte != null) {
-      Scrollable.ensureVisible(
-        contexte,
-        duration: const Duration(milliseconds: 400),
-      );
+  /// Toucher d'une carte du tableau de bord : chaque chiffre
+  /// s'ouvre sur son détail, correction de suivi 27 nov. 2026.
+  void _ouvrirChiffre(int index) {
+    final serviceT18 = widget.serviceT18;
+    if (serviceT18 == null) return;
+    switch (index) {
+      case 0:
+        final serviceT14 = widget.serviceT14;
+        if (serviceT14 == null) return;
+        _ouvrir(PageGererMembres(
+          serviceT14: serviceT14,
+          serviceT18: serviceT18,
+        ));
+      case 1:
+        _ouvrir(PagePresencesAdmin(service: serviceT18));
+      case 2:
+        _ouvrir(PageDetailCotisationsAdmin(service: serviceT18));
+      case 3:
+        _ouvrir(PageInscriptionsCamp(service: serviceT18));
+      case 4:
+        _ouvrir(PageLiensAdmin(service: serviceT18));
+      case 5:
+        _ouvrir(PageEtablissements(service: serviceT18, poussee: true));
     }
-  }
-
-  /// Retour depuis la Comptabilité vers Gérer les membres :
-  /// on referme la page puis on descend vers la section Membres.
-  void _retourMembres() {
-    Navigator.of(context).pop();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _allerMembres());
   }
 
   @override
@@ -966,23 +963,41 @@ class _PageEspaceStructureState extends State<PageEspaceStructure> {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
           if (serviceT18 != null) ...[
-            // Correctif global, 27 nov. 2026 : la section « En
-            // chiffres » est supprimée ici, le tableau de bord
-            // est dans la Comptabilité.
+            // Correction de suivi, 27 nov. 2026 : les chiffres
+            // sont en haut de l'Espace structure, et seulement
+            // ici. Chaque carte s'ouvre sur son détail.
+            const _TitreSection('En chiffres'),
+            GrilleChiffresAdmin(
+              chiffres: serviceT18.chiffres,
+              onOuvrir: _ouvrirChiffre,
+            ),
+            const SizedBox(height: 16),
             _ActionAdmin(
               icone: Icons.verified_outlined,
               libelle: 'Valider les paiements',
               onTap: () => _ouvrir(
-                PageComptabiliteAdmin(
-                  service: serviceT18,
-                  onOuvrirMembres: _retourMembres,
-                ),
+                PageComptabiliteAdmin(service: serviceT18),
               ),
             ),
             _ActionAdmin(
               icone: Icons.group_outlined,
               libelle: 'Gérer les membres',
-              onTap: _allerMembres,
+              onTap: () {
+                final serviceT14 = widget.serviceT14;
+                if (serviceT14 == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content:
+                          Text('Gérer les membres n’est pas disponible.'),
+                    ),
+                  );
+                  return;
+                }
+                _ouvrir(PageGererMembres(
+                  serviceT14: serviceT14,
+                  serviceT18: serviceT18,
+                ));
+              },
             ),
             _ActionAdmin(
               icone: Icons.campaign_outlined,
@@ -1034,15 +1049,6 @@ class _PageEspaceStructureState extends State<PageEspaceStructure> {
                   subtitle: Text(libelleStatutDemande(d.statut)),
                 ),
               ),
-          const SizedBox(height: 16),
-          if (widget.serviceT14 != null) ...[
-            const SizedBox(height: 16),
-            _TitreSection(
-              'Membres',
-              cle: _cleMembres,
-            ),
-            SectionMembresAdmin(service: widget.serviceT14!),
-          ],
         ],
       );
     }
@@ -1050,7 +1056,10 @@ class _PageEspaceStructureState extends State<PageEspaceStructure> {
     return Scaffold(
       backgroundColor: PaletteNouvelle.papier,
       appBar: AppBar(
-        title: const Text('Espace structure'),
+        title: const Text(
+          'Espace structure',
+          style: TextStyle(color: PaletteNouvelle.bleuNuit),
+        ),
         backgroundColor: Colors.white,
         foregroundColor: PaletteNouvelle.bleuNuit,
       ),
@@ -1064,15 +1073,7 @@ class _PageEspaceStructureState extends State<PageEspaceStructure> {
         (
           'Comptabilité',
           Icons.account_balance_outlined,
-          PageComptabiliteAdmin(
-            service: service,
-            onOuvrirMembres: _retourMembres,
-          ),
-        ),
-        (
-          'Publier une actualité',
-          Icons.campaign_outlined,
-          PagePublierActualite(service: service),
+          PageComptabiliteAdmin(service: service),
         ),
         (
           'Actualités',
@@ -1222,6 +1223,67 @@ class _EntreeAdmin extends StatelessWidget {
 /// Membres de l'administration, tranche T14 : liste chargée
 /// depuis GET /admin/membres, recherche locale par nom ou
 /// matricule, toucher un membre ouvre sa fiche avec Corriger
+/// Gérer les membres, une seule page, correction de suivi
+/// 27 nov. 2026 : la longue liste ne vit plus en bas de
+/// l'Espace structure. Recherche, impression de la liste,
+/// modification et carte du membre depuis la fiche.
+class PageGererMembres extends StatefulWidget {
+  const PageGererMembres({
+    super.key,
+    required this.serviceT14,
+    required this.serviceT18,
+  });
+  final ServiceT14 serviceT14;
+  final ServiceT18 serviceT18;
+
+  @override
+  State<PageGererMembres> createState() => _PageGererMembresState();
+}
+
+class _PageGererMembresState extends State<PageGererMembres> {
+  var _occupe = false;
+
+  Future<void> _imprimer() async {
+    setState(() => _occupe = true);
+    final octets = await widget.serviceT18.telechargerExport(
+      'membres',
+      format: 'pdf',
+    );
+    if (!mounted) return;
+    setState(() => _occupe = false);
+    if (octets == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Impression impossible.')),
+      );
+      return;
+    }
+    await downloadBytesFile('membres.pdf', octets, 'application/pdf');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PageAdmin(
+      titre: 'Gérer les membres',
+      enfant: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton.icon(
+              onPressed: _occupe ? null : _imprimer,
+              icon: const Icon(Icons.print_outlined),
+              label: Text(_occupe ? 'Impression…' : 'Imprimer la liste'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SectionMembresAdmin(service: widget.serviceT14),
+        ],
+      ),
+    );
+  }
+}
+
+/// Liste des membres pour le Bureau, avec recherche, fiche
 /// et l'adhésion.
 class SectionMembresAdmin extends StatefulWidget {
   const SectionMembresAdmin({super.key, required this.service});
@@ -1330,14 +1392,12 @@ class _SectionMembresAdminState extends State<SectionMembresAdmin> {
 }
 
 class _TitreSection extends StatelessWidget {
-  const _TitreSection(this.texte, {this.cle});
+  const _TitreSection(this.texte);
   final String texte;
-  final Key? cle;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      key: cle,
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(
         texte,

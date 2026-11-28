@@ -20,10 +20,15 @@ class PageNotificationsConnexion extends StatefulWidget {
     required this.service,
     this.onOuvrirPublication,
     this.onOuvrirProfil,
+    this.onOuvrirCotisation,
   });
   final ServiceConnexion service;
   final ValueChanged<String>? onOuvrirPublication;
   final ValueChanged<String>? onOuvrirProfil;
+
+  /// Ouvre le paiement de la cotisation, depuis le rappel
+  /// de cotisation, correction de suivi 27 nov. 2026.
+  final VoidCallback? onOuvrirCotisation;
 
   @override
   State<PageNotificationsConnexion> createState() =>
@@ -98,6 +103,8 @@ class _PageNotificationsConnexionState
       widget.onOuvrirProfil?.call(n.lienId);
     } else if (n.lienType == 'paiement' && n.lienId.isNotEmpty) {
       await _ouvrirPaiement(n);
+    } else if (n.lienType == 'cotisation') {
+      widget.onOuvrirCotisation?.call();
     }
   }
 

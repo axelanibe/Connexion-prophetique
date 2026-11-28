@@ -10,7 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
-import '../app_models.dart' show Member;
+import '../app_models.dart' show Member, memberPhotoWidget;
 import '../gallery_save.dart';
 import '../telechargement_image.dart';
 import 'modeles_t9.dart';
@@ -88,7 +88,11 @@ class _PageGalerieState extends State<PageGalerie> {
 }
 
 /// Visuel du badge de camp, réutilisé par la galerie et sa page
-/// dédiée : nom, matricule, camp, QR du pass.
+/// dédiée : modèle officiel KAIROS 2027, correction de suivi
+/// 27 nov. 2026. Fond blanc et bleu, KAIROS 2027, photo, nom,
+/// ID KP2027, QR, bande CAMPEUR, devise. Données réelles du
+/// membre seulement, une ligne absente quand la donnée manque.
+/// Hors Kairos, le nom du camp remplace KAIROS 2027.
 class BadgeCampVisuel extends StatelessWidget {
   const BadgeCampVisuel({
     super.key,
@@ -101,49 +105,321 @@ class BadgeCampVisuel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final m = membre;
+    final kairos = inscription.estKairos;
+    final id = inscription.badgeId.isNotEmpty
+        ? inscription.badgeId
+        : (m?.matricule ?? '');
+    final photo = m == null ? null : memberPhotoWidget(m);
+    final etiquette = kairos ? 'KAIROS 2027' : inscription.nom;
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
       decoration: BoxDecoration(
-        color: PaletteNouvelle.bleuNuit,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: PaletteNouvelle.or, width: 1.5),
+        border: Border.all(color: PaletteNouvelle.bleuNuit, width: 2),
       ),
       child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: const BoxDecoration(
+                  color: PaletteNouvelle.bleuNuit,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: const Text(
+                  'CP',
+                  style: TextStyle(
+                    color: PaletteNouvelle.or,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'Connexion Prophétique',
+                style: TextStyle(
+                  color: PaletteNouvelle.bleuNuit,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          if (kairos)
+            const Text.rich(
+              TextSpan(
+                style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900),
+                children: [
+                  TextSpan(
+                    text: 'KAIROS ',
+                    style: TextStyle(color: PaletteNouvelle.bleuNuit),
+                  ),
+                  TextSpan(
+                    text: '2027',
+                    style: TextStyle(color: Color(0xFFD92B2B)),
+                  ),
+                ],
+              ),
+            )
+          else
+            Text(
+              inscription.nom,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: PaletteNouvelle.bleuNuit,
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          if (kairos) ...[
+            const SizedBox(height: 2),
+            const Row(
+              children: [
+                Expanded(
+                  child: Divider(color: PaletteNouvelle.bleuNuit),
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(
+                    'Se disposer • S’aligner • Rayonner',
+                    style: TextStyle(
+                      color: PaletteNouvelle.bleuNuit,
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Divider(color: PaletteNouvelle.bleuNuit),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 84,
+                height: 104,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: PaletteNouvelle.bleuNuit,
+                    width: 1.5,
+                  ),
+                  color: const Color(0xFFF4F6F9),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: photo == null
+                    ? const Icon(
+                        Icons.person_outlined,
+                        color: PaletteNouvelle.bleuNuit,
+                        size: 40,
+                      )
+                    : SizedBox.expand(child: photo),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      m?.name ?? '',
+                      style: const TextStyle(
+                        color: PaletteNouvelle.bleuNuit,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    if (kairos) ...[
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: PaletteNouvelle.bleuNuit,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.person_outlined,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                            SizedBox(width: 4),
+                            Text(
+                              'Campeur',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    if (id.isNotEmpty)
+                      _LigneBadge(
+                        icone: Icons.badge_outlined,
+                        texte: 'ID : $id',
+                      ),
+                    if (inscription.age != null)
+                      _LigneBadge(
+                        icone: Icons.cake_outlined,
+                        texte: 'Âge : ${inscription.age} ans',
+                      ),
+                    if (inscription.niveauEtude.isNotEmpty)
+                      _LigneBadge(
+                        icone: Icons.school_outlined,
+                        texte: 'Niveau : ${inscription.niveauEtude}',
+                      ),
+                    if (inscription.structureAppartenance.isNotEmpty)
+                      _LigneBadge(
+                        icone: Icons.church_outlined,
+                        texte:
+                            'Structure : ${inscription.structureAppartenance}',
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: PaletteNouvelle.bleuNuit,
+                    width: 1.5,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    QrImageView(
+                      data: inscription.qrData(m?.matricule ?? ''),
+                      version: QrVersions.auto,
+                      size: 76,
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: PaletteNouvelle.bleuNuit,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        etiquette,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: PaletteNouvelle.bleuNuit,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(width: 16),
+                const Expanded(child: Divider(color: Colors.white)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    kairos ? 'CAMPEUR' : inscription.nom.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                ),
+                const Expanded(child: Divider(color: Colors.white)),
+                const SizedBox(width: 16),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (kairos)
+            const Text(
+              'Ensemble pour une génération transformée par Dieu',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: PaletteNouvelle.bleuNuit,
+                fontStyle: FontStyle.italic,
+                fontSize: 13,
+              ),
+            ),
+          const SizedBox(height: 4),
+          Text(
+            kairos
+                ? 'KAIROS 2027 — Connexion Prophétique'
+                : 'Connexion Prophétique',
+            style: const TextStyle(
+              color: PaletteNouvelle.bleuNuit,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Ligne d'information du badge, icône et texte bleu nuit.
+class _LigneBadge extends StatelessWidget {
+  const _LigneBadge({required this.icone, required this.texte});
+  final IconData icone;
+  final String texte;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            inscription.estKairos ? 'Camp National Kairos' : inscription.nom,
-            style: const TextStyle(
-              color: PaletteNouvelle.or,
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            m?.name ?? '',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          Text(
-            m?.matricule ?? '',
-            style: const TextStyle(color: Colors.white70, fontSize: 14),
-          ),
-          const SizedBox(height: 12),
-          Center(
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: QrImageView(
-                data: inscription.qrData(m?.matricule ?? ''),
-                version: QrVersions.auto,
-                size: 140,
+          Icon(icone, size: 14, color: PaletteNouvelle.bleuNuit),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              texte,
+              style: const TextStyle(
+                color: PaletteNouvelle.bleuNuit,
+                fontSize: 12,
               ),
             ),
           ),

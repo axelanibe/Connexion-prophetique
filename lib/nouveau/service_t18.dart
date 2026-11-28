@@ -21,6 +21,11 @@ abstract class ServiceT18 {
   List<ChiffreAdmin> get chiffres;
   Future<void> chargerChiffres();
 
+  /// Lecture groupée du tableau de bord, correction de suivi
+  /// 27 nov. 2026 : les 6 chiffres et la comptabilité du mois
+  /// en cours en un seul appel.
+  Future<void> chargerTableauDeBord();
+
   ComptabiliteAdmin? get comptabilite;
   Future<void> chargerComptabilite({String? mois, String? etablissementId});
 
@@ -44,6 +49,32 @@ abstract class ServiceT18 {
     String? etablissementId,
     DateTime? programmeeLe,
   });
+
+  /// Annonce audio, correction de suivi 27 nov. 2026 : même
+  /// outil de publication que le texte, avec établissement et
+  /// programmation.
+  Future<bool> publierAnnonceAudio({
+    required String titre,
+    String? texte,
+    String? audioId,
+    String? lienAudio,
+    String? etablissementId,
+    DateTime? programmeeLe,
+  });
+
+  /// Carte vidéo, correction de suivi 27 nov. 2026 : même
+  /// outil de publication, avec établissement et programmation.
+  Future<bool> publierCarteVideo({
+    required String titre,
+    String? explication,
+    required String lienVideo,
+    String? etablissementId,
+    DateTime? programmeeLe,
+  });
+
+  /// Téléversement d'un audio, renvoie l'identifiant du
+  /// fichier, null en cas d'échec.
+  Future<String?> televerserAudio(List<int> octets, String nomFichier);
   Future<bool> modifierActualite(
     String id, {
     String? titre,
@@ -143,6 +174,11 @@ abstract class ServiceT18 {
 
   List<PaiementAdmin> get paiementsTous;
   Future<void> chargerPaiementsTous({String? statut});
+
+  /// Détail des cotisations, correction de suivi 27 nov. 2026.
+  List<PaiementAdmin> get paiementsCotisations;
+  Map<String, dynamic> get totauxCotisations;
+  Future<void> chargerPaiementsCotisations();
   String exporterMembresCsv(List<MembreAdmin> membres);
   String exporterPaiementsCsv();
   String exporterPresencesCsv();
@@ -281,124 +317,57 @@ class ServiceT18Reel implements ServiceT18 {
   @override
   List<ChiffreAdmin> chiffres = const [];
 
-  /// Lecture d'un chiffre avec nouvelle tentative, correctif
-  /// global 27 nov. 2026 : la rafale de 6 lectures au chargement
-  /// se faisait 429 (limite 120/min par IP), et chaque échec
-  /// laissait un « — » définitif. Sur 429 ou 5xx, on attend le
-  /// délai du serveur (delaiReessai) puis on réessaie, 3 fois
-  /// au plus. Les autres erreurs ne sont pas réessayées.
-  Future<T?> _lireChiffre<T>(Future<T> Function() lecture) async {
-    for (var essai = 0; essai < 3; essai++) {
-      try {
-        return await lecture();
-      } on ApiException catch (e) {
-        final transitoire =
-            e.status == 429 || (e.status != null && e.status! >= 500);
-        if (!transitoire || essai == 2) return null;
-        await Future<void>.delayed(
-          Duration(seconds: e.delaiReessai ?? 1),
-        );
-      } catch (_) {
-        return null;
-      }
-    }
-    return null;
-  }
+  /// Clés de la route groupée, dans l'ordre des libellés.
+  static const _clesChiffres = [
+    'membres',
+    'presences',
+    'cotisations',
+    'inscriptions',
+    'demandes',
+    'etablissements',
+  ];
 
   @override
-  Future<void> chargerChiffres() async {
-    // La dernière valeur connue est gardée quand une lecture
-    // échoue encore après les nouvelles tentatives : jamais
-    // de « — » comme état final quand on a déjà un chiffre.
+  Future<void> chargerChiffres() async => chargerTableauDeBord();
+
+  /// Tableau de bord, correction de suivi 27 nov. 2026 : UNE
+  /// seule lecture groupée, les 6 chiffres et la comptabilité
+  /// du mois en cours, au lieu des 6 lectures séquentielles
+  /// qui se faisaient 429 en rafale. La dernière valeur connue
+  /// est gardée quand la lecture échoue : jamais de « — » comme
+  /// état final quand on a déjà un chiffre.
+  @override
+  Future<void> chargerTableauDeBord() async {
     final anciennes = {
       for (final c in chiffres) c.libelle: c.valeur,
     };
-    final valeurs = List<String?>.filled(6, null);
-    // 1. Membres inscrits, GET /admin/membres.
-    final membres = await _lireChiffre(() => _api.fetchAdminMembres());
-    if (membres != null) {
-      valeurs[0] = formaterNombre(membres.length);
-      accesAdmin = true;
-    } else {
-      accesAdmin = false;
-    }
-    // 2. Présences ce mois, GET /presences, en nombre.
-    final presences = await _lireChiffre(() => _api.fetchPresences());
-    if (presences != null) {
-      final maintenant = DateTime.now();
-      var nb = 0;
-      for (final l in presences) {
-        final p = PresenceLigne.depuisJson(l);
-        final d = p.scanneLe;
-        if (d != null &&
-            d.year == maintenant.year &&
-            d.month == maintenant.month) {
-          nb++;
-        }
+    try {
+      final data = await _api.fetchTableauDeBord();
+      final valeurs = data['chiffres'];
+      if (valeurs is Map<String, dynamic>) {
+        chiffres = [
+          for (var i = 0; i < libellesChiffres.length; i++)
+            ChiffreAdmin(
+              libelle: libellesChiffres[i],
+              valeur: valeurs[_clesChiffres[i]] is num
+                  ? formaterNombre((valeurs[_clesChiffres[i]] as num).toInt())
+                  : anciennes[libellesChiffres[i]] ?? '—',
+            ),
+        ];
+        accesAdmin = true;
       }
-      valeurs[1] = formaterNombre(nb);
-    }
-    // 3. Cotisations, GET /admin/paiements/totaux?type=cotisation.
-    final totaux = await _lireChiffre(
-      () => _api.fetchAdminPaymentsTotaux(type: 'cotisation'),
-    );
-    if (totaux != null) {
-      final total = (totaux['total_confirme'] as num?)?.toInt() ?? 0;
-      valeurs[2] = formaterNombre(total);
-    }
-    // 4. Inscriptions au camp, prochain événement.
-    final evenements = await _lireChiffre(() => _api.fetchEvenements());
-    if (evenements != null) {
-      final camps = [
-        for (final l in evenements) EvenementAdmin.depuisJson(l),
-      ];
-      final prochain = EvenementAdmin.prochain(camps);
-      if (prochain != null) {
-        final inscriptions = await _lireChiffre(
-          () => _api.fetchAdminInscriptions(prochain.id),
-        );
-        if (inscriptions != null) {
-          valeurs[3] = formaterNombre(inscriptions.length);
-        }
+      final compta = data['comptabilite'];
+      if (compta is Map<String, dynamic>) {
+        comptabilite = ComptabiliteAdmin.depuisJson(compta);
+      }
+    } catch (_) {
+      if (chiffres.isEmpty) {
+        chiffres = [
+          for (final libelle in libellesChiffres)
+            ChiffreAdmin(libelle: libelle, valeur: '—'),
+        ];
       }
     }
-    // 5. Demandes en attente : liens parent-enfant en attente
-    // plus demandes de prière en attente. Les deux lectures
-    // sont indépendantes : l'échec de l'une ne fait plus
-    // tomber tout le chiffre.
-    var demandes = 0;
-    var demandesLues = false;
-    final liens = await _lireChiffre(
-      () => _api.fetchLiensParentEnfantAdmin(statut: 'en_attente'),
-    );
-    if (liens != null) {
-      demandes += liens.length;
-      demandesLues = true;
-    }
-    final bureau = await _lireChiffre(() => _api.fetchDemandesPriereBureau());
-    if (bureau != null) {
-      final liste = (bureau['demandes'] as List?) ?? const [];
-      for (final l in liste) {
-        if (l is Map<String, dynamic>) {
-          final d = DemandeSuivi.depuisJson(l);
-          if (d.statut == 'en_attente') demandes++;
-        }
-      }
-      demandesLues = true;
-    }
-    if (demandesLues) valeurs[4] = formaterNombre(demandes);
-    // 6. Établissements, GET /etablissements.
-    final etablissements = await _lireChiffre(() => _api.fetchEtablissements());
-    if (etablissements != null) {
-      valeurs[5] = formaterNombre(etablissements.length);
-    }
-    chiffres = [
-      for (var i = 0; i < libellesChiffres.length; i++)
-        ChiffreAdmin(
-          libelle: libellesChiffres[i],
-          valeur: valeurs[i] ?? anciennes[libellesChiffres[i]] ?? '—',
-        ),
-    ];
   }
 
   @override
@@ -506,6 +475,69 @@ class ServiceT18Reel implements ServiceT18 {
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Annonce audio, correction de suivi 27 nov. 2026 : l'audio
+  /// revient dans l'outil unique de publication, avec le choix
+  /// de l'établissement et la programmation.
+  @override
+  Future<bool> publierAnnonceAudio({
+    required String titre,
+    String? texte,
+    String? audioId,
+    String? lienAudio,
+    String? etablissementId,
+    DateTime? programmeeLe,
+  }) async {
+    try {
+      await _api.createAnnonceAudio(
+        titre: titre,
+        texte: texte,
+        audioId: audioId,
+        lienAudio: lienAudio,
+        etablissementId: etablissementId,
+        programmeeLe: programmeeLe,
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Carte vidéo, correction de suivi 27 nov. 2026 : même
+  /// outil unique, avec le choix de l'établissement et la
+  /// programmation, comme l'annonce audio.
+  @override
+  Future<bool> publierCarteVideo({
+    required String titre,
+    String? explication,
+    required String lienVideo,
+    String? etablissementId,
+    DateTime? programmeeLe,
+  }) async {
+    try {
+      await _api.createCarteVideo(
+        titre: titre,
+        explication: explication,
+        lienVideo: lienVideo,
+        etablissementId: etablissementId,
+        programmeeLe: programmeeLe,
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Téléversement d'un audio (annonce audio), renvoie
+  /// l'identifiant du fichier, null en cas d'échec.
+  @override
+  Future<String?> televerserAudio(List<int> octets, String nomFichier) async {
+    try {
+      return await _api.uploadAudio(bytes: octets, filename: nomFichier);
+    } catch (_) {
+      return null;
     }
   }
 
@@ -927,6 +959,31 @@ class ServiceT18Reel implements ServiceT18 {
     } catch (_) {
       paiementsTous = [];
     }
+  }
+
+  /// Détail des cotisations, correction de suivi 27 nov. 2026 :
+  /// liste des paiements de cotisation et leurs totaux, pour la
+  /// carte Cotisations du tableau de bord.
+  @override
+  List<PaiementAdmin> paiementsCotisations = const [];
+
+  @override
+  Map<String, dynamic> totauxCotisations = const {};
+
+  @override
+  Future<void> chargerPaiementsCotisations() async {
+    try {
+      final lignes = await _api.fetchAdminPayments(type: 'cotisation');
+      paiementsCotisations = [
+        for (final l in lignes) PaiementAdmin.depuisJson(l),
+      ];
+    } catch (_) {
+      paiementsCotisations = [];
+    }
+    try {
+      totauxCotisations =
+          await _api.fetchAdminPaymentsTotaux(type: 'cotisation');
+    } catch (_) {}
   }
 
   String _csv(List<List<String>> lignes) {

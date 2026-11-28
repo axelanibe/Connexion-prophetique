@@ -200,6 +200,46 @@ class _PageChronogrammeLectureState extends State<PageChronogrammeLecture> {
   }
 }
 
+/// Aperçu du modèle officiel, correction de suivi 27 nov.
+/// 2026 : le chronogramme officiel du camp, semaine type
+/// dimanche à samedi, 14 plages, 76 créneaux, 5 h à 23 h.
+/// Copie d'affichage du document officiel d'Axel, alignée
+/// avec MODELE_CHRONOGRAMME côté serveur, qui fait foi à
+/// l'application. Les signataires du document ne sont pas
+/// des créneaux, ils ne figurent pas ici.
+const _apercuModeleChronogramme = [
+  ('05:00 – 05:30', 'Réveil matinal', 'lun. – ven.'),
+  ('05:30 – 06:30', 'Dans sa présence', 'lun. – ven.'),
+  ('06:30 – 07:30', 'Ménage + toilette', 'lun. – ven.'),
+  ('07:30 – 08:00', 'Petit-déjeuner', 'lun. – ven.'),
+  ('08:00 – 10:30', 'Enseignement 1, 3, 5, 7, 9', 'lun. – ven.'),
+  (
+    '10:30 – 12:15',
+    'Atelier 1 à 4, Évangélisation, Journée sportive',
+    'lun. – sam.',
+  ),
+  ('12:15 – 12:30', 'À cœur ouvert, Repas', 'lun. – ven.'),
+  ('12:30 – 14:00', 'Repos', 'lun. – ven.'),
+  (
+    '14:00 – 16:00',
+    'Rassemblement, Enseignement 2, 4, 6, 8, Sortie',
+    'dim. – ven.',
+  ),
+  (
+    '16:00 – 17:00',
+    'Départ, Éco-Évangile, Évangélisation, Jeux biblique',
+    'dim. – ven.',
+  ),
+  ('17:00 – 18:00', 'Toilette, Rupture + toilette', 'dim. – ven.'),
+  ('18:00 – 19:30', 'Réfectoire', 'tous les jours'),
+  (
+    '19:45 – 22:45',
+    'Culte d’ouverture, Soirée d’édification, Mise en place pour la veillée',
+    'dim. – ven.',
+  ),
+  ('22:50 – 23:00', 'Extinction des lumières', 'lun. – jeu.'),
+];
+
 /// Gestion du programme, pour la structure.
 class PageChronogrammeAdmin extends StatefulWidget {
   const PageChronogrammeAdmin({
@@ -248,11 +288,68 @@ class _PageChronogrammeAdminState extends State<PageChronogrammeAdmin> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Appliquer le modèle'),
-        content: TextField(
-          controller: dimanche,
-          decoration: const InputDecoration(
-            labelText: 'Dimanche de la semaine (AAAA-MM-JJ)',
-            border: OutlineInputBorder(),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Chronogramme officiel, semaine type dimanche à samedi',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  '76 créneaux, 5 h à 23 h.',
+                  style: TextStyle(color: Colors.grey, fontSize: 13),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 220,
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final (heures, titre, jours)
+                          in _apercuModeleChronogramme)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: 96,
+                                child: Text(
+                                  heures,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  '$titre · $jours',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: dimanche,
+                  decoration: const InputDecoration(
+                    labelText: 'Dimanche de la semaine',
+                    hintText: 'AAAA-MM-JJ',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
         actions: [

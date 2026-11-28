@@ -520,132 +520,161 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
     );
   }
 
+  /// Carte livre, correction de suivi 27 nov. 2026 : ligne
+  /// horizontale de la maquette, bookRow. Petit bouton à
+  /// droite, à côté du menu trois points, libellés selon
+  /// l'état : Lire l'ouvrage, Dans le panier, Acheter.
   Widget _carteLivre(Book livre) {
     final achete = _service.estAchete(livre);
     final dansPanier = _service.dansPanier(livre);
+    final couleurBouton = achete
+        ? PaletteNouvelle.bleuNuit
+        : dansPanier
+            ? _grisTexte
+            : PaletteNouvelle.bleuNuit;
+    final libelleBouton =
+        achete ? "Lire l'ouvrage" : dansPanier ? 'Dans le panier' : 'Acheter';
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        child: Row(
           children: [
-            Row(children: [
-              Expanded(
-                child: Text(livre.title,
-                    maxLines: 2,
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: PaletteNouvelle.bleuNuit,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                LucideIcons.bookOpen,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          livre.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      if (livreEstNouveau(livre)) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F5E9),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'NOUVEAU',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: _vert,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    livre.author,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w700)),
-              ),
-              PopupMenuButton<String>(
-                tooltip: 'Actions',
-                icon: const Icon(LucideIcons.ellipsisVertical),
-                onSelected: (v) async {
-                  if (v == 'partager') {
-                    await _service.partager(livre);
-                  } else if (v == 'modifier') {
-                    await _feuilleLivre(livre: livre);
-                  } else if (v == 'retirer') {
-                    await _retirerLivre(livre);
-                  }
-                },
-                itemBuilder: (_) => [
-                  const PopupMenuItem(
-                      value: 'partager', child: Text('Partager')),
-                  if (_service.estAdminGeneral)
-                    const PopupMenuItem(
-                        value: 'modifier', child: Text('Modifier')),
-                  if (_service.estAdminGeneral)
-                    const PopupMenuItem(
-                        value: 'retirer',
-                        child: Text('Retirer',
-                            style: TextStyle(color: Colors.red))),
-                ],
-              ),
-            ]),
-            Text(livre.author,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: _grisTexte)),
-            const SizedBox(height: 8),
-            Wrap(spacing: 6, runSpacing: 6, children: [
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                    color: const Color(0xFFFEF3C7),
-                    border: Border.all(color: const Color(0xFFFDE68A)),
-                    borderRadius: BorderRadius.circular(8)),
-                child: Text(fcfaLivre(livre.price),
-                    style: const TextStyle(
-                        color: PaletteNouvelle.orFonce,
-                        fontWeight: FontWeight.w700)),
-              ),
-              if (livreEstNouveau(livre))
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                      color: _grisFond, borderRadius: BorderRadius.circular(8)),
-                  child: const Text('Nouveau',
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: _grisTexte)),
-                ),
-              if (livre.format.trim().isNotEmpty)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                      color: _grisFond, borderRadius: BorderRadius.circular(8)),
-                  child: Text(livre.format.trim(),
-                      style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: _grisTexte)),
-                ),
-            ]),
-            const SizedBox(height: 8),
-            Row(children: [
-              Icon(achete ? Icons.check_circle : Icons.lock_outlined,
-                  size: 14, color: achete ? _vert : _grisTexte),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
+                    style: const TextStyle(fontSize: 12, color: _grisTexte),
+                  ),
+                  Text(
+                    [
+                      if (livre.format.trim().isNotEmpty) livre.format.trim(),
+                      fcfaLivre(livre.price),
+                    ].join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, color: _grisTexte),
+                  ),
+                  Text(
                     achete
-                        ? 'Fichier débloqué • Prêt à lire'
+                        ? 'Fichier débloqué, prêt à lire'
                         : 'Accès immédiat après paiement',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        fontSize: 11, color: achete ? _vert : _grisTexte)),
+                      fontSize: 12,
+                      color: achete ? _vert : _grisTexte,
+                    ),
+                  ),
+                ],
               ),
-            ]),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: achete
-                  ? FilledButton(
-                      style: FilledButton.styleFrom(backgroundColor: _vert),
-                      onPressed: () => _acheter(livre),
-                      child: const Text("Lire l'ouvrage"),
-                    )
-                  : dansPanier
-                      ? FilledButton(
-                          style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF1E3A5F)),
-                          onPressed: () => _acheter(livre),
-                          child: const Text('Déjà dans le panier'),
-                        )
-                      : FilledButton(
-                          style: FilledButton.styleFrom(
-                              backgroundColor: PaletteNouvelle.bleuNuit),
-                          onPressed: () => _acheter(livre),
-                          child: const Text('Acheter'),
-                        ),
+            ),
+            const SizedBox(width: 8),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: couleurBouton,
+                    minimumSize: const Size(0, 38),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                  ),
+                  onPressed: () => _acheter(livre),
+                  child: Text(
+                    libelleBouton,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  tooltip: 'Actions',
+                  icon: const Icon(LucideIcons.ellipsisVertical),
+                  onSelected: (v) async {
+                    if (v == 'partager') {
+                      await _service.partager(livre);
+                    } else if (v == 'modifier') {
+                      await _feuilleLivre(livre: livre);
+                    } else if (v == 'retirer') {
+                      await _retirerLivre(livre);
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                        value: 'partager', child: Text('Partager')),
+                    if (_service.estAdminGeneral)
+                      const PopupMenuItem(
+                          value: 'modifier', child: Text('Modifier')),
+                    if (_service.estAdminGeneral)
+                      const PopupMenuItem(
+                          value: 'retirer',
+                          child: Text('Retirer',
+                              style: TextStyle(color: Colors.red))),
+                  ],
+                ),
+              ],
             ),
           ],
         ),
