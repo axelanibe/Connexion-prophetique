@@ -461,6 +461,13 @@ class LecteurAudio extends StatefulWidget {
   final Color couleur;
   final Color couleurTexte;
 
+  /// Appelé quand la lecture arrive à sa fin.
+  final VoidCallback? onTermine;
+
+  /// Vrai pour lancer la lecture dès l'affichage, comme
+  /// dans le lecteur de story.
+  final bool lectureAuto;
+
   const LecteurAudio({
     super.key,
     required this.chargerSource,
@@ -468,6 +475,8 @@ class LecteurAudio extends StatefulWidget {
     this.niveaux,
     required this.couleur,
     required this.couleurTexte,
+    this.onTermine,
+    this.lectureAuto = false,
   });
 
   @override
@@ -488,6 +497,16 @@ class _LecteurAudioState extends State<LecteurAudio> {
       (_dureeReelle != null && _dureeReelle! > Duration.zero)
           ? _dureeReelle!
           : widget.duree;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.lectureAuto) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _basculer();
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -517,7 +536,11 @@ class _LecteurAudioState extends State<LecteurAudio> {
         if (mounted) setState(() => _position = p);
       });
       _abonnementEtat = lecteur.playerStateStream.listen((etat) {
-        if (mounted) setState(() => _enCours = etat.playing);
+        if (!mounted) return;
+        setState(() => _enCours = etat.playing);
+        if (etat.processingState == ProcessingState.completed) {
+          widget.onTermine?.call();
+        }
       });
       _abonnementDuree = lecteur.durationStream.listen((d) {
         if (mounted && d != null) setState(() => _dureeReelle = d);

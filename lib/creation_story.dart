@@ -1,6 +1,8 @@
 // Page « Créer une story », 17 nov. 2026, correctif tiroir et
 // création directe : toucher Publier ouvre cette page plein écran,
-// sans la feuille Photo et Vidéo. Modes Photo, Vidéo, Texte en V1.
+// sans la feuille Photo et Vidéo. Deux modes, correction de suivi
+// 27 nov. 2026 : Photo ou vidéo, et Texte. Plus un audio à
+// enregistrer, 60 s au plus, écoutable comme un message vocal.
 // Sur téléphone, grille des photos et vidéos récentes de
 // l'appareil ; sur le web, sélecteur de fichiers. Aperçu avant
 // publication, puis même publication que la feuille (photo max
@@ -8,6 +10,7 @@
 // qualité 80). Publication par la structure seulement, mêmes
 // routes serveur, aucune modification serveur. Musique, Collage
 // et Boomerang ne sont pas dans cette tranche.
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
@@ -16,10 +19,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
+import 'package:just_audio/just_audio.dart';
 
 import 'api.dart';
 import 'galerie_story.dart';
 import 'i18n.dart';
+import 'magnetophone.dart';
 
 const _nuit = Color(0xFF0F1C2E);
 const _or = Color(0xFFE5C158);
@@ -27,7 +32,9 @@ const _grisTexte = Color(0xFF5E687C);
 
 const _tailleMaxPhoto = 5 * 1024 * 1024;
 const _tailleMaxVideo = 25 * 1024 * 1024;
+const _tailleMaxAudio = 10 * 1024 * 1024;
 const _dureeMaxVideo = Duration(seconds: 60);
+const _dureeMaxAudio = Duration(seconds: 60);
 
 /// Compression d'une photo pour une story : largeur 1280 px au
 /// plus, JPEG qualité 80, comme le sélecteur image_picker.
@@ -49,7 +56,12 @@ const fondsStoryTexte = <Color>[
 ];
 
 class CreationStoryPage extends StatefulWidget {
-  const CreationStoryPage({super.key, required this.client, this.chargeur, this.surWeb});
+  const CreationStoryPage(
+      {super.key,
+      required this.client,
+      this.chargeur,
+      this.surWeb,
+      this.enregistreur});
 
   final ApiClient client;
 
@@ -60,12 +72,16 @@ class CreationStoryPage extends StatefulWidget {
   /// Sur le web, injecté pour les tests, kIsWeb sinon.
   final bool? surWeb;
 
+  /// Enregistreur audio injecté pour les tests, celui de la
+  /// plateforme sinon.
+  final EnregistreurAudio? enregistreur;
+
   @override
   State<CreationStoryPage> createState() => _CreationStoryPageState();
 }
 
 class _CreationStoryPageState extends State<CreationStoryPage> {
-  String _mode = 'photo';
+  String _mode = 'media';
   final _texteControleur = TextEditingController();
   int _fondIndex = 0;
   final _cleApercuTexte = GlobalKey();
@@ -75,7 +91,14 @@ class _CreationStoryPageState extends State<CreationStoryPage> {
   ElementGalerie? _selectionne;
   Uint8List? _apercuOctets;
   String? _apercuNom;
+  bool _apercuEstVideo = false;
   bool _publicationEnCours = false;
+  EnregistreurAudio? _enregistreur;
+  SonEnregistre? _audio;
+  bool _enregistrement = false;
+  Timer? _chronoAudio;
+  final _chrono = Stopwatch();
+  Duration _dureeAudio = Duration.zero;
 
   bool get _surWeb => widget.surWeb ?? kIsWeb;
   ChargeurGalerie get _chargeur => widget.chargeur ?? creerChargeurGalerie();
@@ -88,6 +111,8 @@ class _CreationStoryPageState extends State<CreationStoryPage> {
 
   @override
   void dispose() {
+    _chronoAudio?.cancel();
+    _enregistreur?.liberer();
     _texteControleur.dispose();
     super.dispose();
   }
@@ -109,6 +134,8 @@ class _CreationStoryPageState extends State<CreationStoryPage> {
       _selectionne = null;
       _apercuOctets = null;
       _apercuNom = null;
+      _apercuEstVideo = false;
+      _audio = null;
     });
   }
 
@@ -122,12 +149,17 @@ class _CreationStoryPageState extends State<CreationStoryPage> {
     // fonctionne en natif.
     try {
       if (_surWeb) {
-        final extensions = _mode == 'photo'
-            ? const ['jpg', 'jpeg', 'png', 'webp']
-            : const ['mp4', 'mov', 'webm'];
         final result = await FilePicker.platform.pickFiles(
           type: FileType.custom,
-          allowedExtensions: extensions,
+          allowedExtensions: const [
+            'jpg',
+            'jpeg',
+            'png',
+            'webp',
+            'mp4',
+            'mov',
+            'webm'
+          ],
           withData: true,
         );
         if (result == null || result.files.isEmpty || !mounted) return;
@@ -137,21 +169,26 @@ class _CreationStoryPageState extends State<CreationStoryPage> {
           _erreur(tr('Impossible de lire ce fichier.'));
           return;
         }
+        final extension =
+            fichier.name.split('.').last.toLowerCase();
         setState(() {
           _apercuOctets = octets;
           _apercuNom = fichier.name;
+          _apercuEstVideo =
+              ['mp4', 'mov', 'webm'].contains(extension);
+          _audio = null;
         });
         return;
       }
       final picker = ImagePicker();
-      final XFile? fichier = _mode == 'photo'
-          ? await picker.pickImage(source: ImageSource.gallery, maxWidth: 1280, imageQuality: 80)
-          : await picker.pickVideo(source: ImageSource.gallery, maxDuration: _dureeMaxVideo);
+      final XFile? fichier =
+          await picker.pickMedia(maxWidth: 1280, imageQuality: 80);
       if (fichier == null || !mounted) return;
       final octets = await fichier.readAsBytes();
       setState(() {
         _apercuOctets = octets;
         _apercuNom = fichier.name;
+        _audio = null;
       });
     } catch (_) {
       if (mounted) _erreur(tr('Impossible de choisir le fichier.'));
@@ -160,7 +197,10 @@ class _CreationStoryPageState extends State<CreationStoryPage> {
 
   Future<void> _choisirElement(ElementGalerie element) async {
     if (element.estVideo) {
-      setState(() => _selectionne = element);
+      setState(() {
+        _selectionne = element;
+        _audio = null;
+      });
       return;
     }
     final octets = await element.chargerOctets();
@@ -169,12 +209,62 @@ class _CreationStoryPageState extends State<CreationStoryPage> {
       _selectionne = element;
       _apercuOctets = octets;
       _apercuNom = element.nom;
+      _audio = null;
+    });
+  }
+
+  /// Enregistrement audio, 60 s au plus, comme un message
+  /// vocal. L'arrêt à 60 s est automatique.
+  Future<void> _basculerEnregistrement() async {
+    if (_enregistrement) {
+      await _arreterEnregistrement();
+      return;
+    }
+    final enregistreur =
+        widget.enregistreur ?? EnregistreurAudioRecord();
+    _enregistreur = enregistreur;
+    final demarre = await enregistreur.demarrer();
+    if (!demarre || !mounted) {
+      _erreur(tr('Microphone indisponible.'));
+      return;
+    }
+    _chrono.reset();
+    _chrono.start();
+    _chronoAudio = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (_chrono.elapsed >= _dureeMaxAudio) {
+        _arreterEnregistrement();
+        return;
+      }
+      setState(() => _dureeAudio = _chrono.elapsed);
+    });
+    setState(() {
+      _enregistrement = true;
+      _dureeAudio = Duration.zero;
+      _selectionne = null;
+      _apercuOctets = null;
+      _apercuNom = null;
+      _apercuEstVideo = false;
+    });
+  }
+
+  Future<void> _arreterEnregistrement() async {
+    _chronoAudio?.cancel();
+    _chronoAudio = null;
+    _chrono.stop();
+    final son = await _enregistreur?.arreter();
+    if (!mounted) return;
+    setState(() {
+      _enregistrement = false;
+      _dureeAudio = Duration.zero;
+      if (son != null) _audio = son;
     });
   }
 
   bool get _peutPublier {
     if (_publicationEnCours) return false;
     if (_mode == 'texte') return _texteControleur.text.trim().isNotEmpty;
+    if (_audio != null) return true;
     if (_surWeb) return _apercuOctets != null;
     return _selectionne != null;
   }
@@ -191,11 +281,19 @@ class _CreationStoryPageState extends State<CreationStoryPage> {
         final octets = await _capturerTexte();
         if (octets == null) throw Exception('capture');
         await widget.client.publierStory(bytes: octets, filename: 'story-texte.png', type: 'photo');
+      } else if (_audio != null) {
+        final audio = _audio!;
+        if (audio.octets.length > _tailleMaxAudio) throw Exception('trop lourd');
+        await widget.client.publierStory(
+          bytes: audio.octets,
+          filename: 'story-audio.${extensionDepuisMime(audio.mime)}',
+          type: 'audio',
+        );
       } else if (_surWeb) {
         final octets = _apercuOctets!;
-        final limite = _mode == 'photo' ? _tailleMaxPhoto : _tailleMaxVideo;
+        final limite = _apercuEstVideo ? _tailleMaxVideo : _tailleMaxPhoto;
         if (octets.length > limite) throw Exception('trop lourd');
-        await widget.client.publierStory(bytes: octets, filename: _apercuNom ?? 'story', type: _mode);
+        await widget.client.publierStory(bytes: octets, filename: _apercuNom ?? 'story', type: _apercuEstVideo ? 'video' : 'photo');
       } else {
         final element = _selectionne!;
         if (element.estVideo && element.duree > _dureeMaxVideo) throw Exception('trop lourd');
@@ -249,15 +347,16 @@ class _CreationStoryPageState extends State<CreationStoryPage> {
         children: [
           Row(
             children: [
-              _CarteMode(icone: Icons.photo_outlined, libelle: tr('Photo'), actif: _mode == 'photo', onTap: () => _changerMode('photo')),
-              const SizedBox(width: 12),
-              _CarteMode(icone: Icons.videocam_outlined, libelle: tr('Vidéo'), actif: _mode == 'video', onTap: () => _changerMode('video')),
+              _CarteMode(icone: Icons.perm_media_outlined, libelle: tr('Photo ou vidéo'), actif: _mode == 'media', onTap: () => _changerMode('media')),
               const SizedBox(width: 12),
               _CarteMode(icone: Icons.text_fields_outlined, libelle: tr('Texte'), actif: _mode == 'texte', onTap: () => _changerMode('texte')),
             ],
           ),
           const SizedBox(height: 20),
-          if (_mode == 'texte') ..._corpsTexte() else ..._corpsMedia(),
+          if (_mode == 'texte') ..._corpsTexte() else ...[
+            ..._blocAudio(),
+            ..._corpsMedia(),
+          ],
         ],
       ),
       bottomNavigationBar: SafeArea(
@@ -333,6 +432,58 @@ class _CreationStoryPageState extends State<CreationStoryPage> {
     ];
   }
 
+  /// Audio de la story : enregistrement 60 s, aperçu
+  /// écoutable, retrait. Un seul média par story.
+  List<Widget> _blocAudio() {
+    final audio = _audio;
+    if (audio != null) {
+      return [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _or, width: 2),
+          ),
+          child: LecteurAudio(
+            chargerSource: () async => AudioSource.uri(
+              Uri.dataFromBytes(audio.octets, mimeType: audio.mime),
+            ),
+            duree: Duration(milliseconds: audio.dureeMs),
+            couleur: _nuit,
+            couleurTexte: _grisTexte,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextButton.icon(
+          onPressed: () => setState(() => _audio = null),
+          icon: const Icon(Icons.delete_outlined),
+          label: Text(tr('Retirer l’audio')),
+        ),
+        const SizedBox(height: 8),
+      ];
+    }
+    return [
+      OutlinedButton.icon(
+        onPressed: _basculerEnregistrement,
+        icon: Icon(
+          _enregistrement ? Icons.stop_circle_outlined : Icons.mic_outlined,
+        ),
+        label: Text(
+          _enregistrement
+              ? tr('Arrêter (${_dureeTexte(_dureeAudio)})')
+              : tr('Enregistrer un audio'),
+        ),
+      ),
+      const SizedBox(height: 4),
+      Text(
+        tr('60 s au plus.'),
+        style: const TextStyle(color: _grisTexte, fontSize: 12),
+      ),
+      const SizedBox(height: 16),
+    ];
+  }
+
   List<Widget> _corpsMedia() {
     if (_surWeb) {
       return [
@@ -345,7 +496,7 @@ class _CreationStoryPageState extends State<CreationStoryPage> {
         if (_apercuOctets != null)
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: _mode == 'photo'
+            child: !_apercuEstVideo
                 ? Image.memory(_apercuOctets!, fit: BoxFit.cover)
                 : Container(
                     width: double.infinity,
@@ -382,7 +533,7 @@ class _CreationStoryPageState extends State<CreationStoryPage> {
     if (_elements.isEmpty) {
       return [Text(tr('Aucune photo ou vidéo.'))];
     }
-    final elements = _elements.where((e) => _mode == 'photo' ? !e.estVideo : e.estVideo).toList();
+    final elements = _elements;
     if (elements.isEmpty) {
       return [Text(tr('Aucune photo ou vidéo.'))];
     }

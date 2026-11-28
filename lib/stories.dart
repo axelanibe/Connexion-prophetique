@@ -12,12 +12,14 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:video_player/video_player.dart';
 
 import 'api.dart';
 import 'creation_story.dart';
 import 'i18n.dart';
+import 'magnetophone.dart';
 import 'temoignages.dart';
 
 // Palette de l'application, mêmes valeurs que HomeWeb.
@@ -56,6 +58,8 @@ class Story {
   final DateTime? expireLe;
 
   bool get estVideo => type == 'video';
+
+  bool get estAudio => type == 'audio';
 
   /// Expirée : ne doit plus s'afficher, le serveur la purge.
   bool get expiree => expireLe != null && !expireLe!.isAfter(DateTime.now());
@@ -326,7 +330,12 @@ class _CercleStory extends StatelessWidget {
                         color: _nuit,
                         child: const Icon(Icons.play_arrow, color: _or, size: 30),
                       )
-                    : CachedNetworkImage(
+                    : story.estAudio
+                        ? Container(
+                            color: _nuit,
+                            child: const Icon(Icons.mic_outlined, color: _or, size: 28),
+                          )
+                        : CachedNetworkImage(
                         imageUrl: story.url,
                         fit: BoxFit.cover,
                         placeholder: (_, __) => Container(color: _nuit),
@@ -351,8 +360,9 @@ class _CercleStory extends StatelessWidget {
   }
 }
 
-/// Lecteur plein écran : photo 5 secondes, vidéo jusqu'à sa
-/// fin, toucher à droite pour avancer, à gauche pour revenir.
+/// Lecteur plein écran : photo 5 secondes, vidéo et audio
+/// jusqu'à leur fin, toucher à droite pour avancer, à gauche
+/// pour revenir.
 /// La suppression est réservée à la structure, le serveur
 /// vérifie le périmètre (un administrateur d'établissement ne
 /// supprime que ses stories).
@@ -566,6 +576,13 @@ class _StoryVueState extends State<_StoryVue> {
           setState(() => _erreurVideo = true);
           _avancerApresErreur();
         });
+    } else if (widget.story.estAudio) {
+      // Sécurité : un audio ne dépasse jamais 60 s, le
+      // lecteur avance seul à sa fin, ce minuteur ne sert
+      // qu'en cas d'échec de lecture.
+      _minuteur = Timer(const Duration(seconds: 70), () {
+        if (mounted) widget.onTermine();
+      });
     } else {
       _minuteur = Timer(dureeStoryPhoto, () {
         if (mounted) widget.onTermine();
@@ -593,6 +610,34 @@ class _StoryVueState extends State<_StoryVue> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.story.estAudio) {
+      if (widget.story.url.isEmpty) {
+        return const Center(
+          child: Icon(Icons.mic_off_outlined, color: Colors.white54, size: 48),
+        );
+      }
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.mic_outlined, color: Colors.white, size: 48),
+              const SizedBox(height: 16),
+              LecteurAudio(
+                chargerSource: () async =>
+                    AudioSource.uri(Uri.parse(widget.story.url)),
+                duree: Duration.zero,
+                couleur: Colors.white,
+                couleurTexte: Colors.white70,
+                lectureAuto: true,
+                onTermine: widget.onTermine,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     if (widget.story.estVideo) {
       final controleur = _controleurVideo;
       if (_erreurVideo) {

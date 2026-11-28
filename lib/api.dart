@@ -490,12 +490,15 @@ class ApiClient {
       String? texte,
       String? audioId,
       String? lienAudio,
+      String? etablissementId,
       DateTime? programmeeLe}) {
     return _post('/admin/annonces-audio', {
       'titre': titre,
       if (texte != null && texte.isNotEmpty) 'texte': texte,
       if (audioId != null && audioId.isNotEmpty) 'audio_id': audioId,
       if (lienAudio != null && lienAudio.isNotEmpty) 'lien_audio': lienAudio,
+      if (etablissementId != null && etablissementId.isNotEmpty)
+        'etablissement_id': etablissementId,
       if (programmeeLe != null) 'programmee_le': programmeeLe.toIso8601String(),
     });
   }
@@ -537,21 +540,35 @@ class ApiClient {
       _list('/admin/cartes-video');
 
   Future<Map<String, dynamic>> createCarteVideo(
-      {required String titre, String? explication, required String lienVideo}) {
+      {required String titre,
+      String? explication,
+      required String lienVideo,
+      String? etablissementId,
+      DateTime? programmeeLe}) {
     return _post('/admin/cartes-video', {
       'titre': titre,
       if (explication != null && explication.isNotEmpty)
         'explication': explication,
       'lien_video': lienVideo,
+      if (etablissementId != null && etablissementId.isNotEmpty)
+        'etablissement_id': etablissementId,
+      if (programmeeLe != null) 'programmee_le': programmeeLe.toIso8601String(),
     });
   }
 
   Future<void> updateCarteVideo(String id,
-      {String? titre, String? explication, String? lienVideo}) async {
+      {String? titre,
+      String? explication,
+      String? lienVideo,
+      String? etablissementId,
+      DateTime? programmeeLe}) async {
     await _put('/admin/cartes-video/$id', {
       if (titre != null) 'titre': titre,
       if (explication != null) 'explication': explication,
       if (lienVideo != null) 'lien_video': lienVideo,
+      if (etablissementId != null) 'etablissement_id': etablissementId,
+      if (programmeeLe != null)
+        'programmee_le': programmeeLe.toIso8601String(),
     });
   }
 
@@ -3296,6 +3313,16 @@ class ApiClient {
       'lignes': <dynamic>[],
       'brouillon_lignes': <dynamic>[]
     };
+  }
+
+  /// Tableau de bord administrateur, correction de suivi
+  /// 27 nov. 2026 : UNE seule lecture groupée, les 6 chiffres
+  /// et la comptabilité du mois en cours, au lieu des 6 lectures
+  /// séquentielles qui se faisaient 429 en rafale.
+  Future<Map<String, dynamic>> fetchTableauDeBord() async {
+    final data = await _get('/admin/tableau-de-bord');
+    if (data is Map<String, dynamic>) return data;
+    return const {};
   }
 
   /// Département scolaire, 2 nov. 2026, tranche 2 :
