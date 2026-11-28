@@ -64,7 +64,8 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
 
   void _dire(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// Feuille de recherche, patron de choisirIndicatif :
@@ -82,7 +83,8 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
-        final resultats = filtrerLivres(_service.livres, requete: requeteFeuille);
+        final resultats =
+            filtrerLivres(_service.livres, requete: requeteFeuille);
         return SizedBox(
           height: MediaQuery.of(ctx).size.height * 0.85,
           child: Padding(
@@ -155,7 +157,9 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
     if (choisi != null && mounted) setState(() => _requete = choisi);
   }
 
-  /// Panier, sans paiement : lignes, total, retrait.
+  /// Panier, sans paiement : lignes, total, retrait. Un vrai
+  /// panneau (60 % de l'écran), pas le petit carré vide que
+  /// montrait la feuille à la hauteur de son contenu.
   Future<void> _ouvrirPanier() async {
     await showModalBottomSheet<void>(
       context: context,
@@ -164,58 +168,96 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) {
-        final panier = _service.panier;
-        final total = panier.fold<int>(0, (s, b) => s + b.price);
-        return Padding(
-          padding: EdgeInsets.fromLTRB(
-              16, 16, 16, MediaQuery.of(ctx).viewInsets.bottom + 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Panier',
-                  style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      color: PaletteNouvelle.bleuNuit)),
-              const SizedBox(height: 12),
-              if (panier.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 24),
-                  child: Text('Votre panier est vide.'),
-                )
-              else ...[
-                for (final livre in panier)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(livre.title,
-                        style: const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Text(fcfaLivre(livre.price)),
-                    trailing: IconButton(
-                      tooltip: 'Retirer',
-                      icon: const Icon(Icons.delete_outlined),
-                      onPressed: () async {
-                        await _service.retirerDuPanier(livre);
-                        if (mounted) setState(() {});
-                        if (ctx.mounted) Navigator.pop(ctx);
-                        _ouvrirPanier();
-                      },
+        return SizedBox(
+          height: MediaQuery.of(ctx).size.height * 0.62,
+          child: StatefulBuilder(
+            builder: (ctx, setFeuille) => Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: _grisBord,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
-                const Divider(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Total à régler',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
-                    Text(fcfaLivre(total),
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: PaletteNouvelle.orFonce)),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text('Panier',
+                            style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w800,
+                                color: PaletteNouvelle.bleuNuit)),
+                      ),
+                      IconButton(
+                        tooltip: 'Fermer',
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: _service.panier.isEmpty
+                        ? const Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(LucideIcons.shoppingBag,
+                                    size: 40, color: _grisTexte),
+                                SizedBox(height: 12),
+                                Text('Votre panier est vide.'),
+                              ],
+                            ),
+                          )
+                        : ListView(
+                            children: [
+                              for (final livre in _service.panier)
+                                ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  title: Text(livre.title,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w600)),
+                                  subtitle: Text(fcfaLivre(livre.price)),
+                                  trailing: IconButton(
+                                    tooltip: 'Retirer',
+                                    icon: const Icon(Icons.delete_outlined),
+                                    onPressed: () async {
+                                      await _service.retirerDuPanier(livre);
+                                      setFeuille(() {});
+                                      if (mounted) setState(() {});
+                                    },
+                                  ),
+                                ),
+                            ],
+                          ),
+                  ),
+                  if (_service.panier.isNotEmpty) ...[
+                    const Divider(),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Total à régler',
+                            style: TextStyle(fontWeight: FontWeight.w700)),
+                        Text(
+                            fcfaLivre(_service.panier
+                                .fold<int>(0, (s, b) => s + b.price)),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: PaletteNouvelle.orFonce)),
+                      ],
+                    ),
                   ],
-                ),
-              ],
-            ],
+                ],
+              ),
+            ),
           ),
         );
       },
@@ -256,9 +298,7 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
               maxLines: lignes,
               keyboardType: nombre
                   ? TextInputType.number
-                  : (lignes > 1
-                      ? TextInputType.multiline
-                      : TextInputType.text),
+                  : (lignes > 1 ? TextInputType.multiline : TextInputType.text),
               onChanged: onChanged,
               decoration: InputDecoration(
                 labelText: label,
@@ -345,8 +385,8 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
                 if (erreur.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
-                    child: Text(erreur,
-                        style: const TextStyle(color: Colors.red)),
+                    child:
+                        Text(erreur, style: const TextStyle(color: Colors.red)),
                   ),
                 SizedBox(
                   width: double.infinity,
@@ -355,8 +395,8 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
                     style: FilledButton.styleFrom(
                         backgroundColor: PaletteNouvelle.bleuNuit),
                     onPressed: () async {
-                      final p = int.tryParse(
-                          prix.replaceAll(RegExp(r'[^0-9]'), ''));
+                      final p =
+                          int.tryParse(prix.replaceAll(RegExp(r'[^0-9]'), ''));
                       if (titre.trim().isEmpty ||
                           auteur.trim().isEmpty ||
                           p == null ||
@@ -474,8 +514,7 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
               style: TextStyle(
                   color: actif ? Colors.white : _grisTexte,
                   fontSize: 12,
-                  fontWeight:
-                      actif ? FontWeight.w700 : FontWeight.w500)),
+                  fontWeight: actif ? FontWeight.w700 : FontWeight.w500)),
         ),
       ),
     );
@@ -548,10 +587,21 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                      color: _grisFond,
-                      borderRadius: BorderRadius.circular(8)),
+                      color: _grisFond, borderRadius: BorderRadius.circular(8)),
                   child: const Text('Nouveau',
                       style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: _grisTexte)),
+                ),
+              if (livre.format.trim().isNotEmpty)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                      color: _grisFond, borderRadius: BorderRadius.circular(8)),
+                  child: Text(livre.format.trim(),
+                      style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                           color: _grisTexte)),
@@ -570,8 +620,7 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        fontSize: 11,
-                        color: achete ? _vert : _grisTexte)),
+                        fontSize: 11, color: achete ? _vert : _grisTexte)),
               ),
             ]),
             const SizedBox(height: 12),
@@ -580,16 +629,14 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
               height: 48,
               child: achete
                   ? FilledButton(
-                      style: FilledButton.styleFrom(
-                          backgroundColor: _vert),
+                      style: FilledButton.styleFrom(backgroundColor: _vert),
                       onPressed: () => _acheter(livre),
                       child: const Text("Lire l'ouvrage"),
                     )
                   : dansPanier
                       ? FilledButton(
                           style: FilledButton.styleFrom(
-                              backgroundColor:
-                                  const Color(0xFF1E3A5F)),
+                              backgroundColor: const Color(0xFF1E3A5F)),
                           onPressed: () => _acheter(livre),
                           child: const Text('Déjà dans le panier'),
                         )
@@ -619,8 +666,7 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16)),
+              color: Colors.white, borderRadius: BorderRadius.circular(16)),
           child: Column(children: [
             Row(children: [
               const Expanded(
@@ -637,8 +683,7 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
               const SizedBox(width: 8),
               Container(
                 decoration: BoxDecoration(
-                    color: _grisFond,
-                    borderRadius: BorderRadius.circular(12)),
+                    color: _grisFond, borderRadius: BorderRadius.circular(12)),
                 child: IconButton(
                   key: const ValueKey('boutonPanier'),
                   tooltip: 'Panier',
@@ -673,11 +718,10 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
               borderRadius: BorderRadius.circular(12),
               onTap: _ouvrirRecherche,
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                 decoration: BoxDecoration(
-                    color: _grisFond,
-                    borderRadius: BorderRadius.circular(12)),
+                    color: _grisFond, borderRadius: BorderRadius.circular(12)),
                 child: Row(children: [
                   const Icon(LucideIcons.search, color: _grisTexte),
                   const SizedBox(width: 8),
@@ -727,18 +771,15 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
         else if (_service.livres.isEmpty)
           Container(
             width: double.infinity,
-            padding:
-                const EdgeInsets.symmetric(vertical: 48, horizontal: 16),
+            padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 16),
             decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16)),
+                color: Colors.white, borderRadius: BorderRadius.circular(16)),
             child: Column(children: [
               Container(
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                    color: _grisFond,
-                    borderRadius: BorderRadius.circular(12)),
+                    color: _grisFond, borderRadius: BorderRadius.circular(12)),
                 child: const Icon(Icons.book_outlined, color: _grisTexte),
               ),
               const SizedBox(height: 12),
@@ -753,18 +794,15 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
         else if (visibles.isEmpty)
           Container(
             width: double.infinity,
-            padding:
-                const EdgeInsets.symmetric(vertical: 48, horizontal: 16),
+            padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 16),
             decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16)),
+                color: Colors.white, borderRadius: BorderRadius.circular(16)),
             child: Column(children: [
               Container(
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                    color: _grisFond,
-                    borderRadius: BorderRadius.circular(12)),
+                    color: _grisFond, borderRadius: BorderRadius.circular(12)),
                 child: const Icon(Icons.book_outlined, color: _grisTexte),
               ),
               const SizedBox(height: 12),
@@ -773,7 +811,8 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
                       fontWeight: FontWeight.w700,
                       color: PaletteNouvelle.bleuNuit)),
               const SizedBox(height: 4),
-              const Text('Essayez un autre mot-clé ou réinitialisez les filtres.',
+              const Text(
+                  'Essayez un autre mot-clé ou réinitialisez les filtres.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: _grisTexte)),
               const SizedBox(height: 16),
@@ -800,28 +839,24 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
                     }
                   }),
                   child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 8),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Row(children: [
                       Expanded(
-                        child: Text(
-                            '${entree.key} (${entree.value.length})',
+                        child: Text('${entree.key} (${entree.value.length})',
                             style: const TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w800,
                                 color: PaletteNouvelle.bleuNuit)),
                       ),
                       Icon(
-                          _requete.isNotEmpty ||
-                                  !_repliees.contains(entree.key)
+                          _requete.isNotEmpty || !_repliees.contains(entree.key)
                               ? LucideIcons.chevronUp
                               : LucideIcons.chevronDown,
                           color: _grisTexte),
                     ]),
                   ),
                 ),
-                if (_requete.isNotEmpty ||
-                    !_repliees.contains(entree.key))
+                if (_requete.isNotEmpty || !_repliees.contains(entree.key))
                   for (final livre in entree.value) _carteLivre(livre),
               ],
             ),

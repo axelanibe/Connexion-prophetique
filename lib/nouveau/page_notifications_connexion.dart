@@ -6,8 +6,10 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../print_doc.dart';
 import 'carte_publication.dart';
 import 'modeles_connexion.dart';
+import 'modeles_t18.dart';
 import 'palette.dart';
 
 enum _FiltreNotifications { toutes, mentions, activite }
@@ -94,7 +96,75 @@ class _PageNotificationsConnexionState
       widget.onOuvrirPublication?.call(n.lienId);
     } else if (n.lienType == 'mur_profil' && n.lienId.isNotEmpty) {
       widget.onOuvrirProfil?.call(n.lienId);
+    } else if (n.lienType == 'paiement' && n.lienId.isNotEmpty) {
+      await _ouvrirPaiement(n);
     }
+  }
+
+  /// Détail d'un paiement, correctif global 27 nov. 2026 : la
+  /// cotisation soldée s'ouvre depuis la notification, style
+  /// Facebook, avec sa facture quand elle est confirmée.
+  Future<void> _ouvrirPaiement(NotificationConnexion n) async {
+    final ligne = await widget.service.chargerPaiement(n.lienId);
+    if (!mounted) return;
+    if (ligne == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ce paiement ne peut pas être ouvert.'),
+        ),
+      );
+      return;
+    }
+    final p = PaiementAdmin.depuisJson(ligne);
+    final telecharger = p.statut == 'confirme';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(n.titre),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(n.message),
+              const SizedBox(height: 12),
+              Text('${p.libelle} · ${formaterFcfa(p.montantFcfa)}'),
+              Text('Statut : ${p.libelleStatut}'),
+              if (p.reference.isNotEmpty) Text('Référence : ${p.reference}'),
+              if (p.creeLe != null)
+                Text('Le ${formaterDateConnexion(p.creeLe)}'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Fermer'),
+          ),
+          if (telecharger)
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Facture'),
+            ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final octets = await widget.service.telechargerFacture(p.reference);
+    if (!mounted) return;
+    if (octets == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Facture indisponible pour le moment.'),
+        ),
+      );
+      return;
+    }
+    await downloadBytesFile(
+      'facture-${p.reference}.pdf',
+      octets,
+      'application/pdf',
+    );
   }
 
   Future<void> _toutMarquerLu() async {
@@ -129,7 +199,8 @@ class _PageNotificationsConnexionState
         backgroundColor: Colors.white,
         elevation: 1,
         leading: IconButton(
-          icon: const Icon(LucideIcons.chevronLeft, color: PaletteNouvelle.bleuNuit),
+          icon: const Icon(LucideIcons.chevronLeft,
+              color: PaletteNouvelle.bleuNuit),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text(
@@ -214,6 +285,7 @@ class _CarteNotification extends StatelessWidget {
       'mur_mention' => Icons.alternate_email_outlined,
       'mur_reaction' => Icons.thumb_up_outlined,
       'mur_suivi' => Icons.person_add_outlined,
+      'paiement_valide' => Icons.payments_outlined,
       _ => Icons.comment_outlined,
     };
     return Container(

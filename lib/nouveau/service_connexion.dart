@@ -205,6 +205,26 @@ class ServiceConnexionApi implements ServiceConnexion {
   @override
   Future<void> toutMarquerLu() async => _api.markAllNotificationsRead();
 
+  // Correctif global, 27 nov. 2026 : détail d'un paiement lié
+  // à une notification, GET /moi/paiements, et sa facture.
+  @override
+  Future<Map<String, dynamic>?> chargerPaiement(String id) async {
+    final lignes = await _api.fetchMyPayments();
+    for (final l in lignes) {
+      if ((l['id'] ?? '').toString() == id) return l;
+    }
+    return null;
+  }
+
+  @override
+  Future<List<int>?> telechargerFacture(String reference) async {
+    try {
+      return await _api.downloadFacture(reference);
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   Future<void> signaler(
       {required String cibleType,

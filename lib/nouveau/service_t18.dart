@@ -60,6 +60,42 @@ abstract class ServiceT18 {
   SuiviVersements get suiviVersements;
   Future<void> chargerSuiviVersements(String evenementId);
 
+  /// Programme du camp, correctif global 27 nov. 2026 :
+  /// lecture par les campeurs inscrits et leurs parents,
+  /// gestion par la structure. Les types viennent du serveur.
+  List<EntreeChronogramme> get chronogramme;
+  List<String> get chronogrammeTypes;
+  String? get chronogrammeDebut;
+  String? get chronogrammeFin;
+  Future<bool> chargerChronogramme(String evenementId);
+  Future<bool> creerEntreeChronogramme(
+    String evenementId, {
+    required String jour,
+    required String heureDebut,
+    required String heureFin,
+    required String titre,
+    String? lieu,
+    String? type,
+  });
+  Future<bool> modifierEntreeChronogramme(
+    String evenementId,
+    String entreeId, {
+    required String jour,
+    required String heureDebut,
+    required String heureFin,
+    required String titre,
+    String? lieu,
+    String? type,
+  });
+  Future<bool> supprimerEntreeChronogramme(
+    String evenementId,
+    String entreeId,
+  );
+  Future<bool> appliquerModeleChronogramme(
+    String evenementId,
+    String dimanche,
+  );
+
   List<PresenceLigne> get presences;
   Future<void> chargerPresences();
   List<PresenceActiviteEntree> get presencesActivite;
@@ -67,14 +103,30 @@ abstract class ServiceT18 {
   TauxPresence? get tauxPresence;
   Future<void> chargerPresencesActivite(String activiteId, String nom);
 
+  /// Pointage par scan QR, correctif global 27 nov. 2026 :
+  /// présence sur une activité, ou règlement espèces de la
+  /// cotisation du mois, 1 000 FCFA, mois en cours côté serveur.
+  Future<bool> scannerPresence(String activiteId, String matricule);
+  Future<bool> marquerEspeces(String matricule);
+
   List<DocumentStructure> get documents;
   Future<void> chargerDocuments();
   Future<bool> publierDocument({
     required String titre,
     String? lien,
+    String? fichierId,
     String? etablissementId,
   });
   Future<bool> supprimerDocument(String id);
+
+  /// Téléversement d'un document (PDF, Word, Excel, PowerPoint),
+  /// renvoie l'identifiant du fichier, null en cas d'échec.
+  Future<String?> televerserDocument(List<int> octets, String nomFichier);
+
+  /// Export complet en Excel ou PDF, généré côté serveur.
+  /// Renvoie les octets, null en cas d'échec.
+  Future<List<int>?> telechargerExport(String sujet,
+      {String format = 'xlsx', String? evenementId});
 
   List<AttestationAdmin> get attestations;
   Future<void> chargerAttestations();
@@ -142,13 +194,30 @@ abstract class ServiceT18 {
   List<NominationAdmin> get nominations;
   Future<void> chargerNominations({String? etablissementId});
   Future<bool> creerNomination({
-    required String membreId,
+    String? membreId,
+    String? personneExterneId,
     required String fonctionCode,
     required String portee,
     String? etablissementId,
     String? evenementId,
   });
   Future<bool> revoquerNomination(String id);
+
+  /// Personnes hors système, correctif global 27 nov. 2026.
+  List<PersonneExterne> get personnesExternes;
+  Future<void> chargerPersonnesExternes();
+  Future<PersonneExterne?> creerPersonneExterne(
+    Map<String, dynamic> corps,
+  );
+  Future<bool> modifierPersonneExterne(
+    String id,
+    Map<String, dynamic> corps,
+  );
+  Future<bool> supprimerPersonneExterne(String id);
+  Future<Map<String, dynamic>?> inscrireAuCampAdmin(
+    String evenementId,
+    Map<String, dynamic> corps,
+  );
 
   List<ElectionAdmin> get elections;
   Future<void> chargerElections();
@@ -212,23 +281,53 @@ class ServiceT18Reel implements ServiceT18 {
   @override
   List<ChiffreAdmin> chiffres = const [];
 
+  /// Lecture d'un chiffre avec nouvelle tentative, correctif
+  /// global 27 nov. 2026 : la rafale de 6 lectures au chargement
+  /// se faisait 429 (limite 120/min par IP), et chaque échec
+  /// laissait un « — » définitif. Sur 429 ou 5xx, on attend le
+  /// délai du serveur (delaiReessai) puis on réessaie, 3 fois
+  /// au plus. Les autres erreurs ne sont pas réessayées.
+  Future<T?> _lireChiffre<T>(Future<T> Function() lecture) async {
+    for (var essai = 0; essai < 3; essai++) {
+      try {
+        return await lecture();
+      } on ApiException catch (e) {
+        final transitoire =
+            e.status == 429 || (e.status != null && e.status! >= 500);
+        if (!transitoire || essai == 2) return null;
+        await Future<void>.delayed(
+          Duration(seconds: e.delaiReessai ?? 1),
+        );
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
   @override
   Future<void> chargerChiffres() async {
+    // La dernière valeur connue est gardée quand une lecture
+    // échoue encore après les nouvelles tentatives : jamais
+    // de « — » comme état final quand on a déjà un chiffre.
+    final anciennes = {
+      for (final c in chiffres) c.libelle: c.valeur,
+    };
     final valeurs = List<String?>.filled(6, null);
     // 1. Membres inscrits, GET /admin/membres.
-    try {
-      final lignes = await _api.fetchAdminMembres();
-      valeurs[0] = formaterNombre(lignes.length);
+    final membres = await _lireChiffre(() => _api.fetchAdminMembres());
+    if (membres != null) {
+      valeurs[0] = formaterNombre(membres.length);
       accesAdmin = true;
-    } catch (_) {
+    } else {
       accesAdmin = false;
     }
     // 2. Présences ce mois, GET /presences, en nombre.
-    try {
-      final lignes = await _api.fetchPresences();
+    final presences = await _lireChiffre(() => _api.fetchPresences());
+    if (presences != null) {
       final maintenant = DateTime.now();
       var nb = 0;
-      for (final l in lignes) {
+      for (final l in presences) {
         final p = PresenceLigne.depuisJson(l);
         final d = p.scanneLe;
         if (d != null &&
@@ -238,55 +337,66 @@ class ServiceT18Reel implements ServiceT18 {
         }
       }
       valeurs[1] = formaterNombre(nb);
-    } catch (_) {}
+    }
     // 3. Cotisations, GET /admin/paiements/totaux?type=cotisation.
-    try {
-      final totaux = await _api.fetchAdminPaymentsTotaux(
-        type: 'cotisation',
-      );
+    final totaux = await _lireChiffre(
+      () => _api.fetchAdminPaymentsTotaux(type: 'cotisation'),
+    );
+    if (totaux != null) {
       final total = (totaux['total_confirme'] as num?)?.toInt() ?? 0;
       valeurs[2] = formaterNombre(total);
-    } catch (_) {}
+    }
     // 4. Inscriptions au camp, prochain événement.
-    try {
-      final lignes = await _api.fetchEvenements();
+    final evenements = await _lireChiffre(() => _api.fetchEvenements());
+    if (evenements != null) {
       final camps = [
-        for (final l in lignes) EvenementAdmin.depuisJson(l),
+        for (final l in evenements) EvenementAdmin.depuisJson(l),
       ];
       final prochain = EvenementAdmin.prochain(camps);
       if (prochain != null) {
-        final inscriptions =
-            await _api.fetchAdminInscriptions(prochain.id);
-        valeurs[3] = formaterNombre(inscriptions.length);
-      }
-    } catch (_) {}
-    // 5. Demandes en attente : liens parent-enfant en attente
-    // plus demandes de prière en attente.
-    try {
-      var nb = 0;
-      final liens =
-          await _api.fetchLiensParentEnfantAdmin(statut: 'en_attente');
-      nb += liens.length;
-      final data = await _api.fetchDemandesPriereBureau();
-      final demandes = (data['demandes'] as List?) ?? const [];
-      for (final l in demandes) {
-        if (l is Map<String, dynamic>) {
-          final d = DemandeSuivi.depuisJson(l);
-          if (d.statut == 'en_attente') nb++;
+        final inscriptions = await _lireChiffre(
+          () => _api.fetchAdminInscriptions(prochain.id),
+        );
+        if (inscriptions != null) {
+          valeurs[3] = formaterNombre(inscriptions.length);
         }
       }
-      valeurs[4] = formaterNombre(nb);
-    } catch (_) {}
+    }
+    // 5. Demandes en attente : liens parent-enfant en attente
+    // plus demandes de prière en attente. Les deux lectures
+    // sont indépendantes : l'échec de l'une ne fait plus
+    // tomber tout le chiffre.
+    var demandes = 0;
+    var demandesLues = false;
+    final liens = await _lireChiffre(
+      () => _api.fetchLiensParentEnfantAdmin(statut: 'en_attente'),
+    );
+    if (liens != null) {
+      demandes += liens.length;
+      demandesLues = true;
+    }
+    final bureau = await _lireChiffre(() => _api.fetchDemandesPriereBureau());
+    if (bureau != null) {
+      final liste = (bureau['demandes'] as List?) ?? const [];
+      for (final l in liste) {
+        if (l is Map<String, dynamic>) {
+          final d = DemandeSuivi.depuisJson(l);
+          if (d.statut == 'en_attente') demandes++;
+        }
+      }
+      demandesLues = true;
+    }
+    if (demandesLues) valeurs[4] = formaterNombre(demandes);
     // 6. Établissements, GET /etablissements.
-    try {
-      final lignes = await _api.fetchEtablissements();
-      valeurs[5] = formaterNombre(lignes.length);
-    } catch (_) {}
+    final etablissements = await _lireChiffre(() => _api.fetchEtablissements());
+    if (etablissements != null) {
+      valeurs[5] = formaterNombre(etablissements.length);
+    }
     chiffres = [
       for (var i = 0; i < libellesChiffres.length; i++)
         ChiffreAdmin(
           libelle: libellesChiffres[i],
-          valeur: valeurs[i] ?? '—',
+          valeur: valeurs[i] ?? anciennes[libellesChiffres[i]] ?? '—',
         ),
     ];
   }
@@ -314,8 +424,7 @@ class ServiceT18Reel implements ServiceT18 {
   @override
   Future<void> chargerPaiementsEnAttente() async {
     try {
-      final lignes =
-          await _api.fetchAdminPayments(statut: 'en_attente');
+      final lignes = await _api.fetchAdminPayments(statut: 'en_attente');
       paiementsEnAttente = [
         for (final l in lignes) PaiementAdmin.depuisJson(l),
       ];
@@ -478,6 +587,126 @@ class ServiceT18Reel implements ServiceT18 {
   }
 
   @override
+  List<EntreeChronogramme> chronogramme = const [];
+
+  @override
+  List<String> chronogrammeTypes = const [];
+
+  @override
+  String? chronogrammeDebut;
+
+  @override
+  String? chronogrammeFin;
+
+  @override
+  Future<bool> chargerChronogramme(String evenementId) async {
+    try {
+      final data = await _api.fetchChronogramme(evenementId);
+      final lignes = data['entrees'];
+      chronogramme = [
+        if (lignes is List)
+          for (final l in lignes)
+            if (l is Map<String, dynamic>) EntreeChronogramme.depuisJson(l),
+      ];
+      final types = data['types'];
+      chronogrammeTypes = [
+        if (types is List)
+          for (final t in types) t.toString(),
+      ];
+      final ev = data['evenement'];
+      if (ev is Map<String, dynamic>) {
+        chronogrammeDebut = (ev['date_debut'] ?? '').toString();
+        chronogrammeFin = (ev['date_fin'] ?? '').toString();
+      }
+      return true;
+    } catch (_) {
+      chronogramme = const [];
+      chronogrammeTypes = const [];
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> creerEntreeChronogramme(
+    String evenementId, {
+    required String jour,
+    required String heureDebut,
+    required String heureFin,
+    required String titre,
+    String? lieu,
+    String? type,
+  }) async {
+    try {
+      await _api.creerEntreeChronogramme(
+        evenementId,
+        jour: jour,
+        heureDebut: heureDebut,
+        heureFin: heureFin,
+        titre: titre,
+        lieu: lieu,
+        type: type,
+      );
+      return chargerChronogramme(evenementId);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> modifierEntreeChronogramme(
+    String evenementId,
+    String entreeId, {
+    required String jour,
+    required String heureDebut,
+    required String heureFin,
+    required String titre,
+    String? lieu,
+    String? type,
+  }) async {
+    try {
+      await _api.modifierEntreeChronogramme(
+        evenementId,
+        entreeId,
+        jour: jour,
+        heureDebut: heureDebut,
+        heureFin: heureFin,
+        titre: titre,
+        lieu: lieu,
+        type: type,
+      );
+      return chargerChronogramme(evenementId);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> supprimerEntreeChronogramme(
+    String evenementId,
+    String entreeId,
+  ) async {
+    try {
+      await _api.supprimerEntreeChronogramme(evenementId, entreeId);
+      return chargerChronogramme(evenementId);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> appliquerModeleChronogramme(
+    String evenementId,
+    String dimanche,
+  ) async {
+    try {
+      await _api.appliquerModeleChronogramme(evenementId, dimanche);
+      return chargerChronogramme(evenementId);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
   List<PresenceLigne> presences = const [];
 
   @override
@@ -489,6 +718,31 @@ class ServiceT18Reel implements ServiceT18 {
       ];
     } catch (_) {
       presences = [];
+    }
+  }
+
+  // Correctif global, 27 nov. 2026 : pointage par scan QR.
+  @override
+  Future<bool> scannerPresence(String activiteId, String matricule) async {
+    try {
+      await _api.scanPresence(
+        activiteId: activiteId,
+        matricule: matricule,
+      );
+      await chargerPresencesActivite(activiteId, presencesActiviteNom);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> marquerEspeces(String matricule) async {
+    try {
+      await _api.enregistrerCotisationEspeces(matricule);
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -512,8 +766,7 @@ class ServiceT18Reel implements ServiceT18 {
       final entrees = (data['entrees'] as List?) ?? const [];
       presencesActivite = [
         for (final l in entrees)
-          if (l is Map<String, dynamic>)
-            PresenceActiviteEntree.depuisJson(l),
+          if (l is Map<String, dynamic>) PresenceActiviteEntree.depuisJson(l),
       ];
     } catch (_) {
       presencesActivite = [];
@@ -545,18 +798,41 @@ class ServiceT18Reel implements ServiceT18 {
   Future<bool> publierDocument({
     required String titre,
     String? lien,
+    String? fichierId,
     String? etablissementId,
   }) async {
     try {
       await _api.publishDocument(
         titre: titre,
         lien: lien,
+        fichierId: fichierId,
         etablissementId: etablissementId,
       );
       await chargerDocuments();
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  @override
+  Future<String?> televerserDocument(
+      List<int> octets, String nomFichier) async {
+    try {
+      return await _api.uploadDocument(bytes: octets, filename: nomFichier);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<List<int>?> telechargerExport(String sujet,
+      {String format = 'xlsx', String? evenementId}) async {
+    try {
+      return await _api.telechargerExport(sujet,
+          format: format, evenementId: evenementId);
+    } catch (_) {
+      return null;
     }
   }
 
@@ -657,9 +933,7 @@ class ServiceT18Reel implements ServiceT18 {
     final b = StringBuffer();
     for (final ligne in lignes) {
       b.writeln(
-        ligne
-            .map((c) => '"${c.replaceAll('"', '""')}"')
-            .join(';'),
+        ligne.map((c) => '"${c.replaceAll('"', '""')}"').join(';'),
       );
     }
     return b.toString();
@@ -875,8 +1149,7 @@ class ServiceT18Reel implements ServiceT18 {
   @override
   Future<void> chargerBureau({String? etablissementId}) async {
     try {
-      final lignes =
-          await _api.fetchBureau(etablissementId: etablissementId);
+      final lignes = await _api.fetchBureau(etablissementId: etablissementId);
       bureau = [
         for (final l in lignes) MembreBureau.depuisJson(l),
       ];
@@ -977,8 +1250,7 @@ class ServiceT18Reel implements ServiceT18 {
     try {
       final lignes = await _api.fetchAdminMembres();
       administrateurs = [
-        for (final l in lignes)
-          MembreAdmin.depuisJson(l),
+        for (final l in lignes) MembreAdmin.depuisJson(l),
       ].where((m) => m.roleCompte != 'membre').toList();
     } catch (_) {
       administrateurs = [];
@@ -1042,7 +1314,8 @@ class ServiceT18Reel implements ServiceT18 {
 
   @override
   Future<bool> creerNomination({
-    required String membreId,
+    String? membreId,
+    String? personneExterneId,
     required String fonctionCode,
     required String portee,
     String? etablissementId,
@@ -1050,7 +1323,9 @@ class ServiceT18Reel implements ServiceT18 {
   }) async {
     try {
       await _api.creerNomination({
-        'membre_id': membreId,
+        if (membreId != null && membreId.isNotEmpty) 'membre_id': membreId,
+        if (personneExterneId != null && personneExterneId.isNotEmpty)
+          'personne_externe_id': personneExterneId,
         'fonction_code': fonctionCode,
         'portee': portee,
         if (etablissementId != null) 'etablissement_id': etablissementId,
@@ -1060,6 +1335,71 @@ class ServiceT18Reel implements ServiceT18 {
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  @override
+  List<PersonneExterne> personnesExternes = const [];
+
+  @override
+  Future<void> chargerPersonnesExternes() async {
+    try {
+      final lignes = await _api.fetchPersonnesExternes();
+      personnesExternes = [
+        for (final l in lignes) PersonneExterne.depuisJson(l),
+      ];
+    } catch (_) {
+      personnesExternes = [];
+    }
+  }
+
+  @override
+  Future<PersonneExterne?> creerPersonneExterne(
+    Map<String, dynamic> corps,
+  ) async {
+    try {
+      final ligne = await _api.creerPersonneExterne(corps);
+      await chargerPersonnesExternes();
+      return PersonneExterne.depuisJson(ligne);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<bool> modifierPersonneExterne(
+    String id,
+    Map<String, dynamic> corps,
+  ) async {
+    try {
+      await _api.modifierPersonneExterne(id, corps);
+      await chargerPersonnesExternes();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> supprimerPersonneExterne(String id) async {
+    try {
+      await _api.supprimerPersonneExterne(id);
+      await chargerPersonnesExternes();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>?> inscrireAuCampAdmin(
+    String evenementId,
+    Map<String, dynamic> corps,
+  ) async {
+    try {
+      return await _api.inscrireAuCampAdmin(evenementId, corps);
+    } catch (_) {
+      return null;
     }
   }
 

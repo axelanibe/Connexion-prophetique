@@ -35,16 +35,21 @@ import 'page_camps.dart';
 import 'page_carte.dart';
 import 'page_chaine_priere.dart';
 import 'page_connexion.dart';
+import 'page_detail_connexion.dart';
+import 'page_notifications_connexion.dart';
+import 'page_profil_connexion.dart';
 import 'page_cotisations.dart';
 import 'page_croissance.dart';
 import 'page_documents.dart';
 import 'page_fonctions.dart';
 import 'page_galerie.dart';
+import 'page_journal.dart';
 import 'page_librairie.dart';
 import 'page_messagerie.dart';
 import 'page_opportunite.dart';
 import 'page_parole.dart';
 import 'page_profil.dart';
+import 'page_etablissements.dart';
 import 'page_structure.dart';
 import 'page_suivi.dart';
 import 'paiement_carte.dart';
@@ -157,8 +162,7 @@ class _RacineNouvelleState extends State<RacineNouvelle>
     // Appel entrant en avant-plan, T21 : la notification ouvre
     // l'écran d'appel entrant, sans attendre le toucher. Le
     // sondage global couvre l'application ouverte en repli.
-    _abonnementAppelEntrant =
-        PushNotifications.instance.onAppelEntrant.listen(
+    _abonnementAppelEntrant = PushNotifications.instance.onAppelEntrant.listen(
       (data) => _ouvrirAppelEntrant(data),
     );
     _demarrerSondageAppels();
@@ -211,8 +215,7 @@ class _RacineNouvelleState extends State<RacineNouvelle>
     try {
       final entrants = await api.fetchAppelsEntrants();
       if (!mounted || entrants.isEmpty) return;
-      _ouvrirAppelEntrant(
-          donneesAppelEntrantDepuisLigne(entrants.first));
+      _ouvrirAppelEntrant(donneesAppelEntrantDepuisLigne(entrants.first));
     } on ApiException catch (e) {
       // 429 : pause de la durée Retry-After, plafonnée à 65 s.
       if (e.status == 429) {
@@ -338,8 +341,33 @@ class _RacineNouvelleState extends State<RacineNouvelle>
 
   void _allerAccueil() => _cleCoquille.currentState?.allerAccueil();
 
-  void _allerOnglet(int index) =>
-      _cleCoquille.currentState?.allerOnglet(index);
+  /// Profil ouvert depuis les notifications de la cloche.
+  void _ouvrirProfilDepuisNotifications(
+    BuildContext context,
+    String membreId,
+  ) {
+    if (membreId.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PageProfilConnexion(
+          service: _serviceConnexion,
+          membreId: membreId,
+          onOuvrirDetail: (publication) => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => PageDetailConnexion(
+                service: _serviceConnexion,
+                publication: publication,
+                onOuvrirProfil: (id) =>
+                    _ouvrirProfilDepuisNotifications(context, id),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _allerOnglet(int index) => _cleCoquille.currentState?.allerOnglet(index);
 
   void _ouvrirDestination(DestinationNouvelle d) =>
       _cleCoquille.currentState?.ouvrirDestination(d);
@@ -399,8 +427,7 @@ class _RacineNouvelleState extends State<RacineNouvelle>
       numeroQuiz: numero < 1 ? 1 : numero,
       totalQuiz: rotation.length,
       reponseChoisie: _reponseChoisie,
-      bonneReponse:
-          _reponseChoisie == null ? null : question.correctIndex,
+      bonneReponse: _reponseChoisie == null ? null : question.correctIndex,
       estDerniere: _indexQuestion + 1 >= quiz.questions.length,
       termine: _termine,
       scoreFinal: _score,
@@ -493,8 +520,7 @@ class _RacineNouvelleState extends State<RacineNouvelle>
       nonLus: widget.nonLus,
       onDeconnexion: widget.onDeconnexion,
       onSupprimerCompte: widget.onSupprimerCompte,
-      boutonFlottant:
-          BoutonFlottantAssistant(onPressed: _ouvrirAssistant),
+      boutonFlottant: BoutonFlottantAssistant(onPressed: _ouvrirAssistant),
       etatCarte: _serviceProfil.etatCarte,
       accueil: PageAccueil(
         onSearch: _ouvrirRecherche,
@@ -528,8 +554,7 @@ class _RacineNouvelleState extends State<RacineNouvelle>
         cotisationPayee: _etatCotisation.payee,
         cotisationEnAttente: _etatCotisation.enAttente,
         onPayerCotisation: _payerCotisation,
-        onVoirCamps: () =>
-            _ouvrirDestination(DestinationNouvelle.camps),
+        onVoirCamps: () => _ouvrirDestination(DestinationNouvelle.camps),
         activites: [
           for (final a in _activites)
             a.avecTap(() {
@@ -549,6 +574,38 @@ class _RacineNouvelleState extends State<RacineNouvelle>
       messagerie: PageMessagerie(
         service: _serviceMessagerie,
         onRetour: _allerAccueil,
+      ),
+      // Correctif global, 27 nov. 2026 : la cloche ouvre les
+      // notifications, dont la cotisation soldée, avec son détail.
+      notifications: Builder(
+        builder: (context) => PageNotificationsConnexion(
+          service: _serviceConnexion,
+          onOuvrirPublication: (id) async {
+            try {
+              final publication = await _serviceConnexion.chargerDetail(id);
+              if (!context.mounted) return;
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => PageDetailConnexion(
+                    service: _serviceConnexion,
+                    publication: publication,
+                    onOuvrirProfil: (membreId) =>
+                        _ouvrirProfilDepuisNotifications(context, membreId),
+                  ),
+                ),
+              );
+            } catch (_) {
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Cette publication ne peut pas être ouverte.'),
+                ),
+              );
+            }
+          },
+          onOuvrirProfil: (membreId) =>
+              _ouvrirProfilDepuisNotifications(context, membreId),
+        ),
       ),
       bible: PageBibleNouvelle(
         service: _serviceBible,
@@ -582,6 +639,7 @@ class _RacineNouvelleState extends State<RacineNouvelle>
         onVoirCarte: () => _ouvrirDestination(DestinationNouvelle.carte),
       ),
       croissance: PageCroissance(service: _serviceT9),
+      journal: const PageJournal(),
       fonctions: PageFonctions(service: _serviceT9),
       abonnement: PageAbonnement(service: _serviceT9),
       aPropos: PageAPropos(
@@ -598,14 +656,19 @@ class _RacineNouvelleState extends State<RacineNouvelle>
           service: _serviceT9,
           serviceT14: _serviceT14,
           serviceT18: _serviceT18,
-          onOuvrirCamps: () =>
-              _ouvrirDestination(DestinationNouvelle.camps)),
+          onOuvrirCamps: () => _ouvrirDestination(DestinationNouvelle.camps)),
       structure: PageStructure(
         service: _serviceT9,
         serviceT14: _serviceT14,
         serviceT18: _serviceT18,
-        onOuvrirCamps: () =>
-            _ouvrirDestination(DestinationNouvelle.camps),
+        onOuvrirCamps: () => _ouvrirDestination(DestinationNouvelle.camps),
+        onOuvrirEtablissements: () =>
+            _ouvrirDestination(DestinationNouvelle.etablissements),
+      ),
+      etablissements: PageEtablissements(
+        service: _serviceT18,
+        onOuvrirStructure: () =>
+            _ouvrirDestination(DestinationNouvelle.structure),
       ),
       cotisations: PageCotisations(service: _serviceT14),
       paroleVivante: PageParoleVivante(
@@ -617,8 +680,7 @@ class _RacineNouvelleState extends State<RacineNouvelle>
         service: _serviceT9,
         evenementInitialId: _campOuvertId,
         onInitialConsomme: () => _campOuvertId = null,
-        onVoirBadge: () =>
-            _ouvrirDestination(DestinationNouvelle.galerie),
+        onVoirBadge: () => _ouvrirDestination(DestinationNouvelle.galerie),
       ),
     );
   }

@@ -13,6 +13,7 @@ import '../api.dart';
 import '../app_models.dart';
 import '../parcours_bible.dart';
 import 'modeles_profil.dart' show membreDepuisMoi;
+import 'modeles_t18.dart' show NominationAdmin;
 import 'modeles_t9.dart';
 import 'service_bible.dart';
 
@@ -54,6 +55,10 @@ abstract class ServiceT9 {
   Future<void> basculerJour(int jour);
 
   Future<bool> changerFonction(String fonction);
+
+  /// Responsabilités affectées au membre, nominations actives.
+  Future<void> chargerMesNominations();
+  List<NominationAdmin> get mesNominations;
 
   Future<void> chargerAbonnement();
   AbonnementEtat get abonnement;
@@ -164,8 +169,7 @@ class ServiceT9Reel implements ServiceT9 {
   List<OffreOpportunite> get offres => List.unmodifiable(_offres);
 
   @override
-  List<AttestationMembre> get attestations =>
-      List.unmodifiable(_attestations);
+  List<AttestationMembre> get attestations => List.unmodifiable(_attestations);
 
   @override
   List<DocumentStructure> get documents => List.unmodifiable(_documents);
@@ -204,8 +208,7 @@ class ServiceT9Reel implements ServiceT9 {
   bool get accesAdmin => _accesAdmin;
 
   @override
-  List<DemandeSuivi> get demandesBureau =>
-      List.unmodifiable(_demandesBureau);
+  List<DemandeSuivi> get demandesBureau => List.unmodifiable(_demandesBureau);
 
   @override
   List<EnfantLie> get liensEnAttente => List.unmodifiable(_liensEnAttente);
@@ -330,7 +333,8 @@ class ServiceT9Reel implements ServiceT9 {
     for (final l in lignes) {
       try {
         final j = jsonDecode(l);
-        if (j is Map<String, dynamic>) offres.add(OffreOpportunite.depuisJson(j));
+        if (j is Map<String, dynamic>)
+          offres.add(OffreOpportunite.depuisJson(j));
       } catch (_) {
         // Ligne locale illisible, ignorée.
       }
@@ -402,6 +406,23 @@ class ServiceT9Reel implements ServiceT9 {
       return ok;
     } catch (_) {
       return false;
+    }
+  }
+
+  // Correctif global, 27 nov. 2026 : responsabilités affectées
+  // au membre, nominations actives, GET /moi/nominations.
+  @override
+  List<NominationAdmin> mesNominations = const [];
+
+  @override
+  Future<void> chargerMesNominations() async {
+    try {
+      final lignes = await _api.fetchMesNominations();
+      mesNominations = [
+        for (final l in lignes) NominationAdmin.depuisJson(l),
+      ];
+    } catch (_) {
+      // Hors ligne : les responsabilités connues sont gardées.
     }
   }
 
@@ -519,7 +540,8 @@ class ServiceT9Reel implements ServiceT9 {
     }
     if (!_accesAdmin) return;
     try {
-      final lignes = await _api.fetchLiensParentEnfantAdmin(statut: 'en_attente');
+      final lignes =
+          await _api.fetchLiensParentEnfantAdmin(statut: 'en_attente');
       _liensEnAttente = [for (final l in lignes) EnfantLie.depuisLien(l)];
     } catch (_) {
       _liensEnAttente = [];

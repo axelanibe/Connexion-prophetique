@@ -1,10 +1,10 @@
-// Mes fonctions, tranche T9, 26 nov. 2026.
-// La fonction du membre et les 11 fonctions connues, comme à
-// l'inscription. Changer de fonction appelle la route
-// existante, comme Mon profil. Aucune fonction inventée.
+// Mes fonctions, tranche T9, 26 nov. 2026, correctif global
+// 27 nov. 2026 : la page montre la fonction actuelle et les
+// responsabilités affectées au membre, nominations actives,
+// pas une liste déroulante de fonctions. Le changement de
+// fonction reste dans Mon profil.
 import 'package:flutter/material.dart';
 
-import 'modeles_profil.dart' show fonctionsMembre;
 import 'palette.dart';
 import 'service_t9.dart';
 
@@ -18,7 +18,6 @@ class PageFonctions extends StatefulWidget {
 
 class _PageFonctionsState extends State<PageFonctions> {
   var _charge = false;
-  var _enCours = false;
 
   @override
   void initState() {
@@ -28,21 +27,8 @@ class _PageFonctionsState extends State<PageFonctions> {
 
   Future<void> _charger() async {
     await widget.service.chargerMembre();
+    await widget.service.chargerMesNominations();
     if (mounted) setState(() => _charge = true);
-  }
-
-  Future<void> _choisir(String fonction) async {
-    final actuelle = widget.service.membre?.fonction ?? '';
-    if (fonction == actuelle || _enCours) return;
-    setState(() => _enCours = true);
-    final ok = await widget.service.changerFonction(fonction);
-    if (!mounted) return;
-    setState(() => _enCours = false);
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Impossible pour le moment.')),
-      );
-    }
   }
 
   @override
@@ -51,13 +37,15 @@ class _PageFonctionsState extends State<PageFonctions> {
       return const Center(child: CircularProgressIndicator());
     }
     final actuelle = widget.service.membre?.fonction ?? '';
+    final nominations = widget.service.mesNominations;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
         Card(
           color: PaletteNouvelle.bleuNuit,
           child: ListTile(
-            leading: const Icon(Icons.badge_outlined, color: PaletteNouvelle.or),
+            leading:
+                const Icon(Icons.badge_outlined, color: PaletteNouvelle.or),
             title: const Text(
               'Ma fonction',
               style: TextStyle(color: Colors.white70, fontSize: 13),
@@ -73,19 +61,37 @@ class _PageFonctionsState extends State<PageFonctions> {
           ),
         ),
         const SizedBox(height: 16),
-        for (final f in fonctionsMembre)
-          Card(
-            color: Colors.white,
-            margin: const EdgeInsets.only(bottom: 8),
-            child: ListTile(
-              title: Text(f),
-              trailing: f == actuelle
-                  ? const Icon(Icons.check_circle,
-                      color: PaletteNouvelle.orFonce)
-                  : null,
-              onTap: _enCours ? null : () => _choisir(f),
-            ),
+        const Text(
+          'Mes responsabilités',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: PaletteNouvelle.bleuNuit,
           ),
+        ),
+        const SizedBox(height: 8),
+        if (nominations.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              'Aucune responsabilité affectée.',
+              style: TextStyle(fontSize: 14, color: Colors.black54),
+            ),
+          )
+        else
+          for (final n in nominations)
+            Card(
+              color: Colors.white,
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: const Icon(
+                  Icons.work_outline,
+                  color: PaletteNouvelle.bleuNuit,
+                ),
+                title: Text(n.fonctionLibelle),
+                subtitle: Text(n.porteeLibelle),
+              ),
+            ),
       ],
     );
   }

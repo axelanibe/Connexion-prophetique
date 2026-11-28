@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 
 import 'modeles_t14.dart';
+import 'modeles_t18.dart';
 import 'modeles_t9.dart';
 import 'page_espace_admin.dart';
 import 'page_etablissements.dart';
@@ -23,6 +24,7 @@ class PageStructure extends StatefulWidget {
     this.serviceT14,
     this.serviceT18,
     this.onOuvrirCamps,
+    this.onOuvrirEtablissements,
   });
   final ServiceT9 service;
 
@@ -36,12 +38,20 @@ class PageStructure extends StatefulWidget {
   /// Ouverture de la destination Camps, pour « Prochain camp ».
   final VoidCallback? onOuvrirCamps;
 
+  /// Ouverture de la destination Nos établissements, pour
+  /// « Voir les établissements » : la barre du bas reste
+  /// visible, au lieu d'une page poussée qui la cachait.
+  final VoidCallback? onOuvrirEtablissements;
+
   @override
   State<PageStructure> createState() => _PageStructureState();
 }
 
 class _PageStructureState extends State<PageStructure> {
   var _charge = false;
+  // Correctif global, 27 nov. 2026 : la page est en onglets
+  // visibles, 0 Le Bureau, 1 Établissements, 2 Liaison.
+  var _onglet = 0;
   final _recherche = TextEditingController();
   var _resultats = <EnfantLie>[];
   var _rechercheEnCours = false;
@@ -62,6 +72,11 @@ class _PageStructureState extends State<PageStructure> {
     await widget.service.chargerStructure();
     if (widget.serviceT18 != null) {
       await widget.serviceT18!.chargerEtablissements();
+      // Transparence financière, onglet Le Bureau, pour les
+      // administrateurs seulement.
+      if (widget.service.accesAdmin) {
+        await widget.serviceT18!.chargerComptabilite();
+      }
     }
     if (mounted) setState(() => _charge = true);
   }
@@ -105,6 +120,81 @@ class _PageStructureState extends State<PageStructure> {
     );
   }
 
+  /// Transparence financière, correctif global 27 nov. 2026 :
+  /// la carte de la maquette, remplie par les totaux du mois
+  /// de la Comptabilité, pour les administrateurs seulement.
+  /// Toucher ouvre la Comptabilité.
+  Widget _carteTransparence(ServiceT18 service) {
+    final totaux = service.comptabilite!.totaux;
+    int montant(String cle) => (totaux[cle] as num?)?.toInt() ?? 0;
+    return Card(
+      color: Colors.white,
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => PageComptabiliteAdmin(
+              service: service,
+              onOuvrirMembres: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => PageEspaceStructure(
+                    service: widget.service,
+                    serviceT14: widget.serviceT14,
+                    serviceT18: service,
+                    onOuvrirCamps: widget.onOuvrirCamps,
+                    poussee: true,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _TitreSection('Transparence financière'),
+              Row(
+                children: [
+                  for (final (libelle, cle, couleur)
+                      in <(String, String, Color)>[
+                    ('Entrées', 'entrees', const Color(0xFF15803D)),
+                    ('Dépenses', 'depenses', const Color(0xFFB91C1C)),
+                    ('Solde', 'solde', PaletteNouvelle.bleuNuit),
+                  ])
+                    Expanded(
+                      child: Column(
+                        children: [
+                          Text(
+                            formaterFcfa(montant(cle)),
+                            style: TextStyle(
+                              fontFamily: 'Cinzel',
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: couleur,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            libelle,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.black54,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = widget.service;
@@ -112,152 +202,209 @@ class _PageStructureState extends State<PageStructure> {
     if (!_charge) {
       return const Center(child: CircularProgressIndicator());
     }
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+    return Column(
       children: [
-        const _TitreSection('Le Bureau'),
-        if (s.bureau.isEmpty)
-          const _Vide('À confirmer.')
-        else
-          for (final m in s.bureau.take(3)) _TuileBureau(m),
-        TextButton.icon(
-          onPressed: () => _ouvrirBureau(),
-          icon: const Icon(Icons.groups_outlined),
-          label: const Text('Voir tout le Bureau'),
-        ),
-        const SizedBox(height: 8),
-        Card(
-          color: Colors.white,
-          margin: EdgeInsets.zero,
-          child: ListTile(
-            leading: const Icon(Icons.business_outlined,
-                color: PaletteNouvelle.bleuNuit),
-            title: const Text('Espace structure'),
-            subtitle: const Text('Administrateurs'),
-            trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => PageEspaceStructure(
-                    service: s,
-                    serviceT14: widget.serviceT14,
-                    serviceT18: serviceT18,
-                    onOuvrirCamps: widget.onOuvrirCamps,
-                    poussee: true,
+        // Correctif global, 27 nov. 2026 : onglets visibles,
+        // l'onglet actif est marqué, bleu nuit plein.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Row(
+            children: [
+              for (var i = 0; i < 3; i++)
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(left: i == 0 ? 0 : 6),
+                    child: _OngletStructure(
+                      libelle: const [
+                        'Le Bureau',
+                        'Établissements',
+                        'Liaison',
+                      ][i],
+                      actif: _onglet == i,
+                      onTap: () => setState(() => _onglet = i),
+                    ),
                   ),
                 ),
-              );
-            },
+            ],
           ),
         ),
-        if (serviceT18 != null) ...[
-          const SizedBox(height: 16),
-          const _TitreSection('Nos établissements'),
-          if (serviceT18.etablissements.isEmpty)
-            const _Vide('Aucun établissement pour le moment.')
-          else
-            for (final e in serviceT18.etablissements.take(3))
-              Card(
-                color: Colors.white,
-                margin: const EdgeInsets.only(bottom: 8),
-                child: ListTile(
-                  leading: const Icon(Icons.school_outlined,
-                      color: PaletteNouvelle.bleuNuit),
-                  title: Text(e.nom),
-                  subtitle: Text(e.compteurs),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+            children: [
+              if (_onglet == 0) ...[
+                const _TitreSection('Le Bureau'),
+                if (s.bureau.isEmpty)
+                  const _Vide('À confirmer.')
+                else
+                  for (final m in s.bureau.take(3)) _TuileBureau(m),
+                TextButton.icon(
+                  onPressed: () => _ouvrirBureau(),
+                  icon: const Icon(Icons.groups_outlined),
+                  label: const Text('Voir tout le Bureau'),
                 ),
-              ),
-          TextButton.icon(
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => PageEtablissements(
-                    service: serviceT18,
-                    onOuvrirStructure: () =>
-                        _ouvrirBureau(filtreInitial: 'Structure'),
+                const SizedBox(height: 8),
+                // Correctif global, 27 nov. 2026 : la carte Espace
+                // structure est retirée de la page Structure, elle
+                // reste dans Plus. La carte Transparence financière
+                // de la maquette prend sa place, pour les admins.
+                if (s.accesAdmin &&
+                    serviceT18 != null &&
+                    serviceT18.comptabilite != null)
+                  _carteTransparence(serviceT18),
+              ],
+              if (_onglet == 1) ...[
+                if (serviceT18 != null) ...[
+                  const _TitreSection('Nos établissements'),
+                  if (serviceT18.etablissements.isEmpty)
+                    const _Vide('Aucun établissement pour le moment.')
+                  else
+                    for (final e in serviceT18.etablissements.take(3))
+                      Card(
+                        color: Colors.white,
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          leading: const Icon(Icons.school_outlined,
+                              color: PaletteNouvelle.bleuNuit),
+                          title: Text(e.nom),
+                          subtitle: Text(e.compteurs),
+                        ),
+                      ),
+                  TextButton.icon(
+                    onPressed: () {
+                      if (widget.onOuvrirEtablissements != null) {
+                        widget.onOuvrirEtablissements!();
+                        return;
+                      }
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => PageEtablissements(
+                            service: serviceT18,
+                            onOuvrirStructure: () =>
+                                _ouvrirBureau(filtreInitial: 'Structure'),
+                            poussee: true,
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.school_outlined),
+                    label: const Text('Voir les établissements'),
                   ),
+                ],
+              ],
+              if (_onglet == 2) ...[
+                const _TitreSection('Liaison parents et enfants'),
+                const Text(
+                  'Le parent lié au compte de son enfant suit ses résultats et ses autres informations.',
+                  style: TextStyle(color: Colors.grey, fontSize: 14),
                 ),
-              );
-            },
-            icon: const Icon(Icons.school_outlined),
-            label: const Text('Voir les établissements'),
+                const SizedBox(height: 8),
+                if (s.enfants.isEmpty && s.liens.isEmpty)
+                  const _Vide('Aucun enfant lié pour le moment.')
+                else ...[
+                  for (final e in s.enfants)
+                    Card(
+                      color: Colors.white,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: const Icon(Icons.child_care_outlined,
+                            color: PaletteNouvelle.bleuNuit),
+                        title: Text(e.nom),
+                        subtitle: Text(e.matricule),
+                      ),
+                    ),
+                  for (final l in s.liens.where((e) => e.statut != 'valide'))
+                    Card(
+                      color: Colors.white,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: const Icon(Icons.hourglass_empty_outlined,
+                            color: PaletteNouvelle.bleuNuit),
+                        title: Text(l.nom),
+                        subtitle: Text('En attente de validation'),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.close_outlined),
+                          onPressed: () => s.retirerLien(l.id).then((_) {
+                            if (mounted) setState(() {});
+                          }),
+                        ),
+                      ),
+                    ),
+                ],
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _recherche,
+                  decoration: InputDecoration(
+                    hintText: 'Nom ou matricule de l’enfant…',
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.search),
+                      onPressed: _rechercheEnCours ? null : _chercher,
+                    ),
+                  ),
+                  onSubmitted: (_) => _chercher(),
+                ),
+                const SizedBox(height: 8),
+                if (_resultats.isEmpty && _recherche.text.trim().isNotEmpty)
+                  const _Vide('Aucun membre trouvé.')
+                else
+                  for (final e in _resultats)
+                    Card(
+                      color: Colors.white,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        title: Text(e.nom),
+                        subtitle: Text(e.matricule),
+                        trailing: TextButton(
+                          onPressed: () => _demanderLien(e),
+                          child: const Text('Demander le lien'),
+                        ),
+                      ),
+                    ),
+              ],
+            ],
           ),
-        ],
-        const SizedBox(height: 16),
-        const _TitreSection('Liaison parents et enfants'),
-        const Text(
-          'Le parent lié au compte de son enfant suit ses résultats et ses autres informations.',
-          style: TextStyle(color: Colors.grey, fontSize: 14),
         ),
-        const SizedBox(height: 8),
-        if (s.enfants.isEmpty && s.liens.isEmpty)
-          const _Vide('Aucun enfant lié pour le moment.')
-        else ...[
-          for (final e in s.enfants)
-            Card(
-              color: Colors.white,
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                leading: const Icon(Icons.child_care_outlined,
-                    color: PaletteNouvelle.bleuNuit),
-                title: Text(e.nom),
-                subtitle: Text(e.matricule),
-              ),
-            ),
-          for (final l in s.liens.where((e) => e.statut != 'valide'))
-            Card(
-              color: Colors.white,
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                leading: const Icon(Icons.hourglass_empty_outlined,
-                    color: PaletteNouvelle.bleuNuit),
-                title: Text(l.nom),
-                subtitle: Text('En attente de validation'),
-                trailing: IconButton(
-                  icon: const Icon(Icons.close_outlined),
-                  onPressed: () => s.retirerLien(l.id).then((_) {
-                    if (mounted) setState(() {});
-                  }),
-                ),
-              ),
-            ),
-        ],
-        const SizedBox(height: 12),
-        TextField(
-          controller: _recherche,
-          decoration: InputDecoration(
-            hintText: 'Nom ou matricule de l’enfant…',
-            filled: true,
-            fillColor: Colors.white,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            suffixIcon: IconButton(
-              icon: const Icon(Icons.search),
-              onPressed: _rechercheEnCours ? null : _chercher,
-            ),
-          ),
-          onSubmitted: (_) => _chercher(),
-        ),
-        const SizedBox(height: 8),
-        if (_resultats.isEmpty && _recherche.text.trim().isNotEmpty)
-          const _Vide('Aucun membre trouvé.')
-        else
-          for (final e in _resultats)
-            Card(
-              color: Colors.white,
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                title: Text(e.nom),
-                subtitle: Text(e.matricule),
-                trailing: TextButton(
-                  onPressed: () => _demanderLien(e),
-                  child: const Text('Demander le lien'),
-                ),
-              ),
-            ),
       ],
+    );
+  }
+}
+
+/// Onglet visible de la page Structure, correctif global
+/// 27 nov. 2026 : l'onglet actif est marqué, bleu nuit plein,
+/// les autres sont blancs avec le texte bleu nuit.
+class _OngletStructure extends StatelessWidget {
+  const _OngletStructure({
+    required this.libelle,
+    required this.actif,
+    required this.onTap,
+  });
+  final String libelle;
+  final bool actif;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton(
+      onPressed: onTap,
+      style: FilledButton.styleFrom(
+        backgroundColor: actif ? PaletteNouvelle.bleuNuit : Colors.white,
+        foregroundColor: actif ? Colors.white : PaletteNouvelle.bleuNuit,
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+      ),
+      child: Text(
+        libelle,
+        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        textAlign: TextAlign.center,
+      ),
     );
   }
 }
@@ -770,9 +917,6 @@ class _PageEspaceStructureState extends State<PageEspaceStructure> {
 
   Future<void> _charger() async {
     await widget.service.chargerEspaceStructure();
-    if (widget.serviceT18 != null) {
-      await widget.serviceT18!.chargerChiffres();
-    }
     if (mounted) setState(() => _charge = true);
   }
 
@@ -790,6 +934,13 @@ class _PageEspaceStructureState extends State<PageEspaceStructure> {
         duration: const Duration(milliseconds: 400),
       );
     }
+  }
+
+  /// Retour depuis la Comptabilité vers Gérer les membres :
+  /// on referme la page puis on descend vers la section Membres.
+  void _retourMembres() {
+    Navigator.of(context).pop();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _allerMembres());
   }
 
   @override
@@ -815,57 +966,17 @@ class _PageEspaceStructureState extends State<PageEspaceStructure> {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
           if (serviceT18 != null) ...[
-            const _TitreSection('En chiffres'),
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
-                childAspectRatio: 1.8,
-              ),
-              itemCount: serviceT18.chiffres.length,
-              itemBuilder: (context, index) {
-                final c = serviceT18.chiffres[index];
-                return Card(
-                  color: Colors.white,
-                  margin: EdgeInsets.zero,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          c.valeur,
-                          style: const TextStyle(
-                            fontFamily: 'Cinzel',
-                            fontSize: 22,
-                            fontWeight: FontWeight.w700,
-                            color: PaletteNouvelle.bleuNuit,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          c.libelle,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.black54,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 16),
+            // Correctif global, 27 nov. 2026 : la section « En
+            // chiffres » est supprimée ici, le tableau de bord
+            // est dans la Comptabilité.
             _ActionAdmin(
               icone: Icons.verified_outlined,
               libelle: 'Valider les paiements',
               onTap: () => _ouvrir(
-                PageComptabiliteAdmin(service: serviceT18),
+                PageComptabiliteAdmin(
+                  service: serviceT18,
+                  onOuvrirMembres: _retourMembres,
+                ),
               ),
             ),
             _ActionAdmin(
@@ -881,7 +992,7 @@ class _PageEspaceStructureState extends State<PageEspaceStructure> {
               ),
             ),
             const SizedBox(height: 16),
-            const _TitreSection('Lot 1'),
+            const _TitreSection('Quotidien'),
             for (final (titre, icone, page) in _entreesLot1(serviceT18).take(3))
               _EntreeAdmin(
                 titre: titre,
@@ -901,7 +1012,7 @@ class _PageEspaceStructureState extends State<PageEspaceStructure> {
                 onTap: () => _ouvrir(page),
               ),
             const SizedBox(height: 16),
-            const _TitreSection('Lot 2'),
+            const _TitreSection('Gouvernance et réglages'),
             for (final (titre, icone, page) in _entreesLot2(serviceT18))
               _EntreeAdmin(
                 titre: titre,
@@ -924,19 +1035,6 @@ class _PageEspaceStructureState extends State<PageEspaceStructure> {
                 ),
               ),
           const SizedBox(height: 16),
-          const _TitreSection('Liens parent-enfant en attente'),
-          if (s.liensEnAttente.isEmpty)
-            const _Vide('Aucun lien en attente.')
-          else
-            for (final l in s.liensEnAttente)
-              Card(
-                color: Colors.white,
-                margin: const EdgeInsets.only(bottom: 8),
-                child: ListTile(
-                  title: Text(l.nom),
-                  subtitle: Text(l.matricule),
-                ),
-              ),
           if (widget.serviceT14 != null) ...[
             const SizedBox(height: 16),
             _TitreSection(
@@ -954,6 +1052,7 @@ class _PageEspaceStructureState extends State<PageEspaceStructure> {
       appBar: AppBar(
         title: const Text('Espace structure'),
         backgroundColor: Colors.white,
+        foregroundColor: PaletteNouvelle.bleuNuit,
       ),
       body: contenu,
     );
@@ -965,7 +1064,10 @@ class _PageEspaceStructureState extends State<PageEspaceStructure> {
         (
           'Comptabilité',
           Icons.account_balance_outlined,
-          PageComptabiliteAdmin(service: service),
+          PageComptabiliteAdmin(
+            service: service,
+            onOuvrirMembres: _retourMembres,
+          ),
         ),
         (
           'Publier une actualité',
@@ -1014,11 +1116,6 @@ class _PageEspaceStructureState extends State<PageEspaceStructure> {
             service: service,
             serviceT14: widget.serviceT14 ?? ServiceT14Reel(),
           ),
-        ),
-        (
-          'Tableau de bord',
-          Icons.dashboard_outlined,
-          PageTableauBordAdmin(service: service),
         ),
       ];
 
