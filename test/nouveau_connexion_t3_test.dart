@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'package:connexion_prophetique/app_models.dart';
+import 'package:connexion_prophetique/nouveau/carte_publication.dart';
 import 'package:connexion_prophetique/nouveau/coquille.dart';
 import 'package:connexion_prophetique/nouveau/modeles_connexion.dart';
 import 'package:connexion_prophetique/nouveau/page_connexion.dart';
@@ -409,6 +410,23 @@ class _FauxService implements ServiceConnexion {
     toutLu = true;
   }
 
+  // Correctif global, 27 nov. 2026 : détail d'un paiement.
+  @override
+  Future<Map<String, dynamic>?> chargerPaiement(String id) async {
+    return {
+      'id': id,
+      'reference': 'REF-TEST',
+      'type': 'cotisation',
+      'montant_fcfa': 1000,
+      'statut': 'confirme',
+      'moyen': 'wave',
+      'cree_le': '2026-11-27T10:00:00Z',
+    };
+  }
+
+  @override
+  Future<List<int>?> telechargerFacture(String reference) async => [1, 2, 3];
+
   @override
   Future<void> signaler(
       {required String cibleType,
@@ -461,8 +479,7 @@ void main() {
       for (final filtre in ['Tous', 'Témoignages', 'Prières', 'Versets']) {
         expect(find.text(filtre), findsOneWidget);
       }
-      expect(find.text('Actualité de la structure · Épinglée'),
-          findsOneWidget);
+      expect(find.text('Actualité de la structure · Épinglée'), findsOneWidget);
       expect(find.text('Actualité de test'), findsOneWidget);
       expect(find.text('Témoignage de test.'), findsOneWidget);
       expect(find.text('Prière de test.'), findsOneWidget);
@@ -472,6 +489,59 @@ void main() {
       expect(find.text('Verset'), findsOneWidget);
       expect(find.text('Prière'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('fil : Suivre devient Suivi sur une publication',
+        (tester) async {
+      final service = _FauxService();
+      await _pomperConnexion(tester, service);
+      expect(find.text('Suivre'), findsNWidgets(3));
+      await tester.tap(find.text('Suivre').first);
+      await tester.pumpAndSettle();
+      expect(service.suivis, 1);
+      expect(find.text('Suivi'), findsOneWidget);
+      expect(find.text('Suivre'), findsNWidgets(2));
+    });
+
+    testWidgets('publication épinglée du mur : réactions actives',
+        (tester) async {
+      var reactions = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ListView(
+              children: [
+                CartePublicationConnexion(
+                  publication: PublicationConnexion(
+                    id: 'p-ep',
+                    auteurId: 'a1',
+                    auteurNom: 'Test Auteure',
+                    etablissementNom: 'Établissement de test',
+                    texte: 'Épinglée de test.',
+                    categorie: 'temoignage',
+                    nbJaime: 5,
+                    nbCommentaires: 2,
+                    epinglee: true,
+                    creeLe: DateTime(2026, 11, 20),
+                  ),
+                  onReaction: (_) => reactions++,
+                  onCommentaires: () {},
+                  onPartager: () {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Épinglée'), findsOneWidget);
+      expect(find.text('Actualité de la structure · Épinglée'), findsNothing);
+      expect(find.text('Épinglée de test.'), findsOneWidget);
+      expect(find.text('J\'aime · 5'), findsOneWidget);
+      expect(find.text('2'), findsOneWidget);
+      await tester.tap(find.text("J'aime · 5"));
+      await tester.pumpAndSettle();
+      expect(reactions, 1);
     });
 
     testWidgets('filtres : Prières puis Versets puis Tous filtrent vraiment',
@@ -826,4 +896,3 @@ void main() {
     });
   });
 }
-

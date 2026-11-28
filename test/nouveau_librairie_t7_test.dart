@@ -190,8 +190,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Rechercher un livre'), findsOneWidget);
     expect(find.text('Livre test deux'), findsWidgets);
-    await tester.enterText(
-        find.byType(TextField), 'deux');
+    await tester.enterText(find.byType(TextField), 'deux');
     await tester.pump();
     expect(find.text('Livre test un'), findsNothing);
     expect(find.text('Effacer la recherche'), findsOneWidget);
@@ -226,8 +225,7 @@ void main() {
     expect(find.text('Livre test un'), findsOneWidget);
   });
 
-  testWidgets('Acheter ajoute au panier, puis ouvre le panier',
-      (tester) async {
+  testWidgets('Acheter ajoute au panier, puis ouvre le panier', (tester) async {
     final service = _FauxServiceLibrairie();
     await _pomper(tester, service);
     await tester.drag(find.byType(ListView).first, const Offset(0, -300));
@@ -268,13 +266,16 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('boutonAjouter')));
     await tester.pumpAndSettle();
     expect(find.text('Nouveau livre'), findsOneWidget);
-    await tester.enterText(find.widgetWithText(TextField, 'Titre'), 'Livre test quatre');
-    await tester.enterText(find.widgetWithText(TextField, 'Auteur'), 'Auteur test C');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Titre'), 'Livre test quatre');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Auteur'), 'Auteur test C');
     await tester.enterText(
         find.widgetWithText(TextField, 'Prix (FCFA)'), '3000');
     // La feuille est plus haute que l'écran de test, on fait
     // glisser son contenu avant de toucher le bouton.
-    await tester.drag(find.byType(SingleChildScrollView).last, const Offset(0, -400));
+    await tester.drag(
+        find.byType(SingleChildScrollView).last, const Offset(0, -400));
     await tester.pump();
     await tester.tap(find.text('Publier'));
     await tester.pumpAndSettle();

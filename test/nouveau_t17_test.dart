@@ -74,19 +74,24 @@ Future<void> _pomperAccueil(WidgetTester tester) async {
 
 void main() {
   group('T17, correctifs écarts', () {
-    testWidgets('Prière du jour : Ouvrir dans la Bible tient à 390 px, sans ellipse', (tester) async {
+    testWidgets(
+        'Prière du jour : Ouvrir dans la Bible tient à 390 px, sans ellipse',
+        (tester) async {
       await _pomperAccueil(tester);
       expect(find.text('Écouter'), findsOneWidget);
       expect(find.text('Partager'), findsOneWidget);
       expect(find.text('Ouvrir dans la Bible'), findsOneWidget);
       // Le libellé a maxLines 1 avec ellipse : s'il ne tient
       // pas, le paragraphe dépasse sa ligne, sinon non.
-      final paragraphe = tester.renderObject<RenderParagraph>(find.text('Ouvrir dans la Bible'));
+      final paragraphe = tester
+          .renderObject<RenderParagraph>(find.text('Ouvrir dans la Bible'));
       expect(paragraphe.didExceedMaxLines, isFalse);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('coquille : le corps a 80 px de marge basse, au-dessus du bouton Assistant', (tester) async {
+    testWidgets(
+        'coquille : le corps a 120 px de marge basse, au-dessus du bouton Assistant',
+        (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -97,13 +102,14 @@ void main() {
         ),
       ));
       await tester.pumpAndSettle();
-      // La marge basse de 80 px enveloppe le corps, au-dessus
+      // La marge basse de 120 px enveloppe le corps, au-dessus
       // de la bande de 64 px du bouton flottant Assistant.
       expect(
         find.ancestor(
           of: find.text('Contenu accueil test'),
           matching: find.byWidgetPredicate(
-            (w) => w is Padding && w.padding == const EdgeInsets.only(bottom: 80),
+            (w) =>
+                w is Padding && w.padding == const EdgeInsets.only(bottom: 120),
           ),
         ),
         findsOneWidget,

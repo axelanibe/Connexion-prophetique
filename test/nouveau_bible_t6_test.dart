@@ -97,14 +97,14 @@ class _FauxServiceBible implements ServiceBible {
 
   @override
   Future<void> enregistrerEtiquette(
-          String lang, BibleVerseRef ref, String etiquette) async {}
+      String lang, BibleVerseRef ref, String etiquette) async {}
 
   @override
   Future<String?> lien(String lang, BibleVerseRef ref) async => null;
 
   @override
   Future<void> enregistrerLien(
-          String lang, BibleVerseRef ref, String lien) async {}
+      String lang, BibleVerseRef ref, String lien) async {}
 
   @override
   Future<List<LittreEntry>> definir(String mot) async => [
@@ -119,8 +119,7 @@ class _FauxServiceBible implements ServiceBible {
   Future<void> ecouterVerset(String lang, BibleVerseRef ref) async {}
 
   @override
-  Future<void> ecouterChapitre(
-      String lang, int livre, int chapitre) async {}
+  Future<void> ecouterChapitre(String lang, int livre, int chapitre) async {}
 
   @override
   Future<void> arreterAudio() async {}
@@ -131,9 +130,8 @@ class _FauxServiceBible implements ServiceBible {
   }
 
   @override
-  Future<BibleVerseRef?> reprise(String lang) async => avecReprise
-      ? const BibleVerseRef(0, 1, 1, 'Verset de test un')
-      : null;
+  Future<BibleVerseRef?> reprise(String lang) async =>
+      avecReprise ? const BibleVerseRef(0, 1, 1, 'Verset de test un') : null;
 
   @override
   Future<void> enregistrerReprise(String lang, BibleVerseRef ref) async {}
@@ -151,8 +149,7 @@ class _FauxServiceBible implements ServiceBible {
   }
 }
 
-Future<void> _ouvrirBible(WidgetTester tester,
-    {ServiceBible? service}) async {
+Future<void> _ouvrirBible(WidgetTester tester, {ServiceBible? service}) async {
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
@@ -175,8 +172,7 @@ void main() {
     expect(estAncienTestament(39), isFalse);
   });
 
-  testWidgets('T6 : accueil sans liste avant un toucher',
-      (tester) async {
+  testWidgets('T6 : accueil sans liste avant un toucher', (tester) async {
     await _ouvrirBible(tester);
     expect(find.text('Bible'), findsOneWidget);
     expect(find.text('Version Louis Segond 1910'), findsOneWidget);
@@ -217,8 +213,7 @@ void main() {
     expect(find.byKey(const ValueKey('verset_1')), findsOneWidget);
   });
 
-  testWidgets('T6 : verset sélectionné, barre d’actions',
-      (tester) async {
+  testWidgets('T6 : verset sélectionné, barre d’actions', (tester) async {
     final service = _FauxServiceBible();
     await _ouvrirBible(tester, service: service);
     await tester.tap(find.text('Ancien Testament'));
@@ -272,14 +267,15 @@ void main() {
     expect(find.text('Livre test 1 1:1'), findsOneWidget);
   });
 
-  testWidgets('T6 : plan de lecture 365 jours et badges',
-      (tester) async {
+  testWidgets('T6 : plan de lecture 365 jours et badges', (tester) async {
     await _ouvrirBible(tester);
     await tester.tap(find.text('Plan de lecture'));
     await tester.pumpAndSettle();
     expect(find.text('Plan de lecture'), findsWidgets);
     expect(find.text('Toute la Bible en 365 jours'), findsOneWidget);
     expect(find.text('0 / 365 jours lus'), findsOneWidget);
+    expect(find.text('7 jours'), findsOneWidget);
+    expect(find.text('jours_7'), findsNothing);
     expect(find.text('Jour 1'), findsOneWidget);
     await tester.tap(find.text('Marquer lu').first);
     await tester.pumpAndSettle();
@@ -287,12 +283,15 @@ void main() {
   });
 
   testWidgets('T6 : reprise de lecture et réglages', (tester) async {
-    await _ouvrirBible(tester,
-        service: _FauxServiceBible(avecReprise: true));
+    await _ouvrirBible(tester, service: _FauxServiceBible(avecReprise: true));
     expect(find.text('Reprendre la lecture'), findsOneWidget);
-    await tester.tap(find.text('Reprendre la lecture'));
+    expect(find.text('Chapitre 1 sur 2 · Dernier chapitre lu'), findsOneWidget);
+    expect(find.text('Continuer, chapitre 2'), findsOneWidget);
+    expect(find.text('Chapitres'), findsOneWidget);
+    expect(find.text('1'), findsOneWidget);
+    await tester.tap(find.text('Continuer, chapitre 2'));
     await tester.pumpAndSettle();
-    expect(find.text('Livre test 1 1'), findsOneWidget);
+    expect(find.text('Livre test 1 2'), findsOneWidget);
     expect(find.byKey(const ValueKey('verset_1')), findsOneWidget);
     await tester.tap(find.byIcon(LucideIcons.chevronLeft));
     await tester.pumpAndSettle();
@@ -305,9 +304,18 @@ void main() {
     expect(find.byType(Slider), findsOneWidget);
   });
 
-  testWidgets('T6 : sans reprise, pas de tuile reprendre',
-      (tester) async {
+  testWidgets('T6 : sans reprise, pas de tuile reprendre', (tester) async {
     await _ouvrirBible(tester);
     expect(find.text('Reprendre la lecture'), findsNothing);
+  });
+
+  testWidgets('T6 : tuile Chapitres du livre repris', (tester) async {
+    await _ouvrirBible(tester, service: _FauxServiceBible(avecReprise: true));
+    await tester.drag(find.byType(ListView), const Offset(0, -400));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Chapitres'));
+    await tester.pumpAndSettle();
+    expect(find.text('Livre test 1'), findsOneWidget);
+    expect(find.text('2'), findsOneWidget);
   });
 }

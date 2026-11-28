@@ -2,16 +2,24 @@
 // l'Espace Structure, lots 1 et 2 ensemble, page À propos,
 // établissements. Les membres et les établissements ci-dessous
 // sont des exemples de test, jamais de vraies données.
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:share_plus_platform_interface/share_plus_platform_interface.dart';
 
 import 'package:connexion_prophetique/nouveau/modeles_t14.dart';
 import 'package:connexion_prophetique/nouveau/modeles_t18.dart';
 import 'package:connexion_prophetique/nouveau/modeles_t9.dart';
 import 'package:connexion_prophetique/nouveau/page_a_propos.dart';
+import 'package:connexion_prophetique/nouveau/page_chronogramme.dart';
 import 'package:connexion_prophetique/nouveau/page_espace_admin.dart';
 import 'package:connexion_prophetique/nouveau/page_etablissements.dart';
 import 'package:connexion_prophetique/nouveau/page_structure.dart';
+import 'package:connexion_prophetique/nouveau/service_t14.dart';
 import 'package:connexion_prophetique/nouveau/service_t18.dart';
 import 'package:connexion_prophetique/nouveau/service_t9.dart';
 
@@ -27,6 +35,51 @@ class FauxServiceT9 implements ServiceT9 {
     if (nom == 'liensEnAttente') return const <EnfantLie>[];
     if (nom == 'chargerEspaceStructure') return Future<void>.value();
     return super.noSuchMethod(invocation);
+  }
+}
+
+/// Service T14 minimal pour la page Exports : seul le format
+/// Excel est testé, le service n'est jamais appelé.
+class _FauxServiceT14 implements ServiceT14 {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Partage simulé : sur Linux, le partage de fichiers n'est pas
+/// implémenté, le téléchargement s'arrêterait en erreur sans lui.
+class _FauxSharePlatform extends SharePlatform {
+  @override
+  Future<ShareResult> share(ShareParams params) async =>
+      const ShareResult('', ShareResultStatus.success);
+}
+
+/// Sélecteur de fichier simulé : renvoie un PDF de 3 octets.
+class _FauxFilePicker extends FilePicker {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
+  @override
+  Future<FilePickerResult?> pickFiles({
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    String? dialogTitle,
+    String? initialDirectory,
+    Function(FilePickerStatus)? onFileLoading,
+    bool? allowCompression = true,
+    bool allowMultiple = false,
+    bool? withData = false,
+    int compressionQuality = 30,
+    bool? withReadStream = false,
+    bool lockParentWindow = false,
+    bool readSequential = false,
+  }) async {
+    return FilePickerResult([
+      PlatformFile(
+        name: 'doc.pdf',
+        size: 3,
+        bytes: Uint8List.fromList([1, 2, 3]),
+      ),
+    ]);
   }
 }
 
@@ -152,6 +205,17 @@ class FauxServiceT18 implements ServiceT18 {
     String nom,
   ) async {}
 
+  // Correctif global, 27 nov. 2026 : pointage par scan QR.
+  @override
+  Future<bool> scannerPresence(String activiteId, String matricule) async {
+    return true;
+  }
+
+  @override
+  Future<bool> marquerEspeces(String matricule) async {
+    return true;
+  }
+
   @override
   List<DocumentStructure> documents = const [];
 
@@ -162,12 +226,157 @@ class FauxServiceT18 implements ServiceT18 {
   Future<bool> publierDocument({
     required String titre,
     String? lien,
+    String? fichierId,
     String? etablissementId,
   }) async =>
       true;
 
   @override
   Future<bool> supprimerDocument(String id) async => true;
+
+  @override
+  List<EntreeChronogramme> chronogramme = [
+    const EntreeChronogramme(
+      id: 'c1',
+      jour: '2026-07-12',
+      heureDebut: '05:00',
+      heureFin: '06:00',
+      titre: 'Prière du matin',
+      type: 'Prière',
+    ),
+    const EntreeChronogramme(
+      id: 'c2',
+      jour: '2026-07-12',
+      heureDebut: '08:00',
+      heureFin: '09:30',
+      titre: 'Enseignement',
+      lieu: 'Grande salle',
+      type: 'Enseignement',
+    ),
+    const EntreeChronogramme(
+      id: 'c3',
+      jour: '2026-07-13',
+      heureDebut: '05:00',
+      heureFin: '06:00',
+      titre: 'Prière du matin',
+      type: 'Prière',
+    ),
+  ];
+
+  @override
+  List<String> chronogrammeTypes = const [
+    'Culte',
+    'Enseignement',
+    'Atelier',
+    'Évangélisation',
+    'Prière',
+    'Repas',
+    'Repos',
+    'Partage',
+    'Vie quotidienne',
+    'Activité',
+  ];
+
+  @override
+  String? chronogrammeDebut = '2026-07-12';
+
+  @override
+  String? chronogrammeFin = '2026-07-18';
+
+  @override
+  Future<bool> chargerChronogramme(String evenementId) async => true;
+
+  @override
+  Future<bool> creerEntreeChronogramme(
+    String evenementId, {
+    required String jour,
+    required String heureDebut,
+    required String heureFin,
+    required String titre,
+    String? lieu,
+    String? type,
+  }) async {
+    chronogramme = [
+      ...chronogramme,
+      EntreeChronogramme(
+        id: 'c-test',
+        jour: jour,
+        heureDebut: heureDebut,
+        heureFin: heureFin,
+        titre: titre,
+        lieu: lieu ?? '',
+        type: type ?? '',
+      ),
+    ];
+    return true;
+  }
+
+  @override
+  Future<bool> modifierEntreeChronogramme(
+    String evenementId,
+    String entreeId, {
+    required String jour,
+    required String heureDebut,
+    required String heureFin,
+    required String titre,
+    String? lieu,
+    String? type,
+  }) async {
+    chronogramme = [
+      for (final e in chronogramme)
+        if (e.id == entreeId)
+          EntreeChronogramme(
+            id: e.id,
+            jour: jour,
+            heureDebut: heureDebut,
+            heureFin: heureFin,
+            titre: titre,
+            lieu: lieu ?? '',
+            type: type ?? '',
+          )
+        else
+          e,
+    ];
+    return true;
+  }
+
+  @override
+  Future<bool> supprimerEntreeChronogramme(
+    String evenementId,
+    String entreeId,
+  ) async {
+    chronogramme = [
+      for (final e in chronogramme)
+        if (e.id != entreeId) e,
+    ];
+    return true;
+  }
+
+  @override
+  Future<bool> appliquerModeleChronogramme(
+    String evenementId,
+    String dimanche,
+  ) async =>
+      true;
+
+  String? dernierFichierTeleverse;
+  String? dernierExport;
+  String? dernierFormatExport;
+
+  @override
+  Future<String?> televerserDocument(
+      List<int> octets, String nomFichier) async {
+    dernierFichierTeleverse = nomFichier;
+    return 'fichier-test';
+  }
+
+  @override
+  Future<List<int>?> telechargerExport(String sujet,
+      {String format = 'xlsx', String? evenementId}) async {
+    dernierExport = sujet;
+    dernierFormatExport = format;
+    return [1, 2, 3];
+  }
 
   @override
   List<AttestationAdmin> attestations = const [];
@@ -206,12 +415,10 @@ class FauxServiceT18 implements ServiceT18 {
       ServiceT18Reel().exporterMembresCsv(membres);
 
   @override
-  String exporterPaiementsCsv() =>
-      ServiceT18Reel().exporterPaiementsCsv();
+  String exporterPaiementsCsv() => ServiceT18Reel().exporterPaiementsCsv();
 
   @override
-  String exporterPresencesCsv() =>
-      ServiceT18Reel().exporterPresencesCsv();
+  String exporterPresencesCsv() => ServiceT18Reel().exporterPresencesCsv();
 
   @override
   String exporterInscriptionsCsv() =>
@@ -287,8 +494,7 @@ class FauxServiceT18 implements ServiceT18 {
           orElse: () => const EtablissementAdmin(id: '', nom: ''),
         )
         .nom;
-    bureau =
-        _bureauComplet.where((m) => m.etablissement == nom).toList();
+    bureau = _bureauComplet.where((m) => m.etablissement == nom).toList();
   }
 
   @override
@@ -354,15 +560,61 @@ class FauxServiceT18 implements ServiceT18 {
   @override
   Future<void> chargerNominations({String? etablissementId}) async {}
 
+  /// Dernière nomination créée, pour vérifier la personne visée.
+  Map<String, dynamic>? derniereNomination;
+
   @override
   Future<bool> creerNomination({
-    required String membreId,
+    String? membreId,
+    String? personneExterneId,
     required String fonctionCode,
     required String portee,
     String? etablissementId,
     String? evenementId,
-  }) async =>
+  }) async {
+    derniereNomination = {
+      if (membreId != null) 'membre_id': membreId,
+      if (personneExterneId != null) 'personne_externe_id': personneExterneId,
+      'fonction_code': fonctionCode,
+      'portee': portee,
+    };
+    return true;
+  }
+
+  @override
+  List<PersonneExterne> personnesExternes = const [];
+
+  @override
+  Future<void> chargerPersonnesExternes() async {}
+
+  @override
+  Future<PersonneExterne?> creerPersonneExterne(
+    Map<String, dynamic> corps,
+  ) async =>
+      PersonneExterne(
+        id: 'pe-test',
+        nomComplet: (corps['nom_complet'] ?? '').toString(),
+        fonction: (corps['fonction'] ?? 'Membre').toString(),
+        contact: (corps['contact'] ?? '').toString(),
+        roleAdmin: (corps['role_admin'] ?? '').toString(),
+      );
+
+  @override
+  Future<bool> modifierPersonneExterne(
+    String id,
+    Map<String, dynamic> corps,
+  ) async =>
       true;
+
+  @override
+  Future<bool> supprimerPersonneExterne(String id) async => true;
+
+  @override
+  Future<Map<String, dynamic>?> inscrireAuCampAdmin(
+    String evenementId,
+    Map<String, dynamic> corps,
+  ) async =>
+      null;
 
   @override
   Future<bool> revoquerNomination(String id) async => true;
@@ -425,16 +677,14 @@ class FauxServiceT18 implements ServiceT18 {
   @override
   Future<bool> validerLien(String id) async {
     liensValides.add(id);
-    liensEnAttente =
-        liensEnAttente.where((l) => l.id != id).toList();
+    liensEnAttente = liensEnAttente.where((l) => l.id != id).toList();
     return true;
   }
 
   @override
   Future<bool> rejeterLien(String id) async {
     liensRejetes.add(id);
-    liensEnAttente =
-        liensEnAttente.where((l) => l.id != id).toList();
+    liensEnAttente = liensEnAttente.where((l) => l.id != id).toList();
     return true;
   }
 
@@ -545,7 +795,12 @@ void main() {
         'total_voix': 12,
         'candidats': [
           {'id': 'c1', 'nom': 'Awa Test', 'matricule': 'CP-AT-2601', 'voix': 7},
-          {'id': 'c2', 'nom': 'Kofi Test', 'matricule': 'CP-KT-2601', 'voix': 5},
+          {
+            'id': 'c2',
+            'nom': 'Kofi Test',
+            'matricule': 'CP-KT-2601',
+            'voix': 5
+          },
         ],
       });
       expect(e.nbVotes, 12);
@@ -583,8 +838,7 @@ void main() {
   });
 
   group('T18 Espace structure', () {
-    testWidgets('6 chiffres, dont un « — », et 3 actions',
-        (tester) async {
+    testWidgets('plus de section En chiffres, 3 actions', (tester) async {
       await telephone(tester);
       final serviceT18 = FauxServiceT18();
       await tester.pumpWidget(
@@ -598,18 +852,17 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      for (final libelle in libellesChiffres) {
-        // « Inscriptions au camp » est aussi une entrée du lot 1.
-        expect(find.text(libelle), findsWidgets, reason: libelle);
-      }
-      expect(find.text('128'), findsOneWidget);
-      expect(find.text('—'), findsOneWidget);
+      // Correctif global, 27 nov. 2026 : la section En chiffres
+      // est dans la Comptabilité, plus ici.
+      expect(find.text('En chiffres'), findsNothing);
+      expect(find.text('128'), findsNothing);
+      expect(find.text('—'), findsNothing);
       await voir(tester, 'Valider les paiements');
       await voir(tester, 'Gérer les membres');
       await voir(tester, 'Publier une actualité');
     });
 
-    testWidgets('entrées des lots 1 et 2', (tester) async {
+    testWidgets('entrées Quotidien et Gouvernance et réglages', (tester) async {
       await telephone(tester);
       await tester.pumpWidget(
         MaterialApp(
@@ -623,8 +876,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await voir(tester, 'Lot 1');
-      await voir(tester, 'Lot 2');
+      await voir(tester, 'Quotidien');
+      await voir(tester, 'Gouvernance et réglages');
       for (final entree in [
         'Comptabilité',
         'Actualités',
@@ -636,7 +889,6 @@ void main() {
         'Attestations',
         'Journal d’audit',
         'Exports complets',
-        'Tableau de bord',
         'Administrateurs',
         'Nominations',
         'Élections',
@@ -652,8 +904,7 @@ void main() {
   });
 
   group('T18 À propos', () {
-    testWidgets('4 axes, vision et contacts de la vitrine',
-        (tester) async {
+    testWidgets('4 axes, vision et contacts de la vitrine', (tester) async {
       await telephone(tester);
       await tester.pumpWidget(
         const MaterialApp(
@@ -690,8 +941,7 @@ void main() {
   });
 
   group('T18 établissements', () {
-    testWidgets('cartes avec compteurs et badge du mien',
-        (tester) async {
+    testWidgets('cartes avec compteurs et badge du mien', (tester) async {
       await telephone(tester);
       await tester.pumpWidget(
         MaterialApp(
@@ -701,7 +951,13 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Nos établissements'), findsOneWidget);
+      expect(find.byType(AppBar), findsNothing);
+      expect(
+        find.text(
+          'Chaque établissement a ses activités, événements et actualités.',
+        ),
+        findsOneWidget,
+      );
       expect(find.text('Groupe Scolaire Test'), findsOneWidget);
       expect(find.text('Collège Test'), findsOneWidget);
       expect(
@@ -744,7 +1000,7 @@ void main() {
       await tester.tap(find.text('Ouvrir'));
       await tester.pumpAndSettle();
       expect(find.byType(BackButton), findsOneWidget);
-      await voir(tester, 'En chiffres');
+      await voir(tester, 'Quotidien');
       await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
       expect(find.text('Ouvrir'), findsOneWidget);
@@ -781,6 +1037,7 @@ void main() {
                       MaterialPageRoute(
                         builder: (_) => PageEtablissements(
                           service: FauxServiceT18(),
+                          poussee: true,
                         ),
                       ),
                     );
@@ -803,8 +1060,7 @@ void main() {
   });
 
   group('T18 Bureau', () {
-    testWidgets('filtres Tous, Structure, établissement',
-        (tester) async {
+    testWidgets('filtres Tous, Structure, établissement', (tester) async {
       await telephone(tester);
       await tester.pumpWidget(
         MaterialApp(
@@ -833,8 +1089,7 @@ void main() {
   });
 
   group('T18 liens parent-enfant', () {
-    testWidgets('valider un lien le retire de la liste',
-        (tester) async {
+    testWidgets('valider un lien le retire de la liste', (tester) async {
       await telephone(tester);
       final service = FauxServiceT18();
       await tester.pumpWidget(
@@ -852,6 +1107,275 @@ void main() {
         find.text('Aucun lien en attente de validation.'),
         findsOneWidget,
       );
+    });
+  });
+
+  group('Correctif global personnes externes', () {
+    test('PersonneExterne depuisJson et libellé du rôle', () {
+      const p = PersonneExterne(
+        id: 'pe1',
+        nomComplet: 'Awa Externe',
+        fonction: 'Chantre',
+        contact: '+225 07 00 00 00',
+        roleAdmin: 'admin_etablissement',
+      );
+      expect(p.roleAdminLibelle, 'Administrateur d’établissement');
+      final relue = PersonneExterne.depuisJson({
+        'id': 'pe1',
+        'nom_complet': 'Awa Externe',
+        'fonction': 'Chantre',
+        'contact': '+225 07 00 00 00',
+        'etablissement_id': 'e1',
+        'etablissement_nom': 'ISPAM',
+        'role_admin': 'admin_general',
+      });
+      expect(relue.nomComplet, 'Awa Externe');
+      expect(relue.etablissementNom, 'ISPAM');
+      expect(relue.roleAdminLibelle, 'Administrateur général');
+      expect(
+        const PersonneExterne(id: 'pe2', nomComplet: 'Kofi').roleAdminLibelle,
+        '',
+      );
+    });
+
+    test('Nomination, suivi et planning marquent la personne externe', () {
+      final nomination = NominationAdmin.depuisJson({
+        'id': 'n1',
+        'membre_id': null,
+        'personne_externe_id': 'pe1',
+        'nom_complet': 'Awa Externe',
+        'fonction_code': 'chantre',
+        'fonction_libelle': 'Chantre',
+        'portee': 'structure',
+      });
+      expect(nomination.estExterne, isTrue);
+      expect(nomination.matricule, '');
+      final suivi = SuiviScolaire.depuisJson({
+        'id': 's1',
+        'membre_id': null,
+        'personne_externe_id': 'pe1',
+        'membre_nom': 'Awa Externe',
+        'annee_scolaire': '2026-2027',
+      });
+      expect(suivi.estExterne, isTrue);
+      final creneau = PlanningResponsable.depuisJson({
+        'id': 'p1',
+        'membre_id': null,
+        'personne_externe_id': 'pe1',
+        'activite': 'Culte',
+        'membre_nom': 'Awa Externe',
+      });
+      expect(creneau.estExterne, isTrue);
+      expect(creneau.membreNom, 'Awa Externe');
+    });
+
+    testWidgets('nominations, la ligne externe porte Hors système',
+        (tester) async {
+      await telephone(tester);
+      final service = FauxServiceT18();
+      service.nominations = [
+        NominationAdmin.depuisJson({
+          'id': 'n1',
+          'membre_id': null,
+          'personne_externe_id': 'pe1',
+          'nom_complet': 'Awa Externe',
+          'fonction_code': 'chantre',
+          'fonction_libelle': 'Chantre',
+          'portee': 'structure',
+        }),
+      ];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: PageNominationsAdmin(service: service)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Awa Externe'), findsOneWidget);
+      expect(find.text('Chantre · Structure · Hors système'), findsOneWidget);
+    });
+
+    testWidgets('nouvelle nomination, création d’une personne hors système',
+        (tester) async {
+      await telephone(tester);
+      final service = FauxServiceT18();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: PageNominationsAdmin(service: service)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Nouvelle nomination'));
+      await tester.pumpAndSettle();
+      expect(find.text('Choisir une personne'), findsOneWidget);
+      await tester.tap(find.text('Nouvelle personne'));
+      await tester.pumpAndSettle();
+      expect(find.text('Nouvelle personne hors système'), findsOneWidget);
+      final nom = find.byWidgetPredicate(
+        (w) => w is TextField && w.decoration?.labelText == 'Nom complet',
+      );
+      await tester.enterText(nom, 'Awa Externe');
+      await tester.tap(find.text('Créer'));
+      await tester.pumpAndSettle();
+      expect(find.text('Nommer Awa Externe'), findsOneWidget);
+      await tester.tap(find.text('Nommer'));
+      await tester.pumpAndSettle();
+      expect(find.text('Nomination créée.'), findsOneWidget);
+      expect(
+        service.derniereNomination?['personne_externe_id'],
+        'pe-test',
+      );
+      expect(service.derniereNomination?.containsKey('membre_id'), isFalse);
+    });
+  });
+
+  group('Correctif global documents et exports', () {
+    testWidgets('documents, le choix de fichier est proposé', (tester) async {
+      await telephone(tester);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PageDocumentsAdmin(service: FauxServiceT18()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Choisir un fichier'), findsOneWidget);
+      expect(find.text('Lien (facultatif)'), findsOneWidget);
+    });
+
+    testWidgets('documents, fichier choisi puis publié', (tester) async {
+      // La plateforme n'est pas enregistrée en test : on pose le
+      // faux directement, sans lire la précédente.
+      FilePicker.platform = _FauxFilePicker();
+      await telephone(tester);
+      final service = FauxServiceT18();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: PageDocumentsAdmin(service: service)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Choisir un fichier'));
+      await tester.pumpAndSettle();
+      expect(find.text('doc.pdf'), findsOneWidget);
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (w) =>
+              w is TextField && w.decoration?.labelText == 'Titre du document',
+        ),
+        'Règlement intérieur',
+      );
+      await tester.tap(find.text('Publier le document'));
+      await tester.pumpAndSettle();
+      expect(service.dernierFichierTeleverse, 'doc.pdf');
+      expect(find.text('Document publié.'), findsOneWidget);
+    });
+
+    testWidgets('exports, Excel choisi puis téléchargé', (tester) async {
+      final dossier = Directory.systemTemp.createTempSync();
+      addTearDown(() => dossier.deleteSync(recursive: true));
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/path_provider'),
+        (appel) async {
+          if (appel.method == 'getApplicationDocumentsDirectory') {
+            return dossier.path;
+          }
+          return null;
+        },
+      );
+      final partagePrecedent = SharePlatform.instance;
+      SharePlatform.instance = _FauxSharePlatform();
+      addTearDown(() {
+        SharePlatform.instance = partagePrecedent;
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          null,
+        );
+      });
+      await telephone(tester);
+      final service = FauxServiceT18();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PageExportsAdmin(
+              service: service,
+              serviceT14: _FauxServiceT14(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('CSV'), findsOneWidget);
+      await tester.tap(find.text('CSV'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Excel (.xlsx)').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Télécharger').first);
+      // Écriture réelle du fichier : le faux temps des tests ne
+      // la laisse pas finir, il faut du temps réel.
+      await tester.runAsync(
+        () => Future.delayed(const Duration(milliseconds: 500)),
+      );
+      await tester.pumpAndSettle();
+      expect(service.dernierExport, 'membres');
+      expect(service.dernierFormatExport, 'xlsx');
+      expect(File('${dossier.path}/membres.xlsx').existsSync(), isTrue);
+    });
+  });
+
+  group('Correctif global planning du camp', () {
+    test('EntreeChronogramme depuisJson et plage', () {
+      final e = EntreeChronogramme.depuisJson({
+        'id': 'c1',
+        'jour': '2026-07-12',
+        'heure_debut': '05:00',
+        'heure_fin': '06:00',
+        'titre': 'Prière du matin',
+        'lieu': 'Grande salle',
+        'type': 'Prière',
+      });
+      expect(e.jour, '2026-07-12');
+      expect(e.plage, '05:00 – 06:00');
+      expect(e.lieu, 'Grande salle');
+      expect(jourLong('2026-07-12'), 'dimanche 12 juillet 2026');
+      expect(jourLong('2026-07-13'), 'lundi 13 juillet 2026');
+    });
+
+    testWidgets('programme admin, jours groupés et ajout', (tester) async {
+      await telephone(tester);
+      final service = FauxServiceT18();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PageChronogrammeAdmin(
+              service: service,
+              evenementId: 'ev-test',
+              nomCamp: 'Camp Test',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('dimanche 12 juillet 2026'), findsOneWidget);
+      expect(find.text('lundi 13 juillet 2026'), findsOneWidget);
+      expect(find.text('Prière du matin'), findsNWidgets(2));
+      expect(find.text('Enseignement'), findsOneWidget);
+      expect(find.text('Appliquer le modèle'), findsOneWidget);
+      expect(find.text('Ajouter un créneau'), findsOneWidget);
+      await tester.tap(find.text('Ajouter un créneau'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.labelText == 'Titre',
+        ),
+        'Louange',
+      );
+      await tester.tap(find.text('Ajouter'));
+      await tester.pumpAndSettle();
+      expect(find.text('Créneau ajouté.'), findsOneWidget);
+      expect(find.text('Louange'), findsOneWidget);
     });
   });
 }
