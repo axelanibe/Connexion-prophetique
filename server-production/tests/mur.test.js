@@ -137,6 +137,9 @@ test('formaterPublicationMur : forme publique complète', () => {
     etablissement_nom: 'Céleste',
     texte: 'Courage',
     photo: 'data:image/jpeg;base64,/9j/',
+    // Lot 1, salve 28 nov. 2026 : photos multiples, la photo
+    // seule retombe dans la liste quand il n'y en a qu'une.
+    photos: ['data:image/jpeg;base64,/9j/'],
     categorie: 'temoignage',
     statut_moderation: 'visible',
     video: null,
@@ -277,6 +280,8 @@ test('formaterProfilMur : forme publique complète, sans matricule', () => {
     nb_abonnes: 1,
     nb_abonnements: 0,
     suivi_par_moi: true,
+    // Lot 1, salve 28 nov. 2026 : blocage vu par le profil.
+    bloque_par_moi: false,
     est_moi: false,
   });
   assert.equal('matricule' in forme, false);

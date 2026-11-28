@@ -280,7 +280,7 @@ test('H-3 : un membre ordinaire est refusé sur les routes admin sensibles et le
 });
 
 // ── H-8 : annuaire restreint ──────────────────────────────────
-test('H-8 : sans recherche, un membre ne voit que ses contacts ; la recherche exige 3 caractères', async () => {
+test('H-8 : sans recherche, un membre ne voit que ses contacts ; la recherche dès 1 caractère, par mot', async () => {
   const sansQ = await get('/messagerie/membres', comptes.jetonA);
   assert.equal(sansQ.statut, 200);
   const ids = sansQ.data.map((m) => m.id);
@@ -288,12 +288,15 @@ test('H-8 : sans recherche, un membre ne voit que ses contacts ; la recherche ex
   assert.equal(ids.includes(comptes.d.membreId), false, 'D, sans conversation, n’est pas listé');
   assert.equal(ids.includes(comptes.c.membreId), false, 'C, d’un autre établissement, n’est pas listé');
   assert.equal(ids.includes(comptes.a.membreId), false, 'l’appelant ne se liste pas lui-même');
+  // Salve 28 nov. 2026, point 2 : la recherche par mot est
+  // acceptée dès 1 caractère, plus de 400 sous 3 caractères.
   const court = await get('/messagerie/membres?q=Me', comptes.jetonA);
-  assert.equal(court.statut, 400, 'préfixe de moins de 3 caractères : 400');
+  assert.equal(court.statut, 200, 'deux caractères acceptés : 200');
+  assert.ok(court.data.some((m) => m.id === comptes.d.membreId), '« Me » trouve D, sous-chaîne de Membre');
   const recherche = await get('/messagerie/membres?q=Membre D', comptes.jetonA);
   assert.equal(recherche.statut, 200);
-  assert.ok(recherche.data.some((m) => m.id === comptes.d.membreId), 'la recherche par préfixe trouve D');
-  assert.equal(recherche.data.some((m) => m.id === comptes.b.membreId), false, 'la recherche ne ramène pas B, hors préfixe');
+  assert.ok(recherche.data.some((m) => m.id === comptes.d.membreId), 'la recherche par mot trouve D');
+  assert.equal(recherche.data.some((m) => m.id === comptes.b.membreId), false, 'la recherche ne ramène pas B, hors mot');
   assert.ok(recherche.data.length <= 50, 'limite de 50 résultats');
 });
 

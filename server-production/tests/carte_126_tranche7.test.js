@@ -48,9 +48,12 @@ test('Carte 126 T7, S1 directeur : son camp seulement, pas les finances ni le su
   assert.ok(!ligne.includes('finances'), 'directeur sans finances');
   assert.ok(!ligne.includes('suivi'), 'directeur sans suivi');
   assert.ok(serveur.includes("await exigerNomination(req, 'camp.inscriptions', { evenementId, obligatoire: true });"), 'liste des inscriptions gardée, nomination obligatoire');
-  // Quatre listes : comptabilité, paiements, totaux, et
-  // l'export des paiements (correctif global, phase 4).
-  assert.equal(serveur.split("await activitesPourPermission(req, 'finances.lire')").length - 1, 4, 'quatre listes finances filtrées, le directeur sans finances.lire voit une portée vide');
+  // Cinq listes finances.lire : comptabilité, tableau de
+  // bord, paiements, totaux, et l'export des paiements
+  // (correctif global, phase 4). Le compte était à quatre
+  // sur la base df930ae, le tableau de bord portait déjà
+  // le même filtre.
+  assert.equal(serveur.split("await activitesPourPermission(req, 'finances.lire')").length - 1, 5, 'cinq listes finances filtrées, le directeur sans finances.lire voit une portée vide');
 });
 
 test('Carte 126 T7, S2 financier : ses finances seulement', () => {
@@ -125,10 +128,13 @@ test('Carte 126 T7, S7 contournement : inventaire des gardes, lectures propres, 
   // par un administrateur (phase 3) et l'export des
   // inscriptions (phase 4).
   assert.equal(serveur.split('await exigerNomination(').length - 1, 23, 'vingt-trois gardes, aucune perdue');
-  // Sept listes filtrées : les cinq d'origine plus les trois
-  // branches de l'export (correctif global, phase 4), qui
-  // reprennent le même périmètre au lieu d'en inventer un.
-  assert.equal(serveur.split('await activitesPourPermission(').length - 1, 7, 'sept listes filtrées');
+  // Neuf listes filtrées : comptabilité, tableau de bord
+  // camp et finances, suivis scolaires, paiements, totaux,
+  // membres, et les deux branches de l'export, membres et
+  // paiements. Le compte était à sept sur la base df930ae,
+  // le tableau de bord et les membres portaient déjà le
+  // même périmètre.
+  assert.equal(serveur.split('await activitesPourPermission(').length - 1, 9, 'neuf listes filtrées');
   assert.ok(serveur.includes("app.post('/admin/nominations', { preHandler: adminG }"), 'création nominations adminG');
   assert.ok(serveur.includes("app.put('/admin/nominations/:id', { preHandler: adminG }"), 'modification nominations adminG');
   assert.ok(serveur.includes("app.post('/admin/nominations/:id/revoquer', { preHandler: adminG }"), 'révocation nominations adminG');

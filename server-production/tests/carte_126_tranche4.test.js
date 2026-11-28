@@ -61,10 +61,12 @@ test('Carte 126 T4, finances : périmètre par les inscrits', () => {
   assert.ok(serveur.includes(`($3::uuid[] IS NULL OR p.evenement_id = ANY($3::uuid[]) ${repliInscrits('$3')}`), 'comptabilité, repli inscrits');
   assert.ok(serveur.includes(`($7::uuid[] IS NULL OR p.evenement_id = ANY($7::uuid[]) ${repliInscrits('$7')}`), 'paiements et totaux, repli inscrits');
   assert.ok(serveur.includes("CASE WHEN p.beneficiaire_contact IS NOT NULL THEN p.beneficiaire_id ELSE p.membre_id END"), 'membre effectif, payeur ou bénéficiaire');
-  // Quatre listes : comptabilité, paiements, totaux, et
-  // l'export des paiements (correctif global, phase 4), qui
-  // reprend le même périmètre au lieu d'en inventer un.
-  assert.equal(serveur.split("p.type = 'camp' AND EXISTS (SELECT 1 FROM inscriptions i").length - 1, 4, 'repli camp seulement, quatre listes finances');
+  // Cinq listes : comptabilité, tableau de bord, paiements,
+  // totaux, et l'export des paiements (correctif global,
+  // phase 4), qui reprennent le même périmètre au lieu d'en
+  // inventer un. Le compte était à quatre sur la base df930ae,
+  // le tableau de bord portait déjà le même repli.
+  assert.equal(serveur.split("p.type = 'camp' AND EXISTS (SELECT 1 FROM inscriptions i").length - 1, 5, 'repli camp seulement, cinq listes finances');
 });
 
 test('Carte 126 T4, finances : validation, repli par les inscriptions', () => {

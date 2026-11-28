@@ -32,10 +32,11 @@ test('ouverte seulement pendant la période, jamais hors période', () => {
   assert.equal(electionEstOuverte(election, new Date('2026-11-13T00:00:00.000Z')), false);
 });
 
-test('les résultats ne sont visibles pour un membre qu après la fin', () => {
-  assert.equal(resultatsVisiblesPourMembre(election, new Date('2026-11-11T12:00:00.000Z')), false);
-  assert.equal(resultatsVisiblesPourMembre(election, new Date('2026-11-12T18:00:00.000Z')), false);
+test('les résultats sont visibles pour un membre pendant le vote comme après la fin, salve 28 nov. 2026', () => {
+  assert.equal(resultatsVisiblesPourMembre(election, new Date('2026-11-11T12:00:00.000Z')), true);
+  assert.equal(resultatsVisiblesPourMembre(election, new Date('2026-11-12T18:00:00.000Z')), true);
   assert.equal(resultatsVisiblesPourMembre(election, new Date('2026-11-12T18:00:01.000Z')), true);
+  assert.equal(resultatsVisiblesPourMembre(null), false);
 });
 
 test('le chevauchement refuse deux élections en même temps', () => {
@@ -64,7 +65,7 @@ test('la création exige titre, dates cohérentes et au moins un candidat', () =
   assert.ok(validerCreationElection({ ...valide, candidats: [{ membre_id: '11111111-1111-4111-8111-111111111111' }] }).length === 0);
 });
 
-test('la forme membre ne porte jamais de total de voix', () => {
+test('la forme membre ne porte jamais qui a voté pour qui, seulement les chiffres', () => {
   const publique = formaterElectionMembre(
     { id: 'e1', titre: 'Élection du Bureau', description: '', poste: 'Président', date_debut: '2026-11-10T08:00:00.000Z', date_fin: '2026-11-12T18:00:00.000Z' },
     [{ id: 'c1', nom: 'Awa Diallo', fonction: 'Membre', ordre: 1 }],
@@ -76,4 +77,22 @@ test('la forme membre ne porte jamais de total de voix', () => {
   assert.equal('voix' in publique.candidats[0], false);
   assert.equal('total_voix' in publique, false);
   assert.equal('resultats' in publique, false);
+  assert.equal(JSON.stringify(publique).includes('membre_id'), false);
+});
+
+test('la forme membre porte les voix en direct quand les lignes les portent, salve 28 nov. 2026', () => {
+  const publique = formaterElectionMembre(
+    { id: 'e1', titre: 'Élection du Bureau', description: '', poste: 'Président', date_debut: '2026-11-10T08:00:00.000Z', date_fin: '2026-11-12T18:00:00.000Z' },
+    [
+      { id: 'c1', nom: 'Awa Diallo', fonction: 'Membre', ordre: 1, voix: 3 },
+      { id: 'c2', nom: 'Jean Aka', fonction: 'Membre', ordre: 2, voix: 1 },
+    ],
+    'c1',
+  );
+  assert.equal(publique.candidats[0].voix, 3);
+  assert.equal(publique.candidats[1].voix, 1);
+  assert.equal(publique.total_voix, 4);
+  assert.equal(publique.a_vote, true);
+  assert.equal(publique.mon_candidat_id, 'c1');
+  assert.equal(JSON.stringify(publique).includes('membre_id'), false);
 });
