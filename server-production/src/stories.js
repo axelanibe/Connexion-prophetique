@@ -33,9 +33,12 @@ export const DUREE_URL_SIGNEE_SECONDES = 900;
 
 /// Tailles maximales acceptées : la photo est compressée côté
 /// application avant l'envoi, la vidéo est envoyée telle
-/// quelle, courte, avec ce plafond.
+/// quelle, courte, avec ce plafond. L'audio est un message
+/// vocal enregistré dans l'application, 60 secondes au plus
+/// côté client, 10 Mo laissent une large marge.
 export const TAILLE_MAX_PHOTO_OCTETS = 5 * 1024 * 1024;
 export const TAILLE_MAX_VIDEO_OCTETS = 25 * 1024 * 1024;
+export const TAILLE_MAX_AUDIO_OCTETS = 10 * 1024 * 1024;
 
 /// Délais des appels R2, réécriture 22 nov. 2026 : un envoi ou
 /// une suppression ne doit jamais bloquer une requête
@@ -49,10 +52,15 @@ export const DELAI_SUPPRESSION_R2_MS = 15 * 1000;
 /// retenir la requête indéfiniment.
 export const DELAI_LECTURE_R2_MS = 30 * 1000;
 
-export const TYPES_STORY = Object.freeze(['photo', 'video']);
+export const TYPES_STORY = Object.freeze(['photo', 'video', 'audio']);
 
 export const MIMES_PHOTO = Object.freeze(['image/jpeg', 'image/png', 'image/webp']);
 export const MIMES_VIDEO = Object.freeze(['video/mp4', 'video/quicktime', 'video/webm']);
+/// Audio : le conteneur webm enregistré par le navigateur ou
+/// le téléphone est lu par file-type comme video/webm, le
+/// conteneur est EBML dans les deux cas. On accepte donc les
+/// deux étiquettes, le type déclaré reste audio.
+export const MIMES_AUDIO = Object.freeze(['audio/webm', 'video/webm', 'audio/mp4', 'audio/x-m4a', 'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/x-wav', 'audio/aac']);
 
 const EXTENSION_MIME = Object.freeze({
   'image/jpeg': 'jpg',
@@ -61,6 +69,14 @@ const EXTENSION_MIME = Object.freeze({
   'video/mp4': 'mp4',
   'video/quicktime': 'mov',
   'video/webm': 'webm',
+  'audio/webm': 'webm',
+  'audio/mp4': 'mp4',
+  'audio/x-m4a': 'm4a',
+  'audio/mpeg': 'mp3',
+  'audio/ogg': 'ogg',
+  'audio/wav': 'wav',
+  'audio/x-wav': 'wav',
+  'audio/aac': 'aac',
 });
 
 /// Configuration R2 lue dans l'environnement, null quand une
@@ -110,15 +126,21 @@ export function storyExpiree(expireLe, maintenant = new Date()) {
   return new Date(expireLe).getTime() <= maintenant.getTime();
 }
 
+/// Mimes acceptés et plafond de taille pour un type de story.
+function mimesEtPlafond(type) {
+  if (type === 'photo') return { mimes: MIMES_PHOTO, max: TAILLE_MAX_PHOTO_OCTETS };
+  if (type === 'audio') return { mimes: MIMES_AUDIO, max: TAILLE_MAX_AUDIO_OCTETS };
+  return { mimes: MIMES_VIDEO, max: TAILLE_MAX_VIDEO_OCTETS };
+}
+
 /// Refus de publication, null quand tout est bon. Le type réel
 /// est vérifié par l'appelant dans les octets, jamais d'après
 /// le nom ou l'en-tête envoyé : ici, seulement la cohérence
 /// entre le type déclaré, le type réel et la taille.
 export function validerPublication({ type, mime, tailleOctets }) {
   if (!TYPES_STORY.includes(type)) return { statut: 400, message: 'Type de story invalide.' };
-  const mimes = type === 'photo' ? MIMES_PHOTO : MIMES_VIDEO;
+  const { mimes, max } = mimesEtPlafond(type);
   if (!mimes.includes(mime)) return { statut: 415, message: 'Type de média non autorisé.' };
-  const max = type === 'photo' ? TAILLE_MAX_PHOTO_OCTETS : TAILLE_MAX_VIDEO_OCTETS;
   if (!Number.isInteger(tailleOctets) || tailleOctets <= 0 || tailleOctets > max) {
     return { statut: 413, message: 'Média trop volumineux.' };
   }
@@ -134,9 +156,8 @@ export function validerPublication({ type, mime, tailleOctets }) {
 export function validerEnregistrementStory({ type, cle, mime, tailleOctets, etablissementId, expireLe }) {
   if (!TYPES_STORY.includes(type)) return { statut: 400, message: 'Type de story invalide.' };
   if (!cleR2Valide(cle)) return { statut: 400, message: 'Clé de média invalide.' };
-  const mimes = type === 'photo' ? MIMES_PHOTO : MIMES_VIDEO;
+  const { mimes, max } = mimesEtPlafond(type);
   if (!mimes.includes(mime)) return { statut: 415, message: 'Type de média non autorisé.' };
-  const max = type === 'photo' ? TAILLE_MAX_PHOTO_OCTETS : TAILLE_MAX_VIDEO_OCTETS;
   if (!Number.isInteger(tailleOctets) || tailleOctets <= 0 || tailleOctets > max) {
     return { statut: 413, message: 'Média trop volumineux.' };
   }

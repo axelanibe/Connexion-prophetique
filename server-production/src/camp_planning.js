@@ -4,7 +4,7 @@
 // n'avait que nom, dates, lieu et tarif. Le modèle vient du Word
 // fourni par Axel, « Copie_de_CHRONOGRAMME_CAMP_CONNEXION_
 // PROPHETIQUE.docx » : dimanche à samedi, 5 h à 23 h, 14 plages,
-// 75 créneaux. Le Word sert de modèle seulement : la structure
+// 76 créneaux. Le Word sert de modèle seulement : la structure
 // saisit le programme jour par jour dans l'application, et peut
 // appliquer le modèle d'un geste sur la semaine d'un camp, sans
 // jamais importer le fichier Word tel quel, trop fragile.
@@ -91,13 +91,13 @@ export function jourSemaineValide(jour) {
 /// Modèle du Word, un créneau par ligne : jourSemaine 0 =
 /// dimanche, heures de début et de fin, titre tel que dans le
 /// Word, type proposé. Les cases vides du Word, dimanche matin
-/// et samedi, n'ont pas de créneau. 75 créneaux au total.
+/// n'ont pas de créneau. 76 créneaux au total.
 export const MODELE_CHRONOGRAMME = [
   // Réveil, présence, ménage, petit-déjeuner : lundi à vendredi.
   ...[1, 2, 3, 4, 5].flatMap((j) => [
     { jourSemaine: j, debut: '05:00', fin: '05:30', titre: 'Réveil matinal', type: 'Prière' },
     { jourSemaine: j, debut: '05:30', fin: '06:30', titre: 'Dans sa présence', type: 'Prière' },
-    { jourSemaine: j, debut: '06:30', fin: '07:30', titre: 'Ménage et toilette', type: 'Vie quotidienne' },
+    { jourSemaine: j, debut: '06:30', fin: '07:30', titre: 'Ménage + toilette', type: 'Vie quotidienne' },
     { jourSemaine: j, debut: '07:30', fin: '08:00', titre: 'Petit-déjeuner', type: 'Repas' },
   ]),
   // Enseignements du matin, numérotés 1, 3, 5, 7, 9.
@@ -142,12 +142,12 @@ export const MODELE_CHRONOGRAMME = [
   // Toilette du soir, rupture les mardi et jeudi.
   { jourSemaine: 0, debut: '17:00', fin: '18:00', titre: 'Toilette', type: 'Vie quotidienne' },
   { jourSemaine: 1, debut: '17:00', fin: '18:00', titre: 'Toilette', type: 'Vie quotidienne' },
-  { jourSemaine: 2, debut: '17:00', fin: '18:00', titre: 'Rupture et toilette', type: 'Vie quotidienne' },
+  { jourSemaine: 2, debut: '17:00', fin: '18:00', titre: 'Rupture + toilette', type: 'Vie quotidienne' },
   { jourSemaine: 3, debut: '17:00', fin: '18:00', titre: 'Toilette', type: 'Vie quotidienne' },
-  { jourSemaine: 4, debut: '17:00', fin: '18:00', titre: 'Rupture et toilette', type: 'Vie quotidienne' },
+  { jourSemaine: 4, debut: '17:00', fin: '18:00', titre: 'Rupture + toilette', type: 'Vie quotidienne' },
   { jourSemaine: 5, debut: '17:00', fin: '18:00', titre: 'Toilette', type: 'Vie quotidienne' },
-  // Réfectoire, dimanche à vendredi.
-  ...[0, 1, 2, 3, 4, 5].map((j) => (
+  // Réfectoire, dimanche à samedi.
+  ...[0, 1, 2, 3, 4, 5, 6].map((j) => (
     { jourSemaine: j, debut: '18:00', fin: '19:30', titre: 'Réfectoire', type: 'Repas' }
   )),
   // Soirées : culte d'ouverture, édification, veillée.
