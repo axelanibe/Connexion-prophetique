@@ -325,7 +325,7 @@ class _PageMonProfilNouvelleState extends State<PageMonProfilNouvelle> {
       if (_fonction != null && _fonction!.isNotEmpty) _fonction!,
     }.toList();
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      padding: EdgeInsets.fromLTRB(16, 16, 16, 24 + MediaQuery.paddingOf(context).bottom),
       children: [
         if (widget.depuisCarte)
           Align(

@@ -72,13 +72,41 @@ class ServiceConnexionApi implements ServiceConnexion {
 
   @override
   Future<PublicationConnexion> publier(
-      {required String texte, required String categorie, String? photo}) async {
-    final data =
-        await _api.publierMur(texte: texte, photo: photo, categorie: categorie);
+      {required String texte,
+      required String categorie,
+      String? photo,
+      List<String>? photos}) async {
+    final data = await _api.publierMur(
+        texte: texte, photo: photo, photos: photos, categorie: categorie);
     final publication = data['publication'];
     if (publication is Map<String, dynamic>)
       return PublicationConnexion.fromJson(publication);
     return PublicationConnexion.fromJson(data);
+  }
+
+  @override
+  Future<PublicationConnexion> modifierPublication(String id,
+      {required String texte, required String categorie}) async {
+    final data = await _api.modifierPublicationMur(id,
+        texte: texte, categorie: categorie);
+    final publication = data['publication'];
+    if (publication is Map<String, dynamic>)
+      return PublicationConnexion.fromJson(publication);
+    return PublicationConnexion.fromJson(data);
+  }
+
+  @override
+  Future<void> bloquerMembre(String membreId) async =>
+      _api.bloquerMembre(membreId);
+
+  @override
+  Future<void> debloquerMembre(String membreId) async =>
+      _api.debloquerMembre(membreId);
+
+  @override
+  Future<List<MembreConnexion>> chargerDecouvrir({String? q}) async {
+    final liste = await _api.fetchDecouvrir(q: q);
+    return liste.map(MembreConnexion.fromJson).toList();
   }
 
   @override

@@ -63,7 +63,7 @@ class _PageOpportuniteState extends State<PageOpportunite> {
     final pays = widget.service.paysResidence;
     final visibles = _visibles;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 24 + MediaQuery.paddingOf(context).bottom),
       children: [
         DropdownButtonFormField<String>(
           value: _paysFiltre,

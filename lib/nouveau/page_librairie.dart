@@ -690,7 +690,7 @@ class _PageLibrairieNouvelleState extends State<PageLibrairieNouvelle> {
     final sections = grouperLivresParCategorie(visibles);
     final nbPanier = _service.panier.length;
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.paddingOf(context).bottom),
       children: [
         Container(
           padding: const EdgeInsets.all(16),

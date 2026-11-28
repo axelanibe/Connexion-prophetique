@@ -121,6 +121,91 @@ class _PageStructureState extends State<PageStructure> {
     );
   }
 
+  /// Raccourcis d'un établissement, salve 28 nov. 2026 : un
+  /// toucher sur sa carte ouvre voir ou publier des activités
+  /// et la planification, selon l'accréditation.
+  Future<void> _ouvrirRaccourcisEtablissement(
+    EtablissementAdmin etablissement,
+  ) async {
+    final serviceT18 = widget.serviceT18;
+    if (serviceT18 == null) return;
+    final choix = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              etablissement.nom,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                color: PaletteNouvelle.bleuNuit,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(
+                Icons.school_outlined,
+                color: PaletteNouvelle.bleuNuit,
+              ),
+              title: const Text('Voir les activités'),
+              onTap: () => Navigator.of(context).pop('voir'),
+            ),
+            if (serviceT18.accesAdmin) ...[
+              ListTile(
+                leading: const Icon(
+                  Icons.add_outlined,
+                  color: PaletteNouvelle.bleuNuit,
+                ),
+                title: const Text('Publier une activité'),
+                onTap: () => Navigator.of(context).pop('publier'),
+              ),
+              ListTile(
+                leading: const Icon(
+                  Icons.calendar_month_outlined,
+                  color: PaletteNouvelle.bleuNuit,
+                ),
+                title: const Text('Planification'),
+                onTap: () => Navigator.of(context).pop('planning'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+    if (choix == null || !mounted) return;
+    switch (choix) {
+      case 'voir':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => PageFicheEtablissement(
+              service: serviceT18,
+              etablissement: etablissement,
+            ),
+          ),
+        );
+      case 'publier':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => PageFicheEtablissement(
+              service: serviceT18,
+              etablissement: etablissement,
+              saisieActivite: true,
+            ),
+          ),
+        );
+      case 'planning':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => PagePlanningResponsables(service: serviceT18),
+          ),
+        );
+    }
+  }
+
   /// Transparence financière, correctif global 27 nov. 2026 :
   /// la carte de la maquette, remplie par les totaux du mois
   /// de la Comptabilité, pour les administrateurs seulement.
@@ -218,7 +303,7 @@ class _PageStructureState extends State<PageStructure> {
         ),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+            padding: EdgeInsets.fromLTRB(16, 4, 16, 24 + MediaQuery.paddingOf(context).bottom),
             children: [
               if (_onglet == 0) ...[
                 const _TitreSection('Le Bureau'),
@@ -232,6 +317,36 @@ class _PageStructureState extends State<PageStructure> {
                   label: const Text('Voir tout le Bureau'),
                 ),
                 const SizedBox(height: 8),
+                // Salve 28 nov. 2026 : les établissements
+                // s'affichent dans Le Bureau comme dans Nos
+                // établissements, un toucher ouvre le bureau de
+                // cet établissement.
+                if (serviceT18 != null &&
+                    serviceT18.etablissements.isNotEmpty) ...[
+                  const _TitreSection('Établissements'),
+                  for (final e in serviceT18.etablissements)
+                    Card(
+                      color: Colors.white,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: const Icon(
+                          Icons.school_outlined,
+                          color: PaletteNouvelle.bleuNuit,
+                        ),
+                        title: Text(e.nom),
+                        subtitle: Text(
+                          '${s.bureau.where((m) => m.etablissement == e.nom).length} responsable(s)',
+                        ),
+                        trailing: const Icon(
+                          Icons.chevron_right,
+                          color: Colors.grey,
+                        ),
+                        onTap: () =>
+                            _ouvrirBureau(filtreInitial: e.id),
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                ],
                 // Correctif global, 27 nov. 2026 : la carte Espace
                 // structure est retirée de la page Structure, elle
                 // reste dans Plus. La carte Transparence financière
@@ -243,10 +358,14 @@ class _PageStructureState extends State<PageStructure> {
               ],
               if (_onglet == 1) ...[
                 if (serviceT18 != null) ...[
-                  const _TitreSection('Nos établissements'),
+                  const _TitreSection('Établissements'),
                   if (serviceT18.etablissements.isEmpty)
                     const _Vide('Aucun établissement pour le moment.')
                   else
+                    // Salve 28 nov. 2026 : les cartes sont
+                    // cliquables, plus de « Voir les
+                    // établissements », un toucher ouvre les
+                    // raccourcis de l'établissement.
                     for (final e in serviceT18.etablissements.take(3))
                       Card(
                         color: Colors.white,
@@ -256,70 +375,25 @@ class _PageStructureState extends State<PageStructure> {
                               color: PaletteNouvelle.bleuNuit),
                           title: Text(e.nom),
                           subtitle: Text(e.compteurs),
+                          trailing: const Icon(
+                            Icons.chevron_right,
+                            color: Colors.grey,
+                          ),
+                          onTap: () =>
+                              _ouvrirRaccourcisEtablissement(e),
                         ),
                       ),
-                  TextButton.icon(
-                    onPressed: () {
-                      if (widget.onOuvrirEtablissements != null) {
-                        widget.onOuvrirEtablissements!();
-                        return;
-                      }
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => PageEtablissements(
-                            service: serviceT18,
-                            onOuvrirStructure: () =>
-                                _ouvrirBureau(filtreInitial: 'Structure'),
-                            poussee: true,
-                          ),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.school_outlined),
-                    label: const Text('Voir les établissements'),
-                  ),
                 ],
               ],
               if (_onglet == 2) ...[
-                const _TitreSection('Liaison parents et enfants'),
+                const _TitreSection('Liaison'),
                 const Text(
                   'Le parent lié au compte de son enfant suit ses résultats et ses autres informations.',
                   style: TextStyle(color: Colors.grey, fontSize: 14),
                 ),
-                const SizedBox(height: 8),
-                if (s.enfants.isEmpty && s.liens.isEmpty)
-                  const _Vide('Aucun enfant lié pour le moment.')
-                else ...[
-                  for (final e in s.enfants)
-                    Card(
-                      color: Colors.white,
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        leading: const Icon(Icons.child_care_outlined,
-                            color: PaletteNouvelle.bleuNuit),
-                        title: Text(e.nom),
-                        subtitle: Text(e.matricule),
-                      ),
-                    ),
-                  for (final l in s.liens.where((e) => e.statut != 'valide'))
-                    Card(
-                      color: Colors.white,
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        leading: const Icon(Icons.hourglass_empty_outlined,
-                            color: PaletteNouvelle.bleuNuit),
-                        title: Text(l.nom),
-                        subtitle: Text('En attente de validation'),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.close_outlined),
-                          onPressed: () => s.retirerLien(l.id).then((_) {
-                            if (mounted) setState(() {});
-                          }),
-                        ),
-                      ),
-                    ),
-                ],
                 const SizedBox(height: 12),
+                // Salve 28 nov. 2026 : la barre de recherche est
+                // en haut de l'onglet, avant les listes.
                 TextField(
                   controller: _recherche,
                   decoration: InputDecoration(
@@ -354,6 +428,39 @@ class _PageStructureState extends State<PageStructure> {
                         ),
                       ),
                     ),
+                const SizedBox(height: 12),
+                if (s.enfants.isEmpty && s.liens.isEmpty)
+                  const _Vide('Aucun enfant lié pour le moment.')
+                else ...[
+                  for (final e in s.enfants)
+                    Card(
+                      color: Colors.white,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: const Icon(Icons.child_care_outlined,
+                            color: PaletteNouvelle.bleuNuit),
+                        title: Text(e.nom),
+                        subtitle: Text(e.matricule),
+                      ),
+                    ),
+                  for (final l in s.liens.where((e) => e.statut != 'valide'))
+                    Card(
+                      color: Colors.white,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: const Icon(Icons.hourglass_empty_outlined,
+                            color: PaletteNouvelle.bleuNuit),
+                        title: Text(l.nom),
+                        subtitle: Text('En attente de validation'),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.close_outlined),
+                          onPressed: () => s.retirerLien(l.id).then((_) {
+                            if (mounted) setState(() {});
+                          }),
+                        ),
+                      ),
+                    ),
+                ],
               ],
             ],
           ),
@@ -737,7 +844,7 @@ class _PageBureauState extends State<PageBureau> {
       body: !_charge
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+              padding: EdgeInsets.fromLTRB(16, 20, 16, 24 + MediaQuery.paddingOf(context).bottom),
               children: [
                 const Text(
                   'Le Bureau',
@@ -755,6 +862,7 @@ class _PageBureauState extends State<PageBureau> {
                 ),
                 const SizedBox(height: 16),
                 SingleChildScrollView(
+                  padding: EdgeInsets.zero,
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
@@ -960,7 +1068,7 @@ class _PageEspaceStructureState extends State<PageEspaceStructure> {
     } else {
       contenu = ListView(
         controller: _defilement,
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        padding: EdgeInsets.fromLTRB(16, 12, 16, 24 + MediaQuery.paddingOf(context).bottom),
         children: [
           if (serviceT18 != null) ...[
             // Correction de suivi, 27 nov. 2026 : les chiffres
@@ -971,14 +1079,32 @@ class _PageEspaceStructureState extends State<PageEspaceStructure> {
               chiffres: serviceT18.chiffres,
               onOuvrir: _ouvrirChiffre,
             ),
-            const SizedBox(height: 16),
-            _ActionAdmin(
-              icone: Icons.verified_outlined,
-              libelle: 'Valider les paiements',
-              onTap: () => _ouvrir(
-                PageComptabiliteAdmin(service: serviceT18),
+            // Salve 28 nov. 2026 : quand la lecture échoue, les
+            // chiffres restent des tirets sans rien pour réessayer.
+            // La cause des tirets ne s'établit pas dans le code :
+            // la lecture est un appel unique, sans boucle, les
+            // rafales de 401 des journaux viennent du sondage des
+            // appels entrants toutes les 10 secondes, pas du
+            // tableau de bord. Le bouton réessaie la lecture.
+            if (serviceT18.chiffresEnEchec) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () async {
+                    await serviceT18.chargerTableauDeBord();
+                    if (mounted) setState(() {});
+                  },
+                  icon: const Icon(Icons.refresh_outlined),
+                  label: const Text('Réessayer'),
+                ),
               ),
-            ),
+            ],
+            const SizedBox(height: 16),
+            // Salve 28 nov. 2026 : « Valider les paiements »
+            // ouvrait la même page que « Comptabilité », la
+            // validation vit déjà dans la Comptabilité, une
+            // seule entrée reste.
             _ActionAdmin(
               icone: Icons.group_outlined,
               libelle: 'Gérer les membres',
@@ -1008,19 +1134,7 @@ class _PageEspaceStructureState extends State<PageEspaceStructure> {
             ),
             const SizedBox(height: 16),
             const _TitreSection('Quotidien'),
-            for (final (titre, icone, page) in _entreesLot1(serviceT18).take(3))
-              _EntreeAdmin(
-                titre: titre,
-                icone: icone,
-                onTap: () => _ouvrir(page),
-              ),
-            if (widget.onOuvrirCamps != null)
-              _EntreeAdmin(
-                titre: 'Prochain camp',
-                icone: Icons.event_outlined,
-                onTap: widget.onOuvrirCamps!,
-              ),
-            for (final (titre, icone, page) in _entreesLot1(serviceT18).skip(3))
+            for (final (titre, icone, page) in _entreesLot1(serviceT18))
               _EntreeAdmin(
                 titre: titre,
                 icone: icone,
@@ -1067,8 +1181,9 @@ class _PageEspaceStructureState extends State<PageEspaceStructure> {
     );
   }
 
-  /// Entrées du lot 1, sauf « Prochain camp » qui ouvre la
-  /// destination Camps.
+  /// Entrées du lot 1, sauf « Camp » qui regroupe Prochain
+  /// camp, Inscriptions et Badges, salve 28 nov. 2026 : trois
+  /// tuiles pour une seule activité, une seule entrée reste.
   List<(String, IconData, Widget)> _entreesLot1(ServiceT18 service) => [
         (
           'Comptabilité',
@@ -1081,14 +1196,12 @@ class _PageEspaceStructureState extends State<PageEspaceStructure> {
           PageActualitesAdmin(service: service),
         ),
         (
-          'Inscriptions au camp',
-          Icons.how_to_reg_outlined,
-          PageInscriptionsCamp(service: service),
-        ),
-        (
-          'Badges du camp',
-          Icons.badge_outlined,
-          PageBadgesCamp(service: service),
+          'Camp',
+          Icons.event_outlined,
+          PageCampAdmin(
+            service: service,
+            onOuvrirCamps: widget.onOuvrirCamps,
+          ),
         ),
         (
           'Présences',
@@ -1265,7 +1378,7 @@ class _PageGererMembresState extends State<PageGererMembres> {
     return PageAdmin(
       titre: 'Gérer les membres',
       enfant: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        padding: EdgeInsets.fromLTRB(16, 12, 16, 24 + MediaQuery.paddingOf(context).bottom),
         children: [
           Align(
             alignment: Alignment.centerRight,

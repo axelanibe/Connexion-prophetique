@@ -19,6 +19,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_models.dart';
 import '../messagerie.dart';
@@ -59,11 +60,45 @@ class _PageMessagerieState extends State<PageMessagerie> {
   /// Appel sortant en cours de lancement, un seul à la fois.
   var _appelEnCours = false;
 
+  /// Dernière consultation de l'onglet Appels, en stockage
+  /// local seulement, salve 28 nov. 2026 : la pastille ne
+  /// compte que les manqués après cette heure, aucune écriture
+  /// serveur sur une lecture, règle read-heavy.
+  DateTime? _vusManquesLe;
+
   @override
   void initState() {
     super.initState();
     VeilleReseau.partage.ajouterReprise(_recharger);
+    _chargerVus();
     _charger();
+  }
+
+  Future<void> _chargerVus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final brut = prefs.getString('appels_manques_vus_le');
+    final vu = brut == null ? null : DateTime.tryParse(brut);
+    if (mounted) setState(() => _vusManquesLe = vu);
+  }
+
+  /// Ouverture de l'onglet Appels : la pastille disparaît, la
+  /// consultation est mémorisée en local. Le basculement est
+  /// immédiat, l'écriture locale suit en arrière-plan, jamais
+  /// l'onglet n'attend le disque.
+  void _choisirVolet(VoletMessagerie v) {
+    final maintenant = v == VoletMessagerie.appels ? DateTime.now() : null;
+    setState(() {
+      _volet = v;
+      if (maintenant != null) _vusManquesLe = maintenant;
+    });
+    if (maintenant != null) {
+      SharedPreferences.getInstance().then(
+        (prefs) => prefs.setString(
+          'appels_manques_vus_le',
+          maintenant.toIso8601String(),
+        ),
+      );
+    }
   }
 
   @override
@@ -114,8 +149,16 @@ class _PageMessagerieState extends State<PageMessagerie> {
 
   /// Manqués : badge rouge sur l'onglet Appels. Sans marqueur
   /// de lecture des appels côté serveur, le badge compte les
-  /// manqués de l'historique chargé, 50 derniers au plus.
-  int get _nbManques => _appels.where((a) => a.manque).length;
+  /// manqués de l'historique chargé, 50 derniers au plus, et
+  /// seulement ceux après la dernière consultation de l'onglet,
+  /// mémorisée en local.
+  int get _nbManques => _appels
+      .where((a) =>
+          a.manque &&
+          (a.creeLe == null ||
+              _vusManquesLe == null ||
+              a.creeLe!.isAfter(_vusManquesLe!)))
+      .length;
 
   /// Discussion épinglée de la structure, en tête du filtre
   /// Messages et du filtre Tous.
@@ -278,13 +321,7 @@ class _PageMessagerieState extends State<PageMessagerie> {
     final autorise = await autorisationsAppel(video: type == 'video');
     if (!autorise) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(type == 'video'
-              ? 'Micro ou caméra refusé : autorise le micro et la caméra dans les réglages pour appeler en vidéo.'
-              : 'Micro refusé : autorise le micro dans les réglages pour appeler.'),
-        ),
-      );
+      await expliquerAutorisationsRefusees(context, video: type == 'video');
       return;
     }
     if (!mounted) return;
@@ -353,16 +390,18 @@ class _PageMessagerieState extends State<PageMessagerie> {
                   child: const Icon(LucideIcons.phone, color: Colors.white),
                 ),
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             _Bande(
+              volet: _volet,
               onRetour: widget.onRetour,
               onNouvelleDiscussion: _nouvelleDiscussion,
             ),
             _Onglets(
               volet: _volet,
               nbManques: _nbManques,
-              onChoisir: (v) => setState(() => _volet = v),
+              onChoisir: _choisirVolet,
             ),
             Expanded(
               child: _chargement
@@ -403,11 +442,15 @@ class _PageMessagerieState extends State<PageMessagerie> {
   }
 }
 
-/// Bande propre : retour à gauche, titre Messagerie, crayon
-/// Nouvelle discussion à droite, correction de suivi
-/// 27 nov. 2026 : entamer une discussion doit se voir.
+/// Bande : retour à gauche, titre de l'onglet actif, Appels
+/// ou Discussions, salve 28 nov. 2026, crayon Nouvelle
+/// discussion à droite.
 class _Bande extends StatelessWidget {
-  const _Bande({required this.onRetour, required this.onNouvelleDiscussion});
+  const _Bande(
+      {required this.volet,
+      required this.onRetour,
+      required this.onNouvelleDiscussion});
+  final VoletMessagerie volet;
   final VoidCallback? onRetour;
   final VoidCallback onNouvelleDiscussion;
 
@@ -423,10 +466,10 @@ class _Bande extends StatelessWidget {
             icon: const Icon(LucideIcons.chevronLeft, color: PaletteNouvelle.bleuNuit),
             onPressed: onRetour,
           ),
-          const Expanded(
+          Expanded(
             child: Text(
-              'Messagerie',
-              style: TextStyle(
+              volet.libelle,
+              style: const TextStyle(
                   color: PaletteNouvelle.bleuNuit,
                   fontSize: 20,
                   fontWeight: FontWeight.w800),
@@ -558,7 +601,7 @@ class _VoletDiscussions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+      padding: EdgeInsets.fromLTRB(12, 12, 12, 16 + MediaQuery.paddingOf(context).bottom),
       children: [
         Wrap(
           spacing: 8,
@@ -949,8 +992,9 @@ class _VoletAppels extends StatelessWidget {
 }
 
 /// Feuille de choix d'un membre, pour une nouvelle discussion
-/// ou un nouvel appel : recherche par nom ou matricule, 3
-/// caractères au moins, comme la recherche messagerie du serveur.
+/// ou un nouvel appel : recherche par mot dès 1 caractère,
+/// salve 28 nov. 2026, liste des membres déjà en conversation
+/// visible d'abord, message clair quand rien n'est trouvé.
 class _FeuilleMembres extends StatefulWidget {
   const _FeuilleMembres({required this.titre, required this.onRechercher});
   final String titre;
@@ -963,7 +1007,16 @@ class _FeuilleMembres extends StatefulWidget {
 class _FeuilleMembresState extends State<_FeuilleMembres> {
   List<MembreMessagerie> _resultats = [];
   bool _rechercheEnCours = false;
+  bool _aCherche = false;
+  String _saisie = '';
+  String? _erreur;
   Timer? _delaiRecherche;
+
+  @override
+  void initState() {
+    super.initState();
+    _chargerConnus();
+  }
 
   @override
   void dispose() {
@@ -971,9 +1024,32 @@ class _FeuilleMembresState extends State<_FeuilleMembres> {
     super.dispose();
   }
 
+  /// Membres déjà en conversation, visibles sans rien taper.
+  Future<void> _chargerConnus() async {
+    setState(() => _rechercheEnCours = true);
+    try {
+      final resultats = await widget.onRechercher('');
+      if (!mounted) return;
+      setState(() {
+        _resultats = resultats;
+        _rechercheEnCours = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _rechercheEnCours = false;
+        _erreur = 'La liste des membres ne peut pas être chargée.';
+      });
+    }
+  }
+
   void _rechercherEnDirect(String q) {
     _delaiRecherche?.cancel();
-    if (q.trim().length < 3) return;
+    setState(() => _saisie = q);
+    if (q.trim().isEmpty) {
+      _chargerConnus();
+      return;
+    }
     _delaiRecherche = Timer(
       const Duration(milliseconds: 400),
       () => _rechercher(q),
@@ -982,8 +1058,12 @@ class _FeuilleMembresState extends State<_FeuilleMembres> {
 
   Future<void> _rechercher(String q) async {
     final saisie = q.trim();
-    if (saisie.length < 3) return;
-    setState(() => _rechercheEnCours = true);
+    if (saisie.isEmpty) return;
+    setState(() {
+      _rechercheEnCours = true;
+      _aCherche = true;
+      _erreur = null;
+    });
     try {
       final resultats = await widget.onRechercher(saisie);
       if (!mounted) return;
@@ -993,7 +1073,10 @@ class _FeuilleMembresState extends State<_FeuilleMembres> {
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _rechercheEnCours = false);
+      setState(() {
+        _rechercheEnCours = false;
+        _erreur = 'La recherche ne peut pas aboutir pour le moment.';
+      });
     }
   }
 
@@ -1022,6 +1105,7 @@ class _FeuilleMembresState extends State<_FeuilleMembres> {
             onSubmitted: _rechercher,
             decoration: const InputDecoration(
               hintText: 'Rechercher un membre…',
+              helperText: 'Dès 1 lettre, un prénom ou un mot du nom suffit.',
               prefixIcon: Icon(LucideIcons.search),
               border: OutlineInputBorder(),
             ),
@@ -1029,9 +1113,29 @@ class _FeuilleMembresState extends State<_FeuilleMembres> {
           const SizedBox(height: 8),
           if (_rechercheEnCours)
             const LinearProgressIndicator(color: PaletteNouvelle.bleuNuit),
+          if (_erreur != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                _erreur!,
+                style: const TextStyle(color: PaletteNouvelle.rougeBadge),
+              ),
+            )
+          else if (!_rechercheEnCours &&
+              _resultats.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                _aCherche
+                    ? 'Aucun membre trouvé pour « ${_saisie.trim()} ».'
+                    : 'Aucun membre pour le moment.',
+                style: const TextStyle(color: Colors.black54),
+              ),
+            ),
           ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 320),
             child: ListView(
+              padding: EdgeInsets.zero,
               shrinkWrap: true,
               children: [
                 for (final m in _resultats)

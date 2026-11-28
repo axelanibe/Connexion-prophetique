@@ -35,6 +35,7 @@ class _PageProfilConnexionState extends State<PageProfilConnexion> {
   String? _erreur;
   int _onglet = 0;
   bool _suiviEnCours = false;
+  bool _blocageEnCours = false;
 
   @override
   void initState() {
@@ -99,6 +100,56 @@ class _PageProfilConnexionState extends State<PageProfilConnexion> {
     }
   }
 
+  /// Bloquer et débloquer un membre, lot 1 Connexion 2.0 :
+  /// ses publications disparaissent de mon fil, suivre, réagir
+  /// et commenter sont refusés côté serveur. Confirmation
+  /// avant de bloquer, jamais avant de débloquer.
+  Future<void> _basculerBlocage() async {
+    final profil = _profil;
+    if (profil == null || _blocageEnCours) return;
+    if (!profil.bloqueParMoi) {
+      final confirmer = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Bloquer ${profil.nomComplet} ?'),
+          content: const Text(
+            'Ses publications disparaîtront de ton fil, et vous ne pourrez plus interagir.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Bloquer'),
+            ),
+          ],
+        ),
+      );
+      if (confirmer != true || !mounted) return;
+    }
+    setState(() => _blocageEnCours = true);
+    try {
+      if (profil.bloqueParMoi) {
+        await widget.service.debloquerMembre(profil.id);
+      } else {
+        await widget.service.bloquerMembre(profil.id);
+      }
+      if (!mounted) return;
+      setState(() {
+        _profil = profil.avecBloque(!profil.bloqueParMoi);
+        _blocageEnCours = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _blocageEnCours = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Le blocage n’a pas pu être changé.')),
+      );
+    }
+  }
+
   Future<void> _ouvrirListe(
       String titre, Future<List<MembreConnexion>> Function() charger) async {
     List<MembreConnexion> membres = [];
@@ -147,7 +198,9 @@ class _PageProfilConnexionState extends State<PageProfilConnexion> {
                     _EnteteProfil(
                       profil: profil,
                       suiviEnCours: _suiviEnCours,
+                      blocageEnCours: _blocageEnCours,
                       onSuivi: _basculerSuivi,
+                      onBloquer: _basculerBlocage,
                       onAbonnes: () => _ouvrirListe('Abonnés',
                           () => widget.service.chargerAbonnes(profil.id)),
                       onAbonnements: () => _ouvrirListe('Abonnements',
@@ -206,13 +259,17 @@ class _EnteteProfil extends StatelessWidget {
   const _EnteteProfil({
     required this.profil,
     required this.suiviEnCours,
+    required this.blocageEnCours,
     required this.onSuivi,
+    required this.onBloquer,
     required this.onAbonnes,
     required this.onAbonnements,
   });
   final ProfilConnexion profil;
   final bool suiviEnCours;
+  final bool blocageEnCours;
   final VoidCallback onSuivi;
+  final VoidCallback onBloquer;
   final VoidCallback onAbonnes;
   final VoidCallback onAbonnements;
 
@@ -277,6 +334,15 @@ class _EnteteProfil extends StatelessWidget {
               ),
               onPressed: suiviEnCours ? null : onSuivi,
               child: Text(profil.suiviParMoi ? 'Suivi' : 'Suivre'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Colors.white54),
+              ),
+              onPressed: blocageEnCours ? null : onBloquer,
+              child: Text(profil.bloqueParMoi ? 'Débloquer' : 'Bloquer'),
             ),
           ],
         ],

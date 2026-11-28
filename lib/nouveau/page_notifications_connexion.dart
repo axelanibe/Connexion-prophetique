@@ -197,9 +197,39 @@ class _PageNotificationsConnexionState
     });
   }
 
+  /// Heure relative, standard des grands réseaux : minutes,
+  /// heures, puis date.
+  String _heureRelative(DateTime? date) {
+    if (date == null) return '';
+    final ecart = DateTime.now().difference(date);
+    if (ecart.inMinutes < 1) return 'À l’instant';
+    if (ecart.inMinutes < 60) return 'il y a ${ecart.inMinutes} min';
+    if (ecart.inHours < 24) return 'il y a ${ecart.inHours} h';
+    return formaterDateConnexion(date);
+  }
+
+  /// Groupe de date d'une notification : aujourd'hui, hier,
+  /// puis la date.
+  String _groupeDate(DateTime? date) {
+    if (date == null) return '';
+    final maintenant = DateTime.now();
+    final jour = DateTime(date.year, date.month, date.day);
+    final aujourdHui =
+        DateTime(maintenant.year, maintenant.month, maintenant.day);
+    if (jour == aujourdHui) return 'Aujourd’hui';
+    if (jour == aujourdHui.subtract(const Duration(days: 1))) {
+      return 'Hier';
+    }
+    return formaterDateConnexion(date);
+  }
+
   @override
   Widget build(BuildContext context) {
     final filtrees = _filtrees;
+    final groupes = <String, List<NotificationConnexion>>{};
+    for (final n in filtrees) {
+      groupes.putIfAbsent(_groupeDate(n.creeLe), () => []).add(n);
+    }
     return Scaffold(
       backgroundColor: PaletteNouvelle.papier,
       appBar: AppBar(
@@ -259,17 +289,59 @@ class _PageNotificationsConnexionState
                 : _erreur != null
                     ? Center(
                         child: Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Text(_erreur!, textAlign: TextAlign.center)))
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _erreur!,
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 12),
+                              FilledButton(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: PaletteNouvelle.bleuNuit,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _chargement = true;
+                                    _erreur = null;
+                                  });
+                                  _charger();
+                                },
+                                child: const Text('Réessayer'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
                     : filtrees.isEmpty
                         ? const Center(
                             child: Text('Aucune notification pour le moment.'))
                         : ListView(
-                            padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+                            padding:
+                                EdgeInsets.fromLTRB(0, 8, 0, 24 + MediaQuery.paddingOf(context).bottom),
                             children: [
-                              for (final n in filtrees)
-                                _CarteNotification(
-                                    notification: n, onTap: () => _ouvrir(n)),
+                              for (final entree in groupes.entries) ...[
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                      16, 12, 16, 4),
+                                  child: Text(
+                                    entree.key,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.black54,
+                                    ),
+                                  ),
+                                ),
+                                for (final n in entree.value)
+                                  _LigneNotification(
+                                    notification: n,
+                                    heure: _heureRelative(n.creeLe),
+                                    onTap: () => _ouvrir(n),
+                                  ),
+                              ],
                             ],
                           ),
           ),
@@ -279,40 +351,104 @@ class _PageNotificationsConnexionState
   }
 }
 
-class _CarteNotification extends StatelessWidget {
-  const _CarteNotification({required this.notification, required this.onTap});
+/// Ligne de notification, standard des grands réseaux :
+/// avatar avec initiales, nom en gras et action, heure
+/// relative, pastille or quand non lue, fond blanc, gris
+/// clair quand lue.
+class _LigneNotification extends StatelessWidget {
+  const _LigneNotification({
+    required this.notification,
+    required this.heure,
+    required this.onTap,
+  });
   final NotificationConnexion notification;
+  final String heure;
   final VoidCallback onTap;
+
+  String _initiales(String titre) {
+    final mots = titre
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((m) => m.isNotEmpty)
+        .toList();
+    if (mots.isEmpty) return '?';
+    if (mots.length == 1) return mots.first[0].toUpperCase();
+    return (mots[0][0] + mots[1][0]).toUpperCase();
+  }
 
   @override
   Widget build(BuildContext context) {
     final n = notification;
-    final date = formaterDateConnexion(n.creeLe);
-    final icone = switch (n.type) {
-      'mur_mention' => Icons.alternate_email_outlined,
-      'mur_reaction' => Icons.thumb_up_outlined,
-      'mur_suivi' => Icons.person_add_outlined,
-      'paiement_valide' => Icons.payments_outlined,
-      _ => Icons.comment_outlined,
-    };
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: n.lue ? Colors.white : const Color(0xFFFFF8E6),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE3E7EE)),
-      ),
-      child: ListTile(
-        leading: Icon(icone, color: PaletteNouvelle.bleuNuit),
-        title: Text(n.titre,
-            style: const TextStyle(
-                fontWeight: FontWeight.w700, color: PaletteNouvelle.bleuNuit)),
-        subtitle: Text(n.message),
-        trailing: date.isEmpty
-            ? null
-            : Text(date,
-                style: const TextStyle(color: Colors.grey, fontSize: 12)),
-        onTap: onTap,
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        color: n.lue ? const Color(0xFFFBFBFC) : Colors.white,
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 22,
+              backgroundColor: n.estMention
+                  ? PaletteNouvelle.or
+                  : PaletteNouvelle.bleuNuit,
+              child: Text(
+                _initiales(n.titre),
+                style: TextStyle(
+                  color: n.estMention
+                      ? PaletteNouvelle.bleuNuit
+                      : PaletteNouvelle.or,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: n.titre,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: PaletteNouvelle.bleuNuit,
+                          ),
+                        ),
+                        if (n.message.isNotEmpty)
+                          TextSpan(text: ' ${n.message}'),
+                      ],
+                    ),
+                    style: const TextStyle(fontSize: 14, height: 1.45),
+                  ),
+                  if (heure.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      heure,
+                      style: const TextStyle(
+                        color: Colors.grey,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (!n.lue)
+              Container(
+                width: 9,
+                height: 9,
+                margin: const EdgeInsets.only(top: 6, left: 8),
+                decoration: const BoxDecoration(
+                  color: PaletteNouvelle.or,
+                  shape: BoxShape.circle,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

@@ -14,6 +14,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../appels_screens.dart' deferred as appels;
 
@@ -38,6 +39,39 @@ Future<void> chargerEcransAppel() => appels.loadLibrary();
 Future<bool> autorisationsAppel({required bool video}) async {
   await appels.loadLibrary();
   return appels.demanderAutorisationsAppel(video: video);
+}
+
+/// Écran explicite quand le micro ou la caméra est refusé,
+/// salve 28 nov. 2026 : plus de simple message, on explique
+/// et on ouvre les réglages du téléphone.
+Future<void> expliquerAutorisationsRefusees(
+  BuildContext context, {
+  required bool video,
+}) async {
+  await showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(video ? 'Micro ou caméra refusé' : 'Micro refusé'),
+      content: Text(
+        video
+            ? 'Pour appeler en vidéo, autorise le micro et la caméra dans les réglages de ton téléphone, puis reviens ici.'
+            : 'Pour appeler, autorise le micro dans les réglages de ton téléphone, puis reviens ici.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Fermer'),
+        ),
+        FilledButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+            openAppSettings();
+          },
+          child: const Text('Ouvrir les réglages'),
+        ),
+      ],
+    ),
+  );
 }
 
 /// Écran d'appel sortant, appelId vide : l'écran attend

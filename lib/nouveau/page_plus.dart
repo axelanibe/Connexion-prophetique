@@ -34,7 +34,7 @@ class PagePlus extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: EdgeInsets.only(top: 8, bottom: 8 + MediaQuery.paddingOf(context).bottom),
       children: [
         const Padding(
           padding: EdgeInsets.fromLTRB(16, 8, 16, 8),

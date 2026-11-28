@@ -26,6 +26,11 @@ abstract class ServiceT18 {
   /// en cours en un seul appel.
   Future<void> chargerTableauDeBord();
 
+  /// Vrai quand la dernière lecture du tableau de bord a
+  /// échoué, salve 28 nov. 2026 : la page affiche alors un
+  /// bouton de réessai au lieu de tirets muets.
+  bool get chiffresEnEchec;
+
   ComptabiliteAdmin? get comptabilite;
   Future<void> chargerComptabilite({String? mois, String? etablissementId});
 
@@ -43,6 +48,10 @@ abstract class ServiceT18 {
 
   List<ActualiteAdmin> get actualitesAdmin;
   Future<void> chargerActualitesAdmin();
+
+  /// Vrai quand la dernière lecture des actualités a échoué,
+  /// salve 28 nov. 2026 : vide réel et échec se distinguent.
+  bool get erreurActualitesAdmin;
   Future<bool> publierActualite({
     required String titre,
     required String texte,
@@ -129,6 +138,10 @@ abstract class ServiceT18 {
 
   List<PresenceLigne> get presences;
   Future<void> chargerPresences();
+
+  /// Vrai quand la dernière lecture des présences a échoué,
+  /// salve 28 nov. 2026 : vide réel et échec se distinguent.
+  bool get erreurPresences;
   List<PresenceActiviteEntree> get presencesActivite;
   String get presencesActiviteNom;
   TauxPresence? get tauxPresence;
@@ -272,6 +285,11 @@ abstract class ServiceT18 {
   Future<Map<String, dynamic>?> chargerResultatsElection(String id);
   Future<bool> voterElection(String electionId, String candidatId);
 
+  /// Élection en cours pour un membre, salve 28 nov. 2026 :
+  /// GET /elections/actuelle, avec les scores en direct.
+  ElectionMembre? get electionActuelle;
+  Future<void> chargerElectionActuelle();
+
   List<LienAdmin> get liensEnAttente;
   Future<void> chargerLiensEnAttente();
   Future<bool> validerLien(String id);
@@ -360,7 +378,9 @@ class ServiceT18Reel implements ServiceT18 {
       if (compta is Map<String, dynamic>) {
         comptabilite = ComptabiliteAdmin.depuisJson(compta);
       }
+      chiffresEnEchec = false;
     } catch (_) {
+      chiffresEnEchec = true;
       if (chiffres.isEmpty) {
         chiffres = [
           for (final libelle in libellesChiffres)
@@ -369,6 +389,10 @@ class ServiceT18Reel implements ServiceT18 {
       }
     }
   }
+
+  /// Vrai quand la dernière lecture du tableau de bord a échoué.
+  @override
+  bool chiffresEnEchec = false;
 
   @override
   ComptabiliteAdmin? comptabilite;
@@ -452,10 +476,16 @@ class ServiceT18Reel implements ServiceT18 {
       actualitesAdmin = [
         for (final l in lignes) ActualiteAdmin.depuisJson(l),
       ];
+      erreurActualitesAdmin = false;
     } catch (_) {
       actualitesAdmin = [];
+      erreurActualitesAdmin = true;
     }
   }
+
+  /// Vrai quand la dernière lecture des actualités a échoué.
+  @override
+  bool erreurActualitesAdmin = false;
 
   @override
   Future<bool> publierActualite({
@@ -748,10 +778,16 @@ class ServiceT18Reel implements ServiceT18 {
       presences = [
         for (final l in lignes) PresenceLigne.depuisJson(l),
       ];
+      erreurPresences = false;
     } catch (_) {
       presences = [];
+      erreurPresences = true;
     }
   }
+
+  /// Vrai quand la dernière lecture des présences a échoué.
+  @override
+  bool erreurPresences = false;
 
   // Correctif global, 27 nov. 2026 : pointage par scan QR.
   @override
@@ -1563,6 +1599,23 @@ class ServiceT18Reel implements ServiceT18 {
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  @override
+  ElectionMembre? electionActuelle;
+
+  @override
+  Future<void> chargerElectionActuelle() async {
+    try {
+      final data = await _api.fetchElectionActuelle();
+      final e = data['election'];
+      electionActuelle = e is Map<String, dynamic> &&
+              (e['id'] ?? '').toString().isNotEmpty
+          ? ElectionMembre.depuisJson(data)
+          : null;
+    } catch (_) {
+      electionActuelle = null;
     }
   }
 

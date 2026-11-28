@@ -29,6 +29,7 @@ import 'modeles_messagerie.dart';
 import 'page_a_propos.dart';
 import 'page_abonnement.dart';
 import 'page_accueil.dart';
+import 'page_aide_contact.dart';
 import 'page_assistant.dart';
 import 'page_bible.dart';
 import 'page_camps.dart';
@@ -45,10 +46,13 @@ import 'page_fonctions.dart';
 import 'page_galerie.dart';
 import 'page_journal.dart';
 import 'page_librairie.dart';
+import 'page_meditation.dart';
+import 'palette.dart';
 import 'page_messagerie.dart';
 import 'page_opportunite.dart';
 import 'page_parole.dart';
 import 'page_profil.dart';
+import 'page_election_membre.dart';
 import 'page_etablissements.dart';
 import 'page_structure.dart';
 import 'page_suivi.dart';
@@ -641,6 +645,41 @@ class _RacineNouvelleState extends State<RacineNouvelle>
       ),
       croissance: PageCroissance(service: _serviceT9),
       journal: const PageJournal(),
+      meditation: PageMeditation(
+        serviceBible: _serviceBible,
+        onNoter: ({required onglet, prefill}) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => Scaffold(
+                backgroundColor: Colors.white,
+                appBar: AppBar(
+                  title: const Text(
+                    'Journal personnel',
+                    style: TextStyle(color: PaletteNouvelle.bleuNuit),
+                  ),
+                  backgroundColor: Colors.white,
+                  foregroundColor: PaletteNouvelle.bleuNuit,
+                ),
+                body: PageJournal(
+                  initialTab: onglet,
+                  prefill: prefill,
+                  openForm: true,
+                ),
+              ),
+            ),
+          );
+        },
+        onOuvrirJournal: () =>
+            _ouvrirDestination(DestinationNouvelle.journal),
+        onOuvrirChapitre: (livre, chapitre) {
+          setState(() {
+            _bibleLivre = livre;
+            _bibleChapitre = chapitre;
+          });
+          _allerOnglet(1);
+        },
+      ),
+      aide: const PageAideContact(),
       fonctions: PageFonctions(service: _serviceT9),
       abonnement: PageAbonnement(service: _serviceT9),
       aPropos: PageAPropos(
@@ -672,6 +711,7 @@ class _RacineNouvelleState extends State<RacineNouvelle>
             _ouvrirDestination(DestinationNouvelle.structure),
       ),
       cotisations: PageCotisations(service: _serviceT14),
+      elections: PageElectionMembre(service: _serviceT18),
       paroleVivante: PageParoleVivante(
         service: _serviceParole,
         onRetour: _allerAccueil,

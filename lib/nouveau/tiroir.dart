@@ -70,6 +70,7 @@ const _entreesMonEspace = [
 const _entreesQuotidien = [
   _Entree('Méditation', LucideIcons.sun, DestinationNouvelle.meditation),
   _Entree('Chaîne de prière', LucideIcons.link, DestinationNouvelle.chainePriere),
+  _Entree('Élections', LucideIcons.vote, DestinationNouvelle.elections),
 ];
 
 const _entreesBas = [

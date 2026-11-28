@@ -49,7 +49,7 @@ class _PageGalerieState extends State<PageGalerie> {
     final badges = s.inscriptions.where((i) => i.passVisible).toList();
     final enAttente = s.inscriptions.where((i) => !i.passVisible).toList();
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 24 + MediaQuery.paddingOf(context).bottom),
       children: [
         const _TitreSection('Badges de camp'),
         if (badges.isEmpty && enAttente.isEmpty)
@@ -501,7 +501,7 @@ class _PageBadgeCampState extends State<PageBadgeCamp> {
         iconTheme: const IconThemeData(color: PaletteNouvelle.bleuNuit),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        padding: EdgeInsets.fromLTRB(16, 16, 16, 24 + MediaQuery.paddingOf(context).bottom),
         children: [
           RepaintBoundary(
             key: _cle,
