@@ -107,6 +107,9 @@ class FauxServiceT18 implements ServiceT18 {
   Future<void> chargerTableauDeBord() async {}
 
   @override
+  bool chiffresEnEchec = false;
+
+  @override
   ComptabiliteAdmin? comptabilite;
 
   @override
@@ -146,6 +149,9 @@ class FauxServiceT18 implements ServiceT18 {
 
   @override
   Future<void> chargerActualitesAdmin() async {}
+
+  @override
+  bool erreurActualitesAdmin = false;
 
   @override
   Future<bool> publierActualite({
@@ -216,6 +222,9 @@ class FauxServiceT18 implements ServiceT18 {
 
   @override
   Future<void> chargerPresences() async {}
+
+  @override
+  bool erreurPresences = false;
 
   @override
   List<PresenceActiviteEntree> presencesActivite = const [];
@@ -694,6 +703,12 @@ class FauxServiceT18 implements ServiceT18 {
       true;
 
   @override
+  ElectionMembre? electionActuelle;
+
+  @override
+  Future<void> chargerElectionActuelle() async {}
+
+  @override
   List<LienAdmin> liensEnAttente = [
     const LienAdmin(
       id: 'l1',
@@ -893,7 +908,11 @@ void main() {
       expect(find.text('En chiffres'), findsOneWidget);
       expect(find.text('128'), findsOneWidget);
       expect(find.text('Membres inscrits'), findsOneWidget);
-      await voir(tester, 'Valider les paiements');
+      // Point 6, salve 28 nov. 2026 : Valider les paiements
+      // n'est plus une entrée à part, la validation vit dans
+      // la Comptabilité seule.
+      expect(find.text('Valider les paiements'), findsNothing);
+      await voir(tester, 'Comptabilité');
       await voir(tester, 'Gérer les membres');
       await voir(tester, 'Publier une actualité');
     });
@@ -917,9 +936,9 @@ void main() {
       for (final entree in [
         'Comptabilité',
         'Actualités',
-        'Prochain camp',
-        'Inscriptions au camp',
-        'Badges du camp',
+        // Point 7, salve 28 nov. 2026 : une seule entrée Camp,
+        // avec Prochain camp, Inscriptions et Badges dedans.
+        'Camp',
         'Présences',
         'Documents',
         'Attestations',
@@ -936,6 +955,9 @@ void main() {
       ]) {
         await voir(tester, entree);
       }
+      expect(find.text('Prochain camp'), findsNothing);
+      expect(find.text('Inscriptions au camp'), findsNothing);
+      expect(find.text('Badges du camp'), findsNothing);
     });
   });
 

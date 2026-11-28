@@ -234,7 +234,10 @@ void main() {
   testWidgets('T4 : ouverture directement sur Discussions',
       (tester) async {
     await _ouvrirMessagerie(tester);
-    expect(find.text('Messagerie'), findsOneWidget);
+    // Point 11, salve 28 nov. 2026 : la bande affiche le titre
+    // de l'onglet, Discussions, plus jamais Messagerie.
+    expect(find.text('Messagerie'), findsNothing);
+    expect(find.text('Discussions'), findsWidgets);
     expect(find.byKey(const ValueKey('ongletDiscussions')), findsOneWidget);
     expect(find.byKey(const ValueKey('ongletAppels')), findsOneWidget);
     expect(find.byKey(const ValueKey('fabNouvelleDiscussion')),

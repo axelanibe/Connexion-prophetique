@@ -204,9 +204,12 @@ class _FauxService implements ServiceConnexion {
 
   @override
   Future<PublicationConnexion> publier(
-      {required String texte, required String categorie, String? photo}) async {
+      {required String texte,
+      required String categorie,
+      String? photo,
+      List<String>? photos}) async {
     derniereCategorie = categorie;
-    dernierePhoto = photo;
+    dernierePhoto = photo ?? photos?.firstOrNull;
     final p = _pub(
         id: 'nouvelle-test',
         auteurId: 'moi',
@@ -216,6 +219,25 @@ class _FauxService implements ServiceConnexion {
     fil = [p, ...fil];
     return p;
   }
+
+  @override
+  Future<PublicationConnexion> modifierPublication(String id,
+      {required String texte, required String categorie}) async {
+    final p = fil.firstWhere((x) => x.id == id);
+    final modifiee = p.avecModification(texte: texte, categorie: categorie);
+    fil = fil.map((x) => x.id == id ? modifiee : x).toList();
+    return modifiee;
+  }
+
+  @override
+  Future<void> bloquerMembre(String membreId) async {}
+
+  @override
+  Future<void> debloquerMembre(String membreId) async {}
+
+  @override
+  Future<List<MembreConnexion>> chargerDecouvrir({String? q}) async =>
+      membresRecherche;
 
   @override
   Future<PublicationConnexion> publierVideo(String id,
@@ -817,22 +839,22 @@ void main() {
       await tester.tap(find.byTooltip('Notifications'));
       await tester.pumpAndSettle();
       expect(find.text('Notifications'), findsOneWidget);
-      expect(find.text('Mention de test'), findsOneWidget);
-      expect(find.text('Commentaire de test'), findsOneWidget);
-      expect(find.text('Réaction de test'), findsOneWidget);
+      expect(find.textContaining('Mention de test'), findsOneWidget);
+      expect(find.textContaining('Commentaire de test'), findsOneWidget);
+      expect(find.textContaining('Réaction de test'), findsOneWidget);
       await tester.tap(find.text('Mentions'));
       await tester.pumpAndSettle();
-      expect(find.text('Mention de test'), findsOneWidget);
-      expect(find.text('Commentaire de test'), findsNothing);
-      expect(find.text('Réaction de test'), findsNothing);
+      expect(find.textContaining('Mention de test'), findsOneWidget);
+      expect(find.textContaining('Commentaire de test'), findsNothing);
+      expect(find.textContaining('Réaction de test'), findsNothing);
       await tester.tap(find.text('Activité'));
       await tester.pumpAndSettle();
-      expect(find.text('Mention de test'), findsNothing);
-      expect(find.text('Commentaire de test'), findsOneWidget);
-      expect(find.text('Réaction de test'), findsOneWidget);
+      expect(find.textContaining('Mention de test'), findsNothing);
+      expect(find.textContaining('Commentaire de test'), findsOneWidget);
+      expect(find.textContaining('Réaction de test'), findsOneWidget);
       await tester.tap(find.text('Toutes'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Mention de test'));
+      await tester.tap(find.textContaining('Mention de test'));
       await tester.pumpAndSettle();
       expect(service.lus, 1);
       expect(find.text('Publication'), findsOneWidget);

@@ -98,12 +98,21 @@ void main() {
       await tester.pumpWidget(MaterialApp(
         home: NouvelleCoquille(
           membre: _membreTest,
-          accueil: const Text('Contenu accueil test'),
+          accueil: ListView(
+            children: const [
+              SizedBox(height: 100, child: Text('Contenu accueil test')),
+            ],
+          ),
         ),
       ));
       await tester.pumpAndSettle();
-      // La marge basse de 120 px enveloppe le corps, au-dessus
-      // de la bande de 64 px du bouton flottant Assistant.
+      // Point 17, 28 nov. 2026 : la marge basse de 120 px vit
+      // DANS le contenu défilant, via la marge MediaQuery du
+      // corps, plus hors de lui en Padding, où elle peignait
+      // une bande opaque au-dessus de la barre du bas.
+      final rembourrage =
+          tester.widget<SliverPadding>(find.byType(SliverPadding));
+      expect(rembourrage.padding.resolve(TextDirection.ltr).bottom, 120);
       expect(
         find.ancestor(
           of: find.text('Contenu accueil test'),
@@ -112,7 +121,7 @@ void main() {
                 w is Padding && w.padding == const EdgeInsets.only(bottom: 120),
           ),
         ),
-        findsOneWidget,
+        findsNothing,
       );
       expect(tester.takeException(), isNull);
     });

@@ -443,7 +443,9 @@ void main() {
     await tester.tap(find.text('Liaison'));
     await tester.pumpAndSettle();
     expect(find.text('Enfant Exemple'), findsOneWidget);
-    expect(find.text('Liaison parents et enfants'), findsOneWidget);
+    // Point 11, salve 28 nov. 2026 : le titre de section suit
+    // l'onglet, Liaison, onglet et titre confondus.
+    expect(find.text('Liaison'), findsWidgets);
     await tester.tap(find.text('Le Bureau'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Voir tout le Bureau'));
