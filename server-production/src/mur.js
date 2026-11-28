@@ -155,6 +155,7 @@ export function formaterPublicationMur(ligne) {
     nb_commentaires: nombre(l.nb_commentaires),
     aime: l.mon_type != null ? true : l.aime === true,
     enregistre: l.enregistre === true,
+    suivi_par_moi: l.suivi_par_moi === true,
     est_auteur: l.est_auteur === true,
     cree_le: l.cree_le instanceof Date ? l.cree_le.toISOString() : (l.cree_le ?? null),
   };
