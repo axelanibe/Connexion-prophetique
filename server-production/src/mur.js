@@ -31,6 +31,11 @@ export const TAILLE_MAX_PHOTO_MUR_OCTETS = 700 * 1024;
 /// Nombre de publications renvoyées, les plus récentes.
 export const LIMITE_MUR_PUBLICATIONS = 50;
 
+/// Photos d'une publication, lot 1 Connexion 2.0, salve
+/// 28 nov. 2026 : 4 au plus, chacune validée comme la photo
+/// unique d'avant, 700 Ko décodés au plus.
+export const MAX_PHOTOS_MUR = 4;
+
 /// Clé R2 d'une vidéo de publication, mur v2 tranche 2 :
 /// dossier mur-videos, identifiant aléatoire, extension du
 /// type réel. Une seule vidéo par publication, le nouvel
@@ -53,22 +58,9 @@ export function estImageAutorisee(octets) {
   return estJpeg || estPng || estWebp;
 }
 
-/// Refus de publication, null quand tout est bon. Un texte seul
-// est accepté, une photo seule aussi, jamais les deux vides.
-// La catégorie, quand elle est donnée, est l'une des 6 ; sans
-// elle, la publication vaut 'autre'.
-export function validerPublicationMur({ texte, photo, categorie }) {
-  const textePropre = typeof texte === 'string' ? texte.trim() : '';
-  if (categorie != null && categorie !== '' && !CATEGORIES_MUR.includes(categorie)) {
-    return { statut: 400, message: 'Catégorie invalide.' };
-  }
-  if (textePropre.length > LONGUEUR_MAX_TEXTE_MUR) {
-    return { statut: 400, message: 'Texte trop long : 2000 caractères au plus.' };
-  }
-  if (photo == null || photo === '') {
-    if (textePropre.length === 0) return { statut: 400, message: 'Ajoutez un texte ou une photo.' };
-    return null;
-  }
+/// Refus d'une seule photo, null quand elle est bonne.
+/// Extrait de validerPublicationMur, lot 1 Connexion 2.0.
+export function validerPhotoMur(photo) {
   if (typeof photo !== 'string') return { statut: 400, message: 'Photo invalide.' };
   const m = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=\r\n]+)$/.exec(photo);
   if (!m) return { statut: 400, message: 'Photo invalide : image JPEG, PNG ou WebP attendue.' };
@@ -83,6 +75,50 @@ export function validerPublicationMur({ texte, photo, categorie }) {
   }
   if (!estImageAutorisee(octets)) return { statut: 415, message: 'Type de photo non autorisé.' };
   return null;
+}
+
+/// Refus d'une liste de photos, null quand elle est bonne :
+/// 4 au plus, chacune validée comme une photo unique.
+export function validerPhotosMur(photos) {
+  if (!Array.isArray(photos)) return { statut: 400, message: 'Photos invalides.' };
+  if (photos.length === 0) return null;
+  if (photos.length > MAX_PHOTOS_MUR) {
+    return { statut: 400, message: `4 photos au plus par publication.` };
+  }
+  for (const photo of photos) {
+    const refus = validerPhotoMur(photo);
+    if (refus) return refus;
+  }
+  return null;
+}
+
+/// Refus de publication, null quand tout est bon. Un texte seul
+// est accepté, une photo seule aussi, jamais les deux vides.
+// La catégorie, quand elle est donnée, est l'une des 6 ; sans
+// elle, la publication vaut 'autre'. Photos multiples, lot 1
+// Connexion 2.0 : le champ photos remplace photo quand il est
+// présent, 4 au plus.
+export function validerPublicationMur({ texte, photo, photos, categorie }) {
+  const textePropre = typeof texte === 'string' ? texte.trim() : '';
+  if (categorie != null && categorie !== '' && !CATEGORIES_MUR.includes(categorie)) {
+    return { statut: 400, message: 'Catégorie invalide.' };
+  }
+  if (textePropre.length > LONGUEUR_MAX_TEXTE_MUR) {
+    return { statut: 400, message: 'Texte trop long : 2000 caractères au plus.' };
+  }
+  if (photos != null) {
+    const refus = validerPhotosMur(photos);
+    if (refus) return refus;
+    if (photos.length === 0 && textePropre.length === 0) {
+      return { statut: 400, message: 'Ajoutez un texte ou une photo.' };
+    }
+    return null;
+  }
+  if (photo == null || photo === '') {
+    if (textePropre.length === 0) return { statut: 400, message: 'Ajoutez un texte ou une photo.' };
+    return null;
+  }
+  return validerPhotoMur(photo);
 }
 
 /// Profil public d'un membre du mur, mur v2 tranche 4 :
@@ -106,6 +142,7 @@ export function formaterProfilMur(ligne) {
     nb_abonnes: nombre(l.nb_abonnes),
     nb_abonnements: nombre(l.nb_abonnements),
     suivi_par_moi: l.suivi_par_moi === true,
+    bloque_par_moi: l.bloque_par_moi === true,
     est_moi: l.est_moi === true,
   };
 }
@@ -124,14 +161,22 @@ export function formaterMembreSuivi(ligne) {
 
 /// Publication publique, telle que renvoyée par les routes :
 // jamais le matricule, seulement son nom, son établissement,
-// le texte, la photo, la catégorie, les nombres de réactions
+// le texte, les photos, la catégorie, les nombres de réactions
 // par type, mon type de réaction, mon J'aime et mon droit de
 // suppression. L'identifiant de l'auteur est renvoyé, il faut
 // l'ouvrir le profil et suivre ; la photo de l'auteur passe
-// par la route batch, jamais dans le fil.
+// par la route batch, jamais dans le fil. Photos, lot 1
+// Connexion 2.0 : la liste photos, 4 au plus ; photo reste
+// la première, pour l'ancienne application.
 export function formaterPublicationMur(ligne) {
   const l = ligne ?? {};
   const nombre = (v) => (typeof v === 'number' ? v : Number.parseInt(v ?? '0', 10) || 0);
+  const photos = Array.isArray(l.photos)
+    ? l.photos.filter((p) => typeof p === 'string' && p !== '')
+    : [];
+  if (photos.length === 0 && typeof l.photo === 'string' && l.photo !== '') {
+    photos.push(l.photo);
+  }
   return {
     id: l.id,
     auteur_id: l.auteur_id ?? null,
@@ -139,6 +184,7 @@ export function formaterPublicationMur(ligne) {
     etablissement_nom: l.etablissement_nom ?? '',
     texte: l.texte ?? '',
     photo: l.photo ?? null,
+    photos,
     categorie: l.categorie ?? 'autre',
     statut_moderation: l.statut_moderation ?? 'visible',
     video: l.cle_r2_video

@@ -2,11 +2,11 @@
 // Une élection se crée par la structure, avec dates de début et de
 // fin, candidats membres, un vote par membre. Hors période, la
 // fonctionnalité n'apparaît pas aux membres : aucune tuile, aucun
-// menu, aucune trace. Pendant le vote, aucun résultat n'est renvoyé
-// aux membres ; la structure voit les totaux à tout moment côté
-// administration, les membres seulement après la fin, par la route
-// dédiée. Aucun vote inventé, aucun résultat inventé : les totaux
-// ne viennent que des lignes d'election_votes.
+// menu, aucune trace. Pendant le vote, les membres voient les
+// scores en direct, salve 28 nov. 2026 : totaux par candidat et
+// total des voix, sans jamais exposer qui a voté pour qui. Aucun
+// vote inventé, aucun résultat inventé : les totaux ne viennent
+// que des lignes d'election_votes.
 // Module pur, sans base : il est testé sans PostgreSQL, et server.js
 // l'importe pour les routes /elections et /admin/elections.
 
@@ -33,11 +33,13 @@ export function electionEstOuverte(election, maintenant = new Date()) {
   return electionStatut(election, maintenant) === 'en_cours';
 }
 
-/// Résultats visibles pour un membre : seulement après la fin.
-/// Pendant le vote, la route membres répond 404 ; la structure,
-/// elle, lit les totaux à tout moment par les routes admin.
+/// Résultats visibles pour un membre : les totaux en direct,
+/// salve 28 nov. 2026, pendant le vote comme après la fin.
+/// Seuls les chiffres sont renvoyés, jamais qui a voté pour
+/// qui : la route vérifie l'existence de l'élection, puis
+/// renvoie les totaux à tout moment.
 export function resultatsVisiblesPourMembre(election, maintenant = new Date()) {
-  return electionStatut(election, maintenant) === 'terminee';
+  return election != null;
 }
 
 /// Deux périodes se chevauchent quand chacune commence avant la
@@ -106,9 +108,19 @@ export function validerCreationElection(corps) {
 }
 
 /// Forme publique d'une élection pour un membre : titre, poste,
-/// description, dates, candidats sans aucun total, et son propre
-/// vote. Les totaux n'y figurent jamais.
+/// description, dates, candidats avec leurs voix en direct et
+/// le total, salve 28 nov. 2026, et son propre vote. Les voix
+/// ne figurent que quand les lignes les portent, jamais
+/// l'identité des votants, seuls les chiffres.
 export function formaterElectionMembre(election, candidats, monCandidatId) {
+  const lignes = (candidats || []).map((c) => ({
+    id: c.id,
+    nom: c.nom,
+    fonction: c.fonction ?? '',
+    ordre: c.ordre ?? 0,
+    ...(typeof c.voix === 'number' ? { voix: c.voix } : {}),
+  }));
+  const avecVoix = lignes.some((c) => 'voix' in c);
   return {
     id: election.id,
     titre: election.titre,
@@ -117,12 +129,8 @@ export function formaterElectionMembre(election, candidats, monCandidatId) {
     date_debut: election.date_debut instanceof Date ? election.date_debut.toISOString() : election.date_debut,
     date_fin: election.date_fin instanceof Date ? election.date_fin.toISOString() : election.date_fin,
     statut: 'en_cours',
-    candidats: (candidats || []).map((c) => ({
-      id: c.id,
-      nom: c.nom,
-      fonction: c.fonction ?? '',
-      ordre: c.ordre ?? 0,
-    })),
+    candidats: lignes,
+    ...(avecVoix ? { total_voix: lignes.reduce((s, c) => s + (c.voix || 0), 0) } : {}),
     a_vote: monCandidatId != null,
     mon_candidat_id: monCandidatId ?? null,
   };
