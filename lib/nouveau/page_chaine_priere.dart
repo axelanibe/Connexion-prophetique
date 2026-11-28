@@ -1,13 +1,19 @@
-// Chaîne de prière, tranche T9, 26 nov. 2026.
-// 24 créneaux d'une heure, un membre par créneau, un créneau
-// par membre et par jour, routes existantes. Un jour passé est
-// en lecture seule, côté serveur. Mon créneau est souvenu sur
-// cet appareil seulement, jamais en base.
+// Chaîne de prière, tranche T9, 26 nov. 2026, correctif global
+// 27 nov. 2026 : alignée sur la maquette, 3 temps nommés
+// seulement, bouton Rejoindre. Les routes restent les mêmes,
+// les 3 temps sont les créneaux d'une heure 5 h, 12 h et 21 h.
 import 'package:flutter/material.dart';
 
 import 'modeles_t9.dart';
 import 'palette.dart';
 import 'service_t9.dart';
+
+/// Les 3 temps de la maquette : heure de début et nom.
+const _tempsPriere = <(int, String)>[
+  (5, 'Prière du matin'),
+  (12, 'Prière de midi'),
+  (21, 'Prière du soir'),
+];
 
 class PageChainePriere extends StatefulWidget {
   const PageChainePriere({super.key, required this.service});
@@ -27,21 +33,13 @@ class _PageChainePriereState extends State<PageChainePriere> {
     _charger();
   }
 
-  Future<void> _charger({String? jour}) async {
-    await widget.service.chargerChaine(jour: jour);
+  Future<void> _charger() async {
+    await widget.service.chargerChaine();
     if (mounted) setState(() => _charge = true);
-  }
-
-  DateTime get _jourAffiche {
-    final j = widget.service.jourChaine;
-    return DateTime.tryParse(j) ?? DateTime.now();
   }
 
   String _jourTexte(DateTime j) =>
       '${j.day.toString().padLeft(2, '0')}/${j.month.toString().padLeft(2, '0')}/${j.year}';
-
-  String _iso(DateTime j) =>
-      '${j.year}-${j.month.toString().padLeft(2, '0')}-${j.day.toString().padLeft(2, '0')}';
 
   Future<void> _agir(Future<bool> Function() action) async {
     if (_enCours) return;
@@ -65,42 +63,39 @@ class _PageChainePriereState extends State<PageChainePriere> {
     }
     final passe = s.chainePasse;
     final monCreneau = s.monCreneau;
+    final temps = [
+      for (final (heure, _) in _tempsPriere)
+        s.creneaux.firstWhere(
+          (c) => c.heure == heure,
+          orElse: () => CreneauPriere(heure: heure, prenom: ''),
+        ),
+    ];
+    final couverts = temps.where((c) => !c.estLibre).length;
+    final monTemps = monCreneau == null
+        ? null
+        : _tempsPriere
+                .where((t) => t.$1 == monCreneau.heure)
+                .map((t) => t.$2)
+                .firstOrNull ??
+            libelleCreneau(monCreneau.heure);
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
-        Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.chevron_left),
-              color: PaletteNouvelle.bleuNuit,
-              onPressed: () => _charger(
-                  jour: _iso(_jourAffiche.subtract(const Duration(days: 1)))),
-            ),
-            Expanded(
-              child: Text(
-                _jourTexte(_jourAffiche),
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w800,
-                  color: PaletteNouvelle.bleuNuit,
-                ),
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.chevron_right),
-              color: PaletteNouvelle.bleuNuit,
-              onPressed: () =>
-                  _charger(jour: _iso(_jourAffiche.add(const Duration(days: 1)))),
-            ),
-          ],
+        Text(
+          _jourTexte(DateTime.now()),
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+            color: PaletteNouvelle.bleuNuit,
+          ),
         ),
         Text(
-          '${s.couverts} h couvertes sur ${s.totalCreneaux}',
+          '$couverts temps couverts sur 3',
           textAlign: TextAlign.center,
           style: const TextStyle(color: Colors.grey, fontSize: 14),
         ),
-        if (monCreneau != null) ...[
+        if (monTemps != null) ...[
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(12),
@@ -110,20 +105,22 @@ class _PageChainePriereState extends State<PageChainePriere> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.favorite,
-                    color: PaletteNouvelle.orFonce, size: 20),
+                const Icon(
+                  Icons.favorite,
+                  color: PaletteNouvelle.orFonce,
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Mon créneau : ${libelleCreneau(monCreneau.heure)}',
+                    'Mon temps : $monTemps',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),
                 if (!passe)
                   TextButton(
-                    onPressed: _enCours
-                        ? null
-                        : () => _agir(() => s.libererCreneau()),
+                    onPressed:
+                        _enCours ? null : () => _agir(() => s.libererCreneau()),
                     child: const Text('Libérer'),
                   ),
               ],
@@ -131,35 +128,39 @@ class _PageChainePriereState extends State<PageChainePriere> {
           ),
         ],
         const SizedBox(height: 12),
-        for (final c in s.creneaux)
-          _TuileCreneau(
-            creneau: c,
-            estMien: c.estMien,
+        for (var i = 0; i < temps.length; i++)
+          _TuileTemps(
+            creneau: temps[i],
+            nom: _tempsPriere[i].$2,
+            estMien: temps[i].estMien,
             lectureSeule: passe || _enCours,
-            aDejaUnCreneau: monCreneau != null,
-            onEngager: () => _agir(() => s.engagerCreneau(c.heure)),
-            onDeplacer: () =>
-                _agir(() => s.engagerCreneau(c.heure, deplacer: true)),
+            aDejaUnTemps: monCreneau != null,
+            onRejoindre: () => _agir(() => s.engagerCreneau(temps[i].heure)),
+            onDeplacer: () => _agir(
+              () => s.engagerCreneau(temps[i].heure, deplacer: true),
+            ),
           ),
       ],
     );
   }
 }
 
-class _TuileCreneau extends StatelessWidget {
-  const _TuileCreneau({
+class _TuileTemps extends StatelessWidget {
+  const _TuileTemps({
     required this.creneau,
+    required this.nom,
     required this.estMien,
     required this.lectureSeule,
-    required this.aDejaUnCreneau,
-    required this.onEngager,
+    required this.aDejaUnTemps,
+    required this.onRejoindre,
     required this.onDeplacer,
   });
   final CreneauPriere creneau;
+  final String nom;
   final bool estMien;
   final bool lectureSeule;
-  final bool aDejaUnCreneau;
-  final VoidCallback onEngager;
+  final bool aDejaUnTemps;
+  final VoidCallback onRejoindre;
   final VoidCallback onDeplacer;
 
   @override
@@ -176,22 +177,20 @@ class _TuileCreneau extends StatelessWidget {
                   ? Colors.grey
                   : PaletteNouvelle.bleuNuit,
         ),
-        title: Text(libelleCreneau(creneau.heure)),
+        title: Text('$nom, ${libelleCreneau(creneau.heure)}'),
         subtitle: Text(
           estMien
-              ? 'Mon créneau'
+              ? 'Mon temps'
               : creneau.estLibre
                   ? 'Libre'
                   : creneau.prenom,
         ),
         trailing: lectureSeule || estMien
             ? null
-            : creneau.estLibre
-                ? TextButton(
-                    onPressed: aDejaUnCreneau ? onDeplacer : onEngager,
-                    child: Text(aDejaUnCreneau ? 'Déplacer ici' : 'S’engager'),
-                  )
-                : null,
+            : TextButton(
+                onPressed: aDejaUnTemps ? onDeplacer : onRejoindre,
+                child: Text(aDejaUnTemps ? 'Déplacer ici' : 'Rejoindre'),
+              ),
       ),
     );
   }

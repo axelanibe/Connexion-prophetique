@@ -15,12 +15,19 @@ class PageEtablissements extends StatefulWidget {
     super.key,
     required this.service,
     this.onOuvrirStructure,
+    this.poussee = false,
   });
 
   final ServiceT18 service;
 
   /// Ouverture de la vue Structure, pour la carte pointillée.
   final VoidCallback? onOuvrirStructure;
+
+  /// Vrai quand la page est poussée depuis une autre page :
+  /// une AppBar avec flèche retour s'affiche alors. En
+  /// destination, le chevron de la coquille suffit, pas de
+  /// double barre, et la barre du bas reste visible.
+  final bool poussee;
 
   @override
   State<PageEtablissements> createState() => _PageEtablissementsState();
@@ -90,83 +97,80 @@ class _PageEtablissementsState extends State<PageEtablissements> {
   @override
   Widget build(BuildContext context) {
     final etablissements = widget.service.etablissements;
+    final contenu = ListView(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+      children: [
+        const Text(
+          'Chaque établissement a ses activités, événements et '
+          'actualités.',
+          style: TextStyle(fontSize: 15, color: Colors.black54),
+        ),
+        if (widget.service.accesAdmin) ...[
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: _ajouter,
+            icon: const Icon(Icons.add),
+            label: const Text('Ajouter un établissement'),
+          ),
+        ],
+        const SizedBox(height: 20),
+        if (!_charge)
+          const Center(child: CircularProgressIndicator())
+        else if (etablissements.isEmpty)
+          const Text(
+            'Aucun établissement pour le moment.',
+            style: TextStyle(fontSize: 15, color: Colors.black54),
+          )
+        else
+          LayoutBuilder(
+            builder: (context, contraintes) {
+              if (contraintes.maxWidth >= 720) {
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: 300 / 280,
+                  ),
+                  itemCount: etablissements.length,
+                  itemBuilder: (context, index) => _CarteEtablissement(
+                    etablissement: etablissements[index],
+                    service: widget.service,
+                    onRenommer: () => _renommer(etablissements[index]),
+                    onDefinirMien: () => _definirMien(etablissements[index]),
+                  ),
+                );
+              }
+              return ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: etablissements.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                itemBuilder: (context, index) => _CarteEtablissement(
+                  etablissement: etablissements[index],
+                  service: widget.service,
+                  etireBouton: false,
+                  onRenommer: () => _renommer(etablissements[index]),
+                  onDefinirMien: () => _definirMien(etablissements[index]),
+                ),
+              );
+            },
+          ),
+        const SizedBox(height: 16),
+        _CarteStructure(onTap: widget.onOuvrirStructure),
+      ],
+    );
+    if (!widget.poussee) return contenu;
     return Scaffold(
       backgroundColor: PaletteNouvelle.papier,
       appBar: AppBar(
         title: const Text('Nos établissements'),
         backgroundColor: Colors.white,
+        foregroundColor: PaletteNouvelle.bleuNuit,
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
-        children: [
-          const Text(
-            'Chaque établissement a ses activités, événements et '
-            'actualités.',
-            style: TextStyle(fontSize: 15, color: Colors.black54),
-          ),
-          if (widget.service.accesAdmin) ...[
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _ajouter,
-              icon: const Icon(Icons.add),
-              label: const Text('Ajouter un établissement'),
-            ),
-          ],
-          const SizedBox(height: 20),
-          if (!_charge)
-            const Center(child: CircularProgressIndicator())
-          else if (etablissements.isEmpty)
-            const Text(
-              'Aucun établissement pour le moment.',
-              style: TextStyle(fontSize: 15, color: Colors.black54),
-            )
-          else
-            LayoutBuilder(
-              builder: (context, contraintes) {
-                if (contraintes.maxWidth >= 720) {
-                  return GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 12,
-                      crossAxisSpacing: 12,
-                      childAspectRatio: 300 / 360,
-                    ),
-                    itemCount: etablissements.length,
-                    itemBuilder: (context, index) => _CarteEtablissement(
-                      etablissement: etablissements[index],
-                      service: widget.service,
-                      onRenommer: () => _renommer(etablissements[index]),
-                      onDefinirMien: () => _definirMien(etablissements[index]),
-                    ),
-                  );
-                }
-                return SizedBox(
-                  height: 360,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: etablissements.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 12),
-                    itemBuilder: (context, index) => SizedBox(
-                      width: 300,
-                      child: _CarteEtablissement(
-                        etablissement: etablissements[index],
-                        service: widget.service,
-                        onRenommer: () => _renommer(etablissements[index]),
-                        onDefinirMien: () =>
-                            _definirMien(etablissements[index]),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          const SizedBox(height: 16),
-          _CarteStructure(onTap: widget.onOuvrirStructure),
-        ],
-      ),
+      body: contenu,
     );
   }
 }
@@ -209,12 +213,19 @@ class _CarteEtablissement extends StatelessWidget {
     required this.service,
     required this.onRenommer,
     required this.onDefinirMien,
+    this.etireBouton = true,
   });
 
   final EtablissementAdmin etablissement;
   final ServiceT18 service;
   final VoidCallback onRenommer;
   final VoidCallback onDefinirMien;
+
+  /// Vrai sur grand écran, grille à cellules uniformes : le
+  /// bouton est plaqué en bas de la carte. Faux en liste
+  /// verticale, la carte prend la hauteur de son contenu,
+  /// sans vide ni débordement.
+  final bool etireBouton;
 
   void _ouvrir(BuildContext context) {
     Navigator.of(context).push(
@@ -288,21 +299,12 @@ class _CarteEtablissement extends StatelessWidget {
                 color: PaletteNouvelle.bleuNuit,
               ),
             ),
-            if (etablissement.description.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                etablissement.description,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 14, height: 1.4),
-              ),
-            ],
             const SizedBox(height: 8),
             Text(
               etablissement.compteurs,
               style: const TextStyle(fontSize: 13, color: Colors.black54),
             ),
-            const Spacer(),
+            if (etireBouton) const Spacer() else const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               child: FilledButton(
@@ -501,6 +503,7 @@ class _PageFicheEtablissementState extends State<PageFicheEtablissement> {
       appBar: AppBar(
         title: Text(widget.etablissement.nom),
         backgroundColor: Colors.white,
+        foregroundColor: PaletteNouvelle.bleuNuit,
       ),
       body: !_charge
           ? const Center(child: CircularProgressIndicator())

@@ -13,12 +13,10 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../api.dart';
 import 'modeles_t9.dart';
 import 'page_accueil.dart' show ActiviteAVenir;
+import 'page_chronogramme.dart';
 import 'page_verification_paiement.dart';
 import 'paiement_carte.dart'
-    show
-        choisirMoyenPaiementFeuille,
-        fcfa,
-        ouvrirUrlPaiement;
+    show choisirMoyenPaiementFeuille, fcfa, ouvrirUrlPaiement;
 import 'palette.dart';
 import 'service_t9.dart';
 
@@ -141,8 +139,7 @@ class _PageCampsState extends State<PageCamps> {
     var montant = inscription.versementEnAttenteMontant;
     try {
       if (reference == null) {
-        final cree =
-            await api.createVersementCamp(activite.evenementId);
+        final cree = await api.createVersementCamp(activite.evenementId);
         reference = (cree['reference'] ?? '').toString();
         if (reference.isEmpty) reference = null;
         final m = cree['montant_fcfa'];
@@ -169,7 +166,8 @@ class _PageCampsState extends State<PageCamps> {
       if (url.isNotEmpty) {
         final ok = await ouvrirUrlPaiement(url);
         if (!ok && mounted) {
-          _dire('Impossible d’ouvrir la page de paiement. Vérifiez votre connexion.');
+          _dire(
+              'Impossible d’ouvrir la page de paiement. Vérifiez votre connexion.');
         }
       } else if (method == 'mtn' && mounted) {
         _dire('Validez le paiement sur votre téléphone MTN MoMo.');
@@ -195,22 +193,178 @@ class _PageCampsState extends State<PageCamps> {
     }
   }
 
+  /// Don de camp, 31 oct. 2026 : formulaire nom, numéro ou
+  /// e-mail, message facultatif. Le serveur résout le
+  /// bénéficiaire et renvoie le montant exact, puis le paiement
+  /// suit le même circuit que le versement.
+  Future<void> _offrirCamp(ActiviteAVenir activite) async {
+    if (_occupe) return;
+    if (!api.isConnected) {
+      _dire('Serveur injoignable. Vérifiez votre connexion, puis réessayez.');
+      return;
+    }
+    final nomCtrl = TextEditingController();
+    final contactCtrl = TextEditingController();
+    final messageCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Offrir ce camp'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Tarif : ${fcfa(activite.tarifFcfa)}',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Si la personne est déjà inscrite, le don couvre son reste à payer.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: nomCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Nom du bénéficiaire',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: contactCtrl,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Numéro ou e-mail du bénéficiaire',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: messageCtrl,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Message pour le bénéficiaire (facultatif)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Le bénéficiaire recevra son pass dès que la structure aura validé votre paiement.',
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Continuer vers le paiement'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final nom = nomCtrl.text.trim();
+    final contact = contactCtrl.text.trim();
+    if (nom.length < 2 || contact.length < 6) {
+      _dire('Indiquez le nom et le numéro ou l’e-mail du bénéficiaire.');
+      return;
+    }
+    setState(() => _occupe = true);
+    try {
+      final cree = await api.createDonCamp(
+        activite.evenementId,
+        nom,
+        contact,
+        messageCtrl.text.trim(),
+      );
+      final reference = (cree['reference'] ?? '').toString();
+      final m = cree['montant_fcfa'];
+      final montant = m is num ? m.toInt() : activite.tarifFcfa;
+      if (reference.isEmpty || montant <= 0) {
+        if (mounted) {
+          setState(() => _occupe = false);
+          _dire('Don impossible pour le moment. Réessaie plus tard.');
+        }
+        return;
+      }
+      final method = await choisirMoyenPaiementFeuille(
+        context,
+        nomMembre: widget.service.membre?.name ?? '',
+        moyens: null,
+      );
+      if (method == null) {
+        if (mounted) setState(() => _occupe = false);
+        return;
+      }
+      final paye = await api.payerPaiement(reference, method);
+      final url = (paye['url'] ?? '').toString();
+      if (url.isNotEmpty) {
+        final ouvert = await ouvrirUrlPaiement(url);
+        if (!ouvert && mounted) {
+          _dire(
+            'Impossible d’ouvrir la page de paiement. Vérifiez votre connexion.',
+          );
+        }
+      } else if (method == 'mtn' && mounted) {
+        _dire('Validez le paiement sur votre téléphone MTN MoMo.');
+      }
+      if (!mounted) return;
+      setState(() => _occupe = false);
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PageVerificationPaiement(
+            reference: reference,
+            montant: montant,
+            moyen: method,
+          ),
+        ),
+      );
+      await widget.service.chargerGalerie();
+      if (mounted) setState(() {});
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() => _occupe = false);
+        _dire(e.message);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _occupe = false);
+        _dire('Serveur injoignable. Don non enregistré.');
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final selection = _selection;
-    if (selection != null) return _DetailCamp(
-          activite: selection,
-          inscription: _inscriptionPour(selection.evenementId),
-          charge: _charge,
-          occupe: _occupe,
-          onRetour: () => setState(() => _selection = null),
-          onSinscrire: () => _sinscrire(selection),
-          onPayerVersement: (inscription) =>
-              _payerVersement(selection, inscription),
-          onVoirBadge: widget.onVoirBadge,
-        );
-    final camps =
-        widget.activites.where((a) => a.type != 'retraite').toList();
+    if (selection != null)
+      return _DetailCamp(
+        activite: selection,
+        inscription: _inscriptionPour(selection.evenementId),
+        charge: _charge,
+        occupe: _occupe,
+        onRetour: () => setState(() => _selection = null),
+        onSinscrire: () => _sinscrire(selection),
+        onPayerVersement: (inscription) =>
+            _payerVersement(selection, inscription),
+        onOffrir: () => _offrirCamp(selection),
+        onVoirBadge: widget.onVoirBadge,
+        onVoirProgramme: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => PageChronogrammeLecture(
+              evenementId: selection.evenementId,
+              titre: selection.titre,
+            ),
+          ),
+        ),
+      );
+    final camps = widget.activites.where((a) => a.type != 'retraite').toList();
     final retraites =
         widget.activites.where((a) => a.type == 'retraite').toList();
     return ListView(
@@ -404,17 +558,25 @@ class _CarteRetraite extends StatelessWidget {
 
 String _ligneDatesLieu(ActiviteAVenir a) {
   final debut = a.dateDebut;
-  final dates = debut == null
-      ? 'Dates à confirmer'
-      : _dateCourte(debut);
+  final dates = debut == null ? 'Dates à confirmer' : _dateCourte(debut);
   final lieu = a.lieu.isEmpty ? 'Lieu à confirmer' : a.lieu;
   return '$dates · $lieu';
 }
 
 String _dateCourte(DateTime d) {
   const mois = [
-    'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
-    'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.',
+    'janv.',
+    'févr.',
+    'mars',
+    'avr.',
+    'mai',
+    'juin',
+    'juil.',
+    'août',
+    'sept.',
+    'oct.',
+    'nov.',
+    'déc.',
   ];
   return '${d.day} ${mois[d.month - 1]} ${d.year}';
 }
@@ -432,7 +594,9 @@ class _DetailCamp extends StatelessWidget {
     this.onRetour,
     this.onSinscrire,
     this.onPayerVersement,
+    this.onOffrir,
     this.onVoirBadge,
+    this.onVoirProgramme,
   });
   final ActiviteAVenir activite;
   final InscriptionBadge? inscription;
@@ -441,7 +605,9 @@ class _DetailCamp extends StatelessWidget {
   final VoidCallback? onRetour;
   final VoidCallback? onSinscrire;
   final ValueChanged<InscriptionBadge>? onPayerVersement;
+  final VoidCallback? onOffrir;
   final VoidCallback? onVoirBadge;
+  final VoidCallback? onVoirProgramme;
 
   @override
   Widget build(BuildContext context) {
@@ -449,8 +615,7 @@ class _DetailCamp extends StatelessWidget {
     final inscrite = inscription;
     final dejaInscrit = inscrite != null;
     final badgeVisible = inscrite?.passVisible ?? false;
-    final versementEnAttente =
-        (inscrite?.versementEnAttenteMontant ?? 0) > 0;
+    final versementEnAttente = (inscrite?.versementEnAttenteMontant ?? 0) > 0;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
@@ -550,9 +715,7 @@ class _DetailCamp extends StatelessWidget {
             width: double.infinity,
             height: 52,
             child: FilledButton.icon(
-              onPressed: occupe
-                  ? null
-                  : () => onPayerVersement?.call(inscrite),
+              onPressed: occupe ? null : () => onPayerVersement?.call(inscrite),
               style: FilledButton.styleFrom(
                 backgroundColor: PaletteNouvelle.orFonce,
                 foregroundColor: Colors.white,
@@ -563,6 +726,42 @@ class _DetailCamp extends StatelessWidget {
                     ? 'Payer le versement n°${inscrite.versementEnAttenteNumero} : ${fcfa(inscrite.versementEnAttenteMontant)}'
                     : 'Payer le versement suivant',
               ),
+            ),
+          ),
+        ],
+        if (a.evenementId.isNotEmpty && a.tarifFcfa > 0) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: occupe ? null : onOffrir,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: PaletteNouvelle.bleuNuit,
+                side: const BorderSide(
+                  color: PaletteNouvelle.bleuNuit,
+                ),
+              ),
+              icon: const Icon(LucideIcons.gift, size: 18),
+              label: const Text('Offrir ce camp'),
+            ),
+          ),
+        ],
+        if (dejaInscrit) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: onVoirProgramme,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: PaletteNouvelle.bleuNuit,
+                side: const BorderSide(
+                  color: PaletteNouvelle.bleuNuit,
+                ),
+              ),
+              icon: const Icon(LucideIcons.calendarDays, size: 18),
+              label: const Text('Voir le programme'),
             ),
           ),
         ],

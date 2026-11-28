@@ -74,8 +74,7 @@ class PaiementAdmin {
   final String beneficiaireNom;
   final String waveTransactionId;
 
-  factory PaiementAdmin.depuisJson(Map<String, dynamic> j) =>
-      PaiementAdmin(
+  factory PaiementAdmin.depuisJson(Map<String, dynamic> j) => PaiementAdmin(
         id: (j['id'] ?? '').toString(),
         reference: (j['reference'] ?? '').toString(),
         type: (j['type'] ?? '').toString(),
@@ -85,8 +84,7 @@ class PaiementAdmin {
         creeLe: DateTime.tryParse((j['cree_le'] ?? '').toString()),
         nomMembre: (j['nom_complet'] ?? '').toString(),
         matricule: (j['matricule'] ?? '').toString(),
-        beneficiaireNom:
-            (j['beneficiaire_membre_nom'] ?? '').toString(),
+        beneficiaireNom: (j['beneficiaire_membre_nom'] ?? '').toString(),
         waveTransactionId: (j['wave_transaction_id'] ?? '').toString(),
       );
 
@@ -185,15 +183,13 @@ class ActualiteAdmin {
   final DateTime? publieeLe;
   final DateTime? programmeeLe;
 
-  factory ActualiteAdmin.depuisJson(Map<String, dynamic> j) =>
-      ActualiteAdmin(
+  factory ActualiteAdmin.depuisJson(Map<String, dynamic> j) => ActualiteAdmin(
         id: (j['id'] ?? '').toString(),
         titre: (j['titre'] ?? '').toString(),
         texte: (j['texte'] ?? '').toString(),
         etablissementId: (j['etablissement_id'] ?? '').toString(),
         publieeLe: DateTime.tryParse((j['publiee_le'] ?? '').toString()),
-        programmeeLe:
-            DateTime.tryParse((j['programmee_le'] ?? '').toString()),
+        programmeeLe: DateTime.tryParse((j['programmee_le'] ?? '').toString()),
       );
 
   bool get estProgrammee =>
@@ -223,8 +219,7 @@ class EvenementAdmin {
   final String etablissementNom;
   final bool estKairos;
 
-  factory EvenementAdmin.depuisJson(Map<String, dynamic> j) =>
-      EvenementAdmin(
+  factory EvenementAdmin.depuisJson(Map<String, dynamic> j) => EvenementAdmin(
         id: (j['id'] ?? '').toString(),
         nom: (j['nom'] ?? '').toString(),
         dateDebut: DateTime.tryParse((j['date_debut'] ?? '').toString()),
@@ -247,9 +242,8 @@ class EvenementAdmin {
       ..sort((a, b) => (a.dateDebut ?? DateTime(2100))
           .compareTo(b.dateDebut ?? DateTime(2100)));
     if (avenirs.isNotEmpty) return avenirs.first;
-    final passes = [...tous]
-      ..sort((a, b) => (b.dateDebut ?? DateTime(2000))
-          .compareTo(a.dateDebut ?? DateTime(2000)));
+    final passes = [...tous]..sort((a, b) => (b.dateDebut ?? DateTime(2000))
+        .compareTo(a.dateDebut ?? DateTime(2000)));
     return passes.first;
   }
 }
@@ -261,11 +255,13 @@ class InscriptionCampAdmin {
     required this.matricule,
     this.inscritLe,
     this.passVisible = false,
+    this.contactParent = '',
   });
   final String nomComplet;
   final String matricule;
   final DateTime? inscritLe;
   final bool passVisible;
+  final String contactParent;
 
   factory InscriptionCampAdmin.depuisJson(Map<String, dynamic> j) =>
       InscriptionCampAdmin(
@@ -273,7 +269,48 @@ class InscriptionCampAdmin {
         matricule: (j['matricule'] ?? '').toString(),
         inscritLe: DateTime.tryParse((j['inscrit_le'] ?? '').toString()),
         passVisible: j['pass_visible'] == true,
+        contactParent: (j['contact_parent'] ?? '').toString(),
       );
+}
+
+/// Une entrée du programme d'un camp, GET
+/// /evenements/:id/chronogramme. Jour AAAA-MM-JJ, heures HH:MM.
+class EntreeChronogramme {
+  const EntreeChronogramme({
+    required this.id,
+    required this.jour,
+    required this.heureDebut,
+    required this.heureFin,
+    required this.titre,
+    this.lieu = '',
+    this.type = '',
+  });
+  final String id;
+  final String jour;
+  final String heureDebut;
+  final String heureFin;
+  final String titre;
+  final String lieu;
+  final String type;
+
+  String get plage => '$heureDebut – $heureFin';
+
+  factory EntreeChronogramme.depuisJson(Map<String, dynamic> j) {
+    String coupe(Object? v, int n) {
+      final s = (v ?? '').toString();
+      return s.length >= n ? s.substring(0, n) : s;
+    }
+
+    return EntreeChronogramme(
+      id: (j['id'] ?? '').toString(),
+      jour: coupe(j['jour'], 10),
+      heureDebut: coupe(j['heure_debut'], 5),
+      heureFin: coupe(j['heure_fin'], 5),
+      titre: (j['titre'] ?? '').toString(),
+      lieu: (j['lieu'] ?? '').toString(),
+      type: (j['type'] ?? '').toString(),
+    );
+  }
 }
 
 /// Suivi des versements d'un camp, GET /admin/suivi-versements.
@@ -318,8 +355,7 @@ class SuiviVersements {
     return SuiviVersements(
       campNom: (camp['nom'] ?? '').toString(),
       tarifFcfa: (camp['tarif_fcfa'] as num?)?.toInt() ?? 0,
-      inscritsVersements:
-          (totaux['inscrits_versements'] as num?)?.toInt() ?? 0,
+      inscritsVersements: (totaux['inscrits_versements'] as num?)?.toInt() ?? 0,
       totalPaye: (totaux['total_paye'] as num?)?.toInt() ?? 0,
       totalRestant: (totaux['total_restant'] as num?)?.toInt() ?? 0,
       passDebloques: (totaux['pass_debloques'] as num?)?.toInt() ?? 0,
@@ -349,8 +385,7 @@ class MembreVersement {
   final int montantPaye;
   final int reste;
 
-  factory MembreVersement.depuisJson(Map<String, dynamic> j) =>
-      MembreVersement(
+  factory MembreVersement.depuisJson(Map<String, dynamic> j) => MembreVersement(
         nomComplet: (j['nom_complet'] ?? '').toString(),
         matricule: (j['matricule'] ?? '').toString(),
         etablissement: (j['etablissement'] ?? '').toString(),
@@ -377,8 +412,7 @@ class PresenceLigne {
   final String methode;
   final String scanneParNom;
 
-  factory PresenceLigne.depuisJson(Map<String, dynamic> j) =>
-      PresenceLigne(
+  factory PresenceLigne.depuisJson(Map<String, dynamic> j) => PresenceLigne(
         id: (j['id'] ?? '').toString(),
         activiteId: (j['activite_id'] ?? '').toString(),
         statut: (j['statut'] ?? '').toString(),
@@ -614,8 +648,7 @@ class ElectionAdmin {
   }
 
   /// En cours quand la date de fin n'est pas passée.
-  bool get enCours =>
-      dateFin == null || dateFin!.isAfter(DateTime.now());
+  bool get enCours => dateFin == null || dateFin!.isAfter(DateTime.now());
 }
 
 /// Un candidat à une élection.
@@ -642,11 +675,58 @@ class CandidatElection {
       );
 }
 
+/// Une personne hors système, GET /admin/personnes-externes.
+/// Correctif global 27 nov. 2026 : fiche personne sans compte
+/// application (nom, fonction, contact), utilisable dans
+/// Nominations, Planning des responsables, Département scolaire,
+/// Administrateurs (désignation) et inscriptions au camp.
+class PersonneExterne {
+  const PersonneExterne({
+    required this.id,
+    required this.nomComplet,
+    this.fonction = 'Membre',
+    this.contact = '',
+    this.etablissementId = '',
+    this.etablissementNom = '',
+    this.roleAdmin = '',
+  });
+  final String id;
+  final String nomComplet;
+  final String fonction;
+  final String contact;
+  final String etablissementId;
+  final String etablissementNom;
+  final String roleAdmin;
+
+  factory PersonneExterne.depuisJson(Map<String, dynamic> j) => PersonneExterne(
+        id: (j['id'] ?? '').toString(),
+        nomComplet: (j['nom_complet'] ?? '').toString(),
+        fonction: (j['fonction'] ?? 'Membre').toString(),
+        contact: (j['contact'] ?? '').toString(),
+        etablissementId: (j['etablissement_id'] ?? '').toString(),
+        etablissementNom: (j['etablissement_nom'] ?? '').toString(),
+        roleAdmin: (j['role_admin'] ?? '').toString(),
+      );
+
+  /// Libellé du rôle admin désigné, vide quand aucun.
+  String get roleAdminLibelle {
+    switch (roleAdmin) {
+      case 'admin_general':
+        return 'Administrateur général';
+      case 'admin_etablissement':
+        return 'Administrateur d’établissement';
+      default:
+        return '';
+    }
+  }
+}
+
 /// Une nomination, GET /admin/nominations.
 class NominationAdmin {
   const NominationAdmin({
     required this.id,
     required this.membreId,
+    this.personneExterneId = '',
     required this.nomComplet,
     required this.matricule,
     required this.fonctionCode,
@@ -660,6 +740,7 @@ class NominationAdmin {
   });
   final String id;
   final String membreId;
+  final String personneExterneId;
   final String nomComplet;
   final String matricule;
   final String fonctionCode;
@@ -671,10 +752,13 @@ class NominationAdmin {
   final String evenementNom;
   final DateTime? creeLe;
 
-  factory NominationAdmin.depuisJson(Map<String, dynamic> j) =>
-      NominationAdmin(
+  /// Vrai quand la nomination porte sur une personne hors système.
+  bool get estExterne => personneExterneId.isNotEmpty;
+
+  factory NominationAdmin.depuisJson(Map<String, dynamic> j) => NominationAdmin(
         id: (j['id'] ?? '').toString(),
         membreId: (j['membre_id'] ?? '').toString(),
+        personneExterneId: (j['personne_externe_id'] ?? '').toString(),
         nomComplet: (j['nom_complet'] ?? '').toString(),
         matricule: (j['matricule'] ?? '').toString(),
         fonctionCode: (j['fonction_code'] ?? '').toString(),
@@ -691,9 +775,7 @@ class NominationAdmin {
   String get porteeLibelle {
     switch (portee) {
       case 'etablissement':
-        return etablissementNom.isEmpty
-            ? 'Établissement'
-            : etablissementNom;
+        return etablissementNom.isEmpty ? 'Établissement' : etablissementNom;
       case 'activite':
         return evenementNom.isEmpty ? 'Activité' : evenementNom;
       default:
@@ -744,6 +826,7 @@ class SuiviScolaire {
   const SuiviScolaire({
     required this.id,
     required this.membreId,
+    this.personneExterneId = '',
     required this.membreNom,
     required this.matricule,
     this.etablissement = '',
@@ -759,6 +842,7 @@ class SuiviScolaire {
   });
   final String id;
   final String membreId;
+  final String personneExterneId;
   final String membreNom;
   final String matricule;
   final String etablissement;
@@ -772,10 +856,13 @@ class SuiviScolaire {
   final String typeExamen;
   final String resultatExamen;
 
-  factory SuiviScolaire.depuisJson(Map<String, dynamic> j) =>
-      SuiviScolaire(
+  /// Vrai quand le suivi porte sur une personne hors système.
+  bool get estExterne => personneExterneId.isNotEmpty;
+
+  factory SuiviScolaire.depuisJson(Map<String, dynamic> j) => SuiviScolaire(
         id: (j['id'] ?? '').toString(),
         membreId: (j['membre_id'] ?? '').toString(),
+        personneExterneId: (j['personne_externe_id'] ?? '').toString(),
         membreNom: (j['membre_nom'] ?? '').toString(),
         matricule: (j['matricule'] ?? '').toString(),
         etablissement: (j['etablissement'] ?? '').toString(),
@@ -796,6 +883,7 @@ class PlanningResponsable {
   const PlanningResponsable({
     required this.id,
     this.membreId = '',
+    this.personneExterneId = '',
     this.titre = '',
     this.date,
     this.heureDebut = '',
@@ -809,6 +897,7 @@ class PlanningResponsable {
   });
   final String id;
   final String membreId;
+  final String personneExterneId;
   final String titre;
   final DateTime? date;
   final String heureDebut;
@@ -820,10 +909,14 @@ class PlanningResponsable {
   final String roleService;
   final String description;
 
+  /// Vrai quand le créneau porte sur une personne hors système.
+  bool get estExterne => personneExterneId.isNotEmpty;
+
   factory PlanningResponsable.depuisJson(Map<String, dynamic> j) =>
       PlanningResponsable(
         id: (j['id'] ?? '').toString(),
         membreId: (j['membre_id'] ?? '').toString(),
+        personneExterneId: (j['personne_externe_id'] ?? '').toString(),
         titre: (j['titre'] ?? j['activite'] ?? '').toString(),
         date: DateTime.tryParse((j['date'] ?? '').toString()),
         heureDebut: (j['heure_debut'] ?? '').toString(),

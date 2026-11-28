@@ -105,6 +105,7 @@ class CartePublicationConnexion extends StatelessWidget {
     this.onEnregistrer,
     this.onSignaler,
     this.onSupprimer,
+    this.onSuivre,
   });
   final PublicationConnexion publication;
   final String? photoAuteur;
@@ -116,10 +117,22 @@ class CartePublicationConnexion extends StatelessWidget {
   final VoidCallback? onSignaler;
   final VoidCallback? onSupprimer;
 
+  /// Suivre l'auteur, bouton de la maquette, absent de la
+  /// carte jusqu'ici. Jamais pour mes propres publications,
+  /// jamais pour une actualité sans auteur.
+  final VoidCallback? onSuivre;
+
   @override
   Widget build(BuildContext context) {
     final p = publication;
-    if (p.epinglee) return _CarteEpinglee(publication: p);
+    if (p.epinglee) {
+      return _CarteEpinglee(
+        publication: p,
+        onReaction: onReaction,
+        onCommentaires: onCommentaires,
+        onPartager: onPartager,
+      );
+    }
     final date = formaterDateConnexion(p.creeLe);
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
@@ -170,6 +183,23 @@ class CartePublicationConnexion extends StatelessWidget {
                   ),
                 ),
               ),
+              if (onSuivre != null && !p.estAuteur && p.auteurId.isNotEmpty)
+                TextButton(
+                  onPressed: onSuivre,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    minimumSize: const Size(0, 36),
+                  ),
+                  child: Text(
+                    p.suiviParMoi ? 'Suivi' : 'Suivre',
+                    style: TextStyle(
+                      color: p.suiviParMoi
+                          ? Colors.grey
+                          : PaletteNouvelle.bleuNuit,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
               IconButton(
                 tooltip: p.enregistre
                     ? 'Retirer des enregistrements'
@@ -217,52 +247,75 @@ class CartePublicationConnexion extends StatelessWidget {
             _TuileVideo(url: p.videoUrl!),
           ],
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Wrap(
-                  children: [
-                    for (final type in TypeReaction.values)
-                      _BoutonReaction(
-                        type: type,
-                        nombre: switch (type) {
-                          TypeReaction.jaime => p.nbJaime,
-                          TypeReaction.amen => p.nbAmen,
-                          TypeReaction.priere => p.nbPriere,
-                        },
-                        actif: p.monType == type.code,
-                        onTap:
-                            onReaction == null ? null : () => onReaction!(type),
-                      ),
-                  ],
-                ),
-              ),
-              TextButton.icon(
-                style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 4)),
-                onPressed: onCommentaires,
-                icon: const Icon(LucideIcons.messageCircle,
-                    size: 18, color: PaletteNouvelle.bleuNuit),
-                label: Text(
-                  '${p.nbCommentaires}',
-                  style: const TextStyle(
-                      color: PaletteNouvelle.bleuNuit,
-                      fontWeight: FontWeight.w700),
-                ),
-              ),
-              IconButton(
-                tooltip: 'Partager',
-                padding: const EdgeInsets.all(4),
-                constraints:
-                    const BoxConstraints(minWidth: 36, minHeight: 36),
-                icon: const Icon(LucideIcons.share2,
-                    color: PaletteNouvelle.bleuNuit),
-                onPressed: onPartager,
-              ),
-            ],
+          _LigneReactions(
+            publication: p,
+            onReaction: onReaction,
+            onCommentaires: onCommentaires,
+            onPartager: onPartager,
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Réactions J'aime, Amen, Prière avec compteurs, commentaires
+/// et partage. La même ligne sert aux publications du fil et
+/// aux publications épinglées, qui l'avaient perdue.
+class _LigneReactions extends StatelessWidget {
+  const _LigneReactions({
+    required this.publication,
+    this.onReaction,
+    this.onCommentaires,
+    this.onPartager,
+  });
+  final PublicationConnexion publication;
+  final ValueChanged<TypeReaction>? onReaction;
+  final VoidCallback? onCommentaires;
+  final VoidCallback? onPartager;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = publication;
+    return Row(
+      children: [
+        Expanded(
+          child: Wrap(
+            children: [
+              for (final type in TypeReaction.values)
+                _BoutonReaction(
+                  type: type,
+                  nombre: switch (type) {
+                    TypeReaction.jaime => p.nbJaime,
+                    TypeReaction.amen => p.nbAmen,
+                    TypeReaction.priere => p.nbPriere,
+                  },
+                  actif: p.monType == type.code,
+                  onTap: onReaction == null ? null : () => onReaction!(type),
+                ),
+            ],
+          ),
+        ),
+        TextButton.icon(
+          style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 4)),
+          onPressed: onCommentaires,
+          icon: const Icon(LucideIcons.messageCircle,
+              size: 18, color: PaletteNouvelle.bleuNuit),
+          label: Text(
+            '${p.nbCommentaires}',
+            style: const TextStyle(
+                color: PaletteNouvelle.bleuNuit, fontWeight: FontWeight.w700),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Partager',
+          padding: const EdgeInsets.all(4),
+          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+          icon: const Icon(LucideIcons.share2, color: PaletteNouvelle.bleuNuit),
+          onPressed: onPartager,
+        ),
+      ],
     );
   }
 }
@@ -458,9 +511,21 @@ class _LecteurVideoState extends State<_LecteurVideo> {
 
 /// Actualité de la structure, épinglée en tête du fil : titre
 /// et texte seulement, sans réactions, sans auteur à suivre.
+/// Actualité épinglée de la structure. Sans réactions quand
+/// elle vient des actualités (identifiant factice, aucun
+/// compteur côté serveur), avec réactions quand c'est une
+/// vraie publication du mur épinglée.
 class _CarteEpinglee extends StatelessWidget {
-  const _CarteEpinglee({required this.publication});
+  const _CarteEpinglee({
+    required this.publication,
+    this.onReaction,
+    this.onCommentaires,
+    this.onPartager,
+  });
   final PublicationConnexion publication;
+  final ValueChanged<TypeReaction>? onReaction;
+  final VoidCallback? onCommentaires;
+  final VoidCallback? onPartager;
 
   @override
   Widget build(BuildContext context) {
@@ -485,12 +550,14 @@ class _CarteEpinglee extends StatelessWidget {
                     color: PaletteNouvelle.or.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Flexible(
                         child: Text(
-                          'Actualité de la structure · Épinglée',
+                          publication.estActualite
+                              ? 'Actualité de la structure · Épinglée'
+                              : 'Épinglée',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -526,6 +593,17 @@ class _CarteEpinglee extends StatelessWidget {
                     color: PaletteNouvelle.bleuNuit,
                     fontSize: 15,
                     height: 1.4)),
+          ],
+          if (onReaction != null ||
+              onCommentaires != null ||
+              onPartager != null) ...[
+            const SizedBox(height: 8),
+            _LigneReactions(
+              publication: publication,
+              onReaction: onReaction,
+              onCommentaires: onCommentaires,
+              onPartager: onPartager,
+            ),
           ],
         ],
       ),

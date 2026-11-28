@@ -81,6 +81,7 @@ class PublicationConnexion {
     this.nbCommentaires = 0,
     this.enregistre = false,
     this.estAuteur = false,
+    this.suiviParMoi = false,
     this.creeLe,
     this.epinglee = false,
     this.titre,
@@ -114,6 +115,7 @@ class PublicationConnexion {
       nbCommentaires: nombre(j['nb_commentaires']),
       enregistre: j['enregistre'] == true,
       estAuteur: j['est_auteur'] == true,
+      suiviParMoi: j['suivi_par_moi'] == true,
       creeLe: j['cree_le'] == null
           ? null
           : DateTime.tryParse(j['cree_le'].toString()),
@@ -152,6 +154,9 @@ class PublicationConnexion {
   final int nbCommentaires;
   final bool enregistre;
   final bool estAuteur;
+
+  /// Je suis cet auteur, renvoyé par le fil du mur.
+  final bool suiviParMoi;
   final DateTime? creeLe;
 
   /// Actualité épinglée, jamais une publication de membre.
@@ -162,6 +167,10 @@ class PublicationConnexion {
 
   CategorieConnexion get categorieEnum => CategorieConnexion.depuis(categorie);
   TypeReaction? get maReaction => TypeReaction.depuis(monType);
+
+  /// Actualité de la structure, jamais une publication de
+  /// membre : la fabrique actualite préfixe son identifiant.
+  bool get estActualite => id.startsWith('actualite-');
 
   PublicationConnexion avecReaction(
       {required int jaime,
@@ -185,6 +194,7 @@ class PublicationConnexion {
       nbCommentaires: nbCommentaires,
       enregistre: enregistre,
       estAuteur: estAuteur,
+      suiviParMoi: suiviParMoi,
       creeLe: creeLe,
       epinglee: epinglee,
       titre: titre,
@@ -209,6 +219,7 @@ class PublicationConnexion {
       nbCommentaires: nbCommentaires + 1,
       enregistre: enregistre,
       estAuteur: estAuteur,
+      suiviParMoi: suiviParMoi,
       creeLe: creeLe,
       epinglee: epinglee,
       titre: titre,
@@ -233,6 +244,32 @@ class PublicationConnexion {
       nbCommentaires: nbCommentaires,
       enregistre: valeur,
       estAuteur: estAuteur,
+      suiviParMoi: suiviParMoi,
+      creeLe: creeLe,
+      epinglee: epinglee,
+      titre: titre,
+    );
+  }
+
+  PublicationConnexion avecSuivi(bool valeur) {
+    return PublicationConnexion(
+      id: id,
+      auteurId: auteurId,
+      auteurNom: auteurNom,
+      etablissementNom: etablissementNom,
+      texte: texte,
+      photo: photo,
+      videoUrl: videoUrl,
+      categorie: categorie,
+      statutModeration: statutModeration,
+      nbJaime: nbJaime,
+      nbAmen: nbAmen,
+      nbPriere: nbPriere,
+      monType: monType,
+      nbCommentaires: nbCommentaires,
+      enregistre: enregistre,
+      estAuteur: estAuteur,
+      suiviParMoi: valeur,
       creeLe: creeLe,
       epinglee: epinglee,
       titre: titre,
@@ -522,6 +559,12 @@ abstract class ServiceConnexion {
   Future<List<NotificationConnexion>> chargerNotifications();
   Future<void> marquerNotificationLue(String id);
   Future<void> toutMarquerLu();
+
+  /// Détail d'un paiement lié à une notification, et sa
+  /// facture, correctif global 27 nov. 2026 : la cotisation
+  /// soldée s'ouvre depuis l'onglet Notifications.
+  Future<Map<String, dynamic>?> chargerPaiement(String id);
+  Future<List<int>?> telechargerFacture(String reference);
   Future<void> signaler(
       {required String cibleType,
       required String cibleId,

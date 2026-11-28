@@ -68,7 +68,9 @@ class PageAPropos extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+      // Correctif global, 27 nov. 2026 : marge basse de 120 px,
+      // le bouton Assistant recouvrait la dernière ligne.
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
       children: [
         const Text(
           'À propos',
@@ -230,7 +232,12 @@ class PageAPropos extends StatelessWidget {
                   Icons.mail_outlined,
                   color: PaletteNouvelle.bleuNuit,
                 ),
-                title: const Text('support@connexionprophetique.com'),
+                // Correctif global, 27 nov. 2026 : 14 px, l'e-mail
+                // se coupait en deux lignes à 16 px.
+                title: const Text(
+                  'support@connexionprophetique.com',
+                  style: TextStyle(fontSize: 14),
+                ),
                 subtitle: const Text('Courrier électronique'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => launchUrl(

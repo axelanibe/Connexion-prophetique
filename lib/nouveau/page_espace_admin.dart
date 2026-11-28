@@ -6,6 +6,7 @@
 // reconstruits dans cette tranche.
 import 'dart:convert';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../notif_settings.dart';
@@ -15,6 +16,9 @@ import 'modeles_profil.dart';
 import 'modeles_t14.dart';
 import 'modeles_t18.dart';
 import 'modeles_t9.dart';
+import 'page_etablissements.dart';
+import 'page_chronogramme.dart';
+import 'page_scanner_presence.dart';
 import 'palette.dart';
 import 'service_t14.dart';
 import 'service_t18.dart';
@@ -66,7 +70,13 @@ class _PageAdmin extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: PaletteNouvelle.papier,
-      appBar: AppBar(title: Text(titre), backgroundColor: Colors.white),
+      // Correctif global, 27 nov. 2026 : flèche et titre en bleu
+      // nuit, le thème mettait blanc sur fond blanc.
+      appBar: AppBar(
+        title: Text(titre),
+        backgroundColor: Colors.white,
+        foregroundColor: PaletteNouvelle.bleuNuit,
+      ),
       body: enfant,
     );
   }
@@ -97,9 +107,8 @@ class _Ligne extends StatelessWidget {
           titre,
           style: const TextStyle(fontWeight: FontWeight.w600),
         ),
-        subtitle: sousTitre == null || sousTitre!.isEmpty
-            ? null
-            : Text(sousTitre!),
+        subtitle:
+            sousTitre == null || sousTitre!.isEmpty ? null : Text(sousTitre!),
         trailing: trailing,
         onTap: onTap,
       ),
@@ -221,6 +230,261 @@ Future<MembreAdmin?> _choisirMembre(
   return choix;
 }
 
+/// Personne choisie dans un formulaire administrateur : membre
+/// de l'application ou personne hors système.
+class PersonneChoisie {
+  const PersonneChoisie({
+    required this.id,
+    required this.nom,
+    required this.externe,
+    this.estNouvelle = false,
+  });
+  final String id;
+  final String nom;
+  final bool externe;
+  final bool estNouvelle;
+}
+
+/// Choix d'une personne par nom : d'abord les membres, puis les
+/// personnes hors système, avec un bouton pour créer une nouvelle
+/// fiche hors système. `avecRole` ajoute le choix du rôle admin
+/// dans le formulaire de création, pour la page Administrateurs.
+Future<PersonneChoisie?> _choisirPersonne(
+  BuildContext context,
+  ServiceT18 service, {
+  bool avecRole = false,
+}) async {
+  await service.chargerPersonnesExternes();
+  await service.chargerMembresAdmin();
+  final recherche = TextEditingController();
+  PersonneChoisie? choix;
+  await showDialog<void>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setEtat) => AlertDialog(
+        title: const Text('Choisir une personne'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: recherche,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Nom ou matricule',
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onChanged: (_) => setEtat(() {}),
+              ),
+              const SizedBox(height: 8),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final m in service.membresAdmin.where((m) {
+                      final q = recherche.text.trim().toLowerCase();
+                      if (q.isEmpty) return true;
+                      return m.matricule.toLowerCase().contains(q) ||
+                          m.nomComplet.toLowerCase().contains(q);
+                    }).take(20))
+                      ListTile(
+                        title: Text(m.nomComplet),
+                        subtitle: Text(m.matricule),
+                        onTap: () {
+                          choix = PersonneChoisie(
+                            id: m.id,
+                            nom: m.nomComplet,
+                            externe: false,
+                          );
+                          Navigator.of(context).pop();
+                        },
+                      ),
+                    for (final p in service.personnesExternes.where((p) {
+                      final q = recherche.text.trim().toLowerCase();
+                      if (q.isEmpty) return true;
+                      return p.nomComplet.toLowerCase().contains(q) ||
+                          p.fonction.toLowerCase().contains(q) ||
+                          p.contact.toLowerCase().contains(q);
+                    }).take(20))
+                      ListTile(
+                        title: Text(p.nomComplet),
+                        subtitle: Text(
+                          [p.fonction, 'Hors système']
+                              .where((e) => e.isNotEmpty)
+                              .join(' · '),
+                        ),
+                        onTap: () {
+                          choix = PersonneChoisie(
+                            id: p.id,
+                            nom: p.nomComplet,
+                            externe: true,
+                          );
+                          Navigator.of(context).pop();
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final creee = await _creerPersonneExterne(
+                context,
+                service,
+                avecRole: avecRole,
+              );
+              if (creee != null) {
+                choix = PersonneChoisie(
+                  id: creee.id,
+                  nom: creee.nomComplet,
+                  externe: true,
+                  estNouvelle: true,
+                );
+                if (context.mounted) Navigator.of(context).pop();
+              }
+            },
+            child: const Text('Nouvelle personne'),
+          ),
+        ],
+      ),
+    ),
+  );
+  return choix;
+}
+
+/// Formulaire pro d'une fiche personne hors système : nom,
+/// fonction, contact, établissement. `avecRole` ajoute le rôle
+/// admin désigné, pour la page Administrateurs.
+Future<PersonneExterne?> _creerPersonneExterne(
+  BuildContext context,
+  ServiceT18 service, {
+  bool avecRole = false,
+}) async {
+  final nom = TextEditingController();
+  final fonction = TextEditingController();
+  final contact = TextEditingController();
+  String? etablissementId;
+  String role = 'admin_etablissement';
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setEtat) => AlertDialog(
+        title: const Text('Nouvelle personne hors système'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nom,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Nom complet',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: fonction,
+                decoration: const InputDecoration(
+                  labelText: 'Fonction (facultatif)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: contact,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Contact (facultatif)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String?>(
+                value: etablissementId,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Établissement (facultatif)',
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  const DropdownMenuItem(
+                    value: null,
+                    child: Text('Structure'),
+                  ),
+                  for (final e in service.etablissements)
+                    DropdownMenuItem(value: e.id, child: Text(e.nom)),
+                ],
+                onChanged: (v) => setEtat(() => etablissementId = v),
+              ),
+              if (avecRole) ...[
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: role,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Rôle',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'admin_etablissement',
+                      child: Text('Administrateur d’établissement'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'admin_general',
+                      child: Text('Administrateur général'),
+                    ),
+                  ],
+                  onChanged: (v) => setEtat(() => role = v ?? role),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Créer'),
+          ),
+        ],
+      ),
+    ),
+  );
+  if (ok != true) return null;
+  if (nom.text.trim().isEmpty) {
+    _message(context, 'Le nom est obligatoire.');
+    return null;
+  }
+  if (avecRole && role == 'admin_etablissement' && etablissementId == null) {
+    _message(context, 'Choisissez un établissement.');
+    return null;
+  }
+  final creee = await service.creerPersonneExterne({
+    'nom_complet': nom.text.trim(),
+    if (fonction.text.trim().isNotEmpty) 'fonction': fonction.text.trim(),
+    if (contact.text.trim().isNotEmpty) 'contact': contact.text.trim(),
+    if (etablissementId != null) 'etablissement_id': etablissementId,
+    if (avecRole) 'role_admin': role,
+  });
+  if (creee == null && context.mounted) {
+    _message(context, 'Création impossible.');
+  }
+  return creee;
+}
+
 /// Choix d'une date, affichée ensuite au format jour/mois/année.
 Future<DateTime?> _choisirDate(
   BuildContext context,
@@ -239,12 +503,19 @@ Future<DateTime?> _choisirDate(
 
 /// 1. Comptabilité complète.
 class PageComptabiliteAdmin extends StatefulWidget {
-  const PageComptabiliteAdmin({super.key, required this.service});
+  const PageComptabiliteAdmin({
+    super.key,
+    required this.service,
+    this.onOuvrirMembres,
+  });
   final ServiceT18 service;
 
+  /// Ouverture de Gérer les membres, pour le chiffre Membres
+  /// du tableau de bord : l'Espace structure, pas une copie.
+  final VoidCallback? onOuvrirMembres;
+
   @override
-  State<PageComptabiliteAdmin> createState() =>
-      _PageComptabiliteAdminState();
+  State<PageComptabiliteAdmin> createState() => _PageComptabiliteAdminState();
 }
 
 class _PageComptabiliteAdminState extends State<PageComptabiliteAdmin> {
@@ -258,11 +529,132 @@ class _PageComptabiliteAdminState extends State<PageComptabiliteAdmin> {
   }
 
   Future<void> _charger() async {
+    await widget.service.chargerChiffres();
     await widget.service.chargerComptabilite(mois: _moisCourant());
     await widget.service.chargerPaiementsEnAttente();
     await widget.service.chargerTotauxPaiements();
     await widget.service.chargerPaiementsTous(statut: _filtreStatut);
     if (mounted) setState(() => _charge = true);
+  }
+
+  /// Toucher d'un chiffre du tableau de bord : le détail rattaché.
+  void _ouvrirChiffre(int index) {
+    final service = widget.service;
+    switch (index) {
+      case 0:
+        final ouvrirMembres = widget.onOuvrirMembres;
+        if (ouvrirMembres != null) {
+          ouvrirMembres();
+        } else {
+          _message(context, 'Voir dans l’Espace structure.');
+        }
+      case 1:
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => PagePresencesAdmin(service: service),
+          ),
+        );
+      case 2:
+        // Cotisations : l'historique filtré sur les confirmés.
+        setState(() => _filtreStatut = 'confirme');
+        _charger();
+      case 3:
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => PageInscriptionsCamp(service: service),
+          ),
+        );
+      case 4:
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => PageLiensAdmin(service: service),
+          ),
+        );
+      case 5:
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => PageEtablissements(service: service, poussee: true),
+          ),
+        );
+    }
+  }
+
+  /// Tableau de bord, correctif global 27 nov. 2026 : les 6
+  /// chiffres, tactiles, puis le flux financier du mois, vert
+  /// pour les entrées, rouge pour les dépenses, par établissement.
+  List<Widget> _tableauDeBord(
+    ServiceT18 service,
+    ComptabiliteAdmin? compta,
+  ) {
+    final enfants = <Widget>[
+      const _TitreBloc('Tableau de bord'),
+      _GrilleChiffres(
+        chiffres: service.chiffres,
+        onOuvrir: _ouvrirChiffre,
+      ),
+    ];
+    if (service.chiffres.any((c) => c.valeur == '—')) {
+      enfants.add(
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _charger,
+            icon: const Icon(Icons.refresh_outlined),
+            label: const Text('Réessayer'),
+          ),
+        ),
+      );
+    }
+    if (compta != null) {
+      final totaux = compta.totaux;
+      final entrees = (totaux['entrees'] as num?)?.toInt() ?? 0;
+      final depenses = (totaux['depenses'] as num?)?.toInt() ?? 0;
+      final solde = (totaux['solde'] as num?)?.toInt() ?? 0;
+      final max = entrees > depenses ? entrees : depenses;
+      enfants.add(const _TitreBloc('Flux financier'));
+      enfants.add(
+        _BarreFlux(
+          libelle: 'Entrées',
+          montant: entrees,
+          max: max,
+          couleur: const Color(0xFF15803D),
+        ),
+      );
+      enfants.add(
+        _BarreFlux(
+          libelle: 'Dépenses',
+          montant: depenses,
+          max: max,
+          couleur: const Color(0xFFB91C1C),
+        ),
+      );
+      enfants.add(
+        _Ligne(titre: 'Solde', sousTitre: formaterFcfa(solde)),
+      );
+      final parEtab = <String, (int, int)>{};
+      for (final ligne in compta.lignes) {
+        final nom = (ligne['etablissement'] ?? '').toString().trim();
+        final cle = nom.isEmpty ? 'Structure' : nom;
+        final montant = (ligne['montant_fcfa'] as num?)?.toInt() ?? 0;
+        final (e, d) = parEtab[cle] ?? (0, 0);
+        parEtab[cle] = ligne['categorie'] == 'depense'
+            ? (e, d + montant)
+            : (e + montant, d);
+      }
+      if (parEtab.length > 1) {
+        enfants.add(const _TitreBloc('Par établissement'));
+        for (final entree in parEtab.entries) {
+          enfants.add(
+            _Ligne(
+              titre: entree.key,
+              sousTitre:
+                  'Entrées ${formaterFcfa(entree.value.$1)} · Dépenses ${formaterFcfa(entree.value.$2)}',
+            ),
+          );
+        }
+      }
+    }
+    return enfants;
   }
 
   Future<void> _valider(PaiementAdmin p) async {
@@ -308,9 +700,8 @@ class _PageComptabiliteAdminState extends State<PageComptabiliteAdmin> {
     if (ok != true) return;
     final valide = await widget.service.validerPaiement(
       p.id,
-      waveTransactionId: reference.text.trim().isEmpty
-          ? null
-          : reference.text.trim(),
+      waveTransactionId:
+          reference.text.trim().isEmpty ? null : reference.text.trim(),
     );
     if (!mounted) return;
     _message(
@@ -334,14 +725,14 @@ class _PageComptabiliteAdminState extends State<PageComptabiliteAdmin> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
                 children: [
+                  ..._tableauDeBord(service, compta),
                   const _TitreBloc('À valider'),
                   if (service.paiementsEnAttente.isEmpty)
                     const _Vide('Aucun paiement en attente.')
                   else
                     for (final p in service.paiementsEnAttente)
                       _Ligne(
-                        titre:
-                            '${p.libelle} · ${formaterFcfa(p.montantFcfa)}',
+                        titre: '${p.libelle} · ${formaterFcfa(p.montantFcfa)}',
                         sousTitre: [
                           if (p.nomMembre.isNotEmpty) p.nomMembre,
                           if (p.matricule.isNotEmpty) p.matricule,
@@ -371,8 +762,7 @@ class _PageComptabiliteAdminState extends State<PageComptabiliteAdmin> {
                     if (compta.parCategorie.isEmpty)
                       const _Vide('Aucune ligne ce mois-ci.')
                     else
-                      for (final (categorie, montant)
-                          in compta.parCategorie)
+                      for (final (categorie, montant) in compta.parCategorie)
                         _Ligne(
                           titre: categorie,
                           sousTitre: formaterFcfa(montant),
@@ -404,8 +794,7 @@ class _PageComptabiliteAdminState extends State<PageComptabiliteAdmin> {
                   else
                     for (final p in service.paiementsTous)
                       _Ligne(
-                        titre:
-                            '${p.libelle} · ${formaterFcfa(p.montantFcfa)}',
+                        titre: '${p.libelle} · ${formaterFcfa(p.montantFcfa)}',
                         sousTitre: [
                           p.libelleStatut,
                           if (p.nomMembre.isNotEmpty) p.nomMembre,
@@ -413,14 +802,132 @@ class _PageComptabiliteAdminState extends State<PageComptabiliteAdmin> {
                         ].join(' · '),
                       ),
                   const SizedBox(height: 16),
-                  const Text(
-                    'Le marquage des espèces par scan QR n’est pas '
-                    'reconstruit dans cette tranche.',
-                    style: TextStyle(fontSize: 13, color: Colors.black54),
+                  FilledButton.icon(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => PageScannerPresence(service: service),
+                      ),
+                    ),
+                    icon: const Icon(Icons.qr_code_scanner_outlined),
+                    label: const Text('Scanner un QR'),
                   ),
                 ],
               ),
             ),
+    );
+  }
+}
+
+/// Grille des 6 chiffres du tableau de bord, chaque carte
+/// s'ouvre au toucher sur le détail rattaché.
+class _GrilleChiffres extends StatelessWidget {
+  const _GrilleChiffres({required this.chiffres, required this.onOuvrir});
+  final List<ChiffreAdmin> chiffres;
+  final void Function(int index) onOuvrir;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        childAspectRatio: 1.8,
+      ),
+      itemCount: chiffres.length,
+      itemBuilder: (context, index) {
+        final c = chiffres[index];
+        return Card(
+          color: Colors.white,
+          margin: EdgeInsets.zero,
+          child: InkWell(
+            onTap: () => onOuvrir(index),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    c.valeur,
+                    style: const TextStyle(
+                      fontFamily: 'Cinzel',
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: PaletteNouvelle.bleuNuit,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    c.libelle,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.black54,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Barre du flux financier : libellé, montant en couleur,
+/// barre proportionnelle au plus grand des deux.
+class _BarreFlux extends StatelessWidget {
+  const _BarreFlux({
+    required this.libelle,
+    required this.montant,
+    required this.max,
+    required this.couleur,
+  });
+  final String libelle;
+  final int montant;
+  final int max;
+  final Color couleur;
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = max <= 0 ? 0.0 : montant / max;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                libelle,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              Text(
+                formaterFcfa(montant),
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: couleur,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: ratio,
+              minHeight: 8,
+              backgroundColor: Colors.black12,
+              valueColor: AlwaysStoppedAnimation(couleur),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -535,8 +1042,7 @@ class _PagePublierActualiteState extends State<PagePublierActualite> {
                     child: const Text('Programmer'),
                   )
                 : TextButton(
-                    onPressed: () =>
-                        setState(() => _programmeeLe = null),
+                    onPressed: () => setState(() => _programmeeLe = null),
                     child: const Text('Retirer'),
                   ),
           ),
@@ -744,6 +1250,57 @@ class _PageInscriptionsCampState extends State<PageInscriptionsCamp> {
     if (mounted) setState(() => _charge = true);
   }
 
+  /// Formulaire pro d'inscription au camp, correctif global
+  /// 27 nov. 2026 : membre sans téléphone ou personne hors
+  /// système, avec le contact du parent ou tuteur.
+  Future<void> _inscrire() async {
+    if (_campId == null) {
+      _message(context, 'Choisissez un camp.');
+      return;
+    }
+    final personne = await _choisirPersonne(context, widget.service);
+    if (personne == null) return;
+    final contactParent = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Inscrire ${personne.nom}'),
+        content: TextField(
+          controller: contactParent,
+          decoration: const InputDecoration(
+            labelText: 'Contact du parent ou tuteur (facultatif)',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Inscrire'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final inscrite = await widget.service.inscrireAuCampAdmin(_campId!, {
+      if (!personne.externe) 'membre_id': personne.id,
+      if (personne.externe) 'personne_externe_id': personne.id,
+      if (contactParent.text.trim().isNotEmpty)
+        'contact_parent': contactParent.text.trim(),
+    });
+    if (!mounted) return;
+    _message(
+      context,
+      inscrite != null
+          ? '${personne.nom} inscrit(e) au camp.'
+          : 'Inscription impossible.',
+    );
+    if (inscrite != null) _charger();
+  }
+
   @override
   Widget build(BuildContext context) {
     final service = widget.service;
@@ -762,6 +1319,32 @@ class _PageInscriptionsCampState extends State<PageInscriptionsCamp> {
                     _campId = v;
                     _charger();
                   },
+                ),
+                FilledButton.icon(
+                  onPressed: _inscrire,
+                  icon: const Icon(Icons.person_add_outlined),
+                  label: const Text('Inscrire une personne'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _campId == null
+                      ? null
+                      : () {
+                          final camp = service.evenements
+                              .where((e) => e.id == _campId)
+                              .firstOrNull;
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => PageChronogrammeAdmin(
+                                service: service,
+                                evenementId: _campId!,
+                                nomCamp: camp?.nom ?? '',
+                              ),
+                            ),
+                          );
+                        },
+                  icon: const Icon(Icons.calendar_month_outlined),
+                  label: const Text('Programme du camp'),
                 ),
                 const _TitreBloc('Versements'),
                 _Ligne(
@@ -784,10 +1367,11 @@ class _PageInscriptionsCampState extends State<PageInscriptionsCamp> {
                     _Ligne(
                       titre: i.nomComplet,
                       sousTitre: [
-                        i.matricule,
-                        if (i.inscritLe != null)
-                          afficherDate(i.inscritLe!),
+                        if (i.matricule.isNotEmpty) i.matricule,
+                        if (i.inscritLe != null) afficherDate(i.inscritLe!),
                         if (i.passVisible) 'Pass visible',
+                        if (i.contactParent.isNotEmpty)
+                          'Parent : ${i.contactParent}',
                       ].join(' · '),
                     ),
               ],
@@ -985,6 +1569,22 @@ class _PagePresencesActiviteDetailState
                         : '${taux.presents} / ${taux.inscrits} · '
                             '${(taux.taux! * 100).round()} %',
                   ),
+                FilledButton.icon(
+                  onPressed: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => PageScannerPresence(
+                          service: service,
+                          activiteId: widget.activiteId,
+                          activiteNom: widget.nom,
+                        ),
+                      ),
+                    );
+                    _charger();
+                  },
+                  icon: const Icon(Icons.qr_code_scanner_outlined),
+                  label: const Text('Scanner un QR'),
+                ),
                 const SizedBox(height: 8),
                 if (service.presencesActivite.isEmpty)
                   const _Vide('Aucune présence sur cette activité.')
@@ -1017,6 +1617,8 @@ class _PageDocumentsAdminState extends State<PageDocumentsAdmin> {
   var _charge = false;
   final _titre = TextEditingController();
   final _lien = TextEditingController();
+  List<int>? _octets;
+  String? _nomFichier;
 
   @override
   void initState() {
@@ -1036,19 +1638,54 @@ class _PageDocumentsAdminState extends State<PageDocumentsAdmin> {
     if (mounted) setState(() => _charge = true);
   }
 
+  Future<void> _choisirFichier() async {
+    try {
+      final choix = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['pdf', 'docx', 'xlsx', 'pptx'],
+        withData: true,
+      );
+      final f = choix?.files.single;
+      final octets = f?.bytes;
+      if (octets == null || octets.isEmpty) return;
+      setState(() {
+        _octets = octets;
+        _nomFichier = f!.name;
+      });
+    } catch (_) {
+      if (mounted) _message(context, 'Choix du fichier impossible.');
+    }
+  }
+
   Future<void> _publier() async {
     if (_titre.text.trim().isEmpty) {
       _message(context, 'Le titre est obligatoire.');
       return;
     }
+    String? fichierId;
+    if (_octets != null) {
+      fichierId = await widget.service.televerserDocument(
+        _octets!,
+        _nomFichier ?? 'document',
+      );
+      if (fichierId == null) {
+        if (mounted) _message(context, 'Envoi du fichier impossible.');
+        return;
+      }
+    }
     final ok = await widget.service.publierDocument(
       titre: _titre.text.trim(),
       lien: _lien.text.trim().isEmpty ? null : _lien.text.trim(),
+      fichierId: fichierId,
     );
     if (!mounted) return;
     if (ok) {
       _titre.clear();
       _lien.clear();
+      setState(() {
+        _octets = null;
+        _nomFichier = null;
+      });
     }
     _message(context, ok ? 'Document publié.' : 'Publication impossible.');
     if (ok) setState(() {});
@@ -1095,6 +1732,25 @@ class _PageDocumentsAdminState extends State<PageDocumentsAdmin> {
                     border: OutlineInputBorder(),
                   ),
                 ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _choisirFichier,
+                  icon: const Icon(Icons.attach_file),
+                  label: const Text('Choisir un fichier'),
+                ),
+                if (_nomFichier != null)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.description_outlined),
+                    title: Text(_nomFichier!),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => setState(() {
+                        _octets = null;
+                        _nomFichier = null;
+                      }),
+                    ),
+                  ),
                 const SizedBox(height: 8),
                 FilledButton(
                   onPressed: _publier,
@@ -1175,7 +1831,7 @@ class _PageAttestationsAdminState extends State<PageAttestationsAdmin> {
       context,
       'Annuler cette attestation',
       'L’annulation est enregistrée, l’attestation reste visible '
-      'comme annulée.',
+          'comme annulée.',
     );
     if (!ok) return;
     final annulee = await widget.service.annulerAttestation(a.id);
@@ -1321,8 +1977,7 @@ class _PageAuditAdminState extends State<PageAuditAdmin> {
                       sousTitre: [
                         l.entite,
                         if (l.acteurNom.isNotEmpty) l.acteurNom,
-                        if (l.horodatage != null)
-                          afficherDate(l.horodatage!),
+                        if (l.horodatage != null) afficherDate(l.horodatage!),
                         if (l.details.isNotEmpty) l.details,
                       ].join(' · '),
                     );
@@ -1349,6 +2004,7 @@ class PageExportsAdmin extends StatefulWidget {
 class _PageExportsAdminState extends State<PageExportsAdmin> {
   String? _campId;
   var _charge = false;
+  String _format = 'csv';
 
   @override
   void initState() {
@@ -1364,6 +2020,24 @@ class _PageExportsAdminState extends State<PageExportsAdmin> {
     _message(context, '$nom téléchargé.');
   }
 
+  Future<void> _telechargerFichier(String sujet, String nom,
+      {String? evenementId}) async {
+    final octets = await widget.service.telechargerExport(
+      sujet,
+      format: _format,
+      evenementId: evenementId,
+    );
+    if (octets == null) {
+      if (mounted) _message(context, 'Téléchargement impossible.');
+      return;
+    }
+    final mime = _format == 'pdf'
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    await downloadBytesFile(nom, octets, mime);
+    if (mounted) _message(context, '$nom téléchargé.');
+  }
+
   @override
   Widget build(BuildContext context) {
     final service = widget.service;
@@ -1372,18 +2046,40 @@ class _PageExportsAdminState extends State<PageExportsAdmin> {
       enfant: ListView(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
         children: [
+          DropdownButtonFormField<String>(
+            value: _format,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Format',
+              border: OutlineInputBorder(),
+            ),
+            items: const [
+              DropdownMenuItem(value: 'csv', child: Text('CSV')),
+              DropdownMenuItem(
+                value: 'xlsx',
+                child: Text('Excel (.xlsx)'),
+              ),
+              DropdownMenuItem(value: 'pdf', child: Text('PDF')),
+            ],
+            onChanged: (v) => setState(() => _format = v ?? 'csv'),
+          ),
+          const SizedBox(height: 8),
           _Ligne(
             titre: 'Membres',
             sousTitre: 'Nom, matricule, fonction, rôle, établissement.',
             trailing: FilledButton(
               onPressed: () async {
-                await widget.serviceT14.chargerMembresAdmin();
-                await _telecharger(
-                  'membres.csv',
-                  service.exporterMembresCsv(
-                    widget.serviceT14.membresAdmin,
-                  ),
-                );
+                if (_format == 'csv') {
+                  await widget.serviceT14.chargerMembresAdmin();
+                  await _telecharger(
+                    'membres.csv',
+                    service.exporterMembresCsv(
+                      widget.serviceT14.membresAdmin,
+                    ),
+                  );
+                } else {
+                  await _telechargerFichier('membres', 'membres.$_format');
+                }
               },
               child: const Text('Télécharger'),
             ),
@@ -1393,11 +2089,18 @@ class _PageExportsAdminState extends State<PageExportsAdmin> {
             sousTitre: 'Référence, type, montant, statut, moyen, membre.',
             trailing: FilledButton(
               onPressed: () async {
-                await service.chargerPaiementsTous();
-                await _telecharger(
-                  'paiements.csv',
-                  service.exporterPaiementsCsv(),
-                );
+                if (_format == 'csv') {
+                  await service.chargerPaiementsTous();
+                  await _telecharger(
+                    'paiements.csv',
+                    service.exporterPaiementsCsv(),
+                  );
+                } else {
+                  await _telechargerFichier(
+                    'paiements',
+                    'paiements.$_format',
+                  );
+                }
               },
               child: const Text('Télécharger'),
             ),
@@ -1407,11 +2110,18 @@ class _PageExportsAdminState extends State<PageExportsAdmin> {
             sousTitre: 'Toutes les présences scannées.',
             trailing: FilledButton(
               onPressed: () async {
-                await service.chargerPresences();
-                await _telecharger(
-                  'presences.csv',
-                  service.exporterPresencesCsv(),
-                );
+                if (_format == 'csv') {
+                  await service.chargerPresences();
+                  await _telecharger(
+                    'presences.csv',
+                    service.exporterPresencesCsv(),
+                  );
+                } else {
+                  await _telechargerFichier(
+                    'presences',
+                    'presences.$_format',
+                  );
+                }
               },
               child: const Text('Télécharger'),
             ),
@@ -1430,125 +2140,25 @@ class _PageExportsAdminState extends State<PageExportsAdmin> {
               onPressed: _campId == null
                   ? null
                   : () async {
-                      await service.chargerInscriptions(_campId!);
-                      await _telecharger(
-                        'inscriptions.csv',
-                        service.exporterInscriptionsCsv(),
-                      );
+                      if (_format == 'csv') {
+                        await service.chargerInscriptions(_campId!);
+                        await _telecharger(
+                          'inscriptions.csv',
+                          service.exporterInscriptionsCsv(),
+                        );
+                      } else {
+                        await _telechargerFichier(
+                          'inscriptions',
+                          'inscriptions.$_format',
+                          evenementId: _campId!,
+                        );
+                      }
                     },
               child: const Text('Télécharger les inscriptions'),
             ),
           ],
         ],
       ),
-    );
-  }
-}
-
-/// 12. Tableau de bord : chiffres, totaux, en ligne.
-class PageTableauBordAdmin extends StatefulWidget {
-  const PageTableauBordAdmin({super.key, required this.service});
-  final ServiceT18 service;
-
-  @override
-  State<PageTableauBordAdmin> createState() => _PageTableauBordAdminState();
-}
-
-class _PageTableauBordAdminState extends State<PageTableauBordAdmin> {
-  var _charge = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _charger();
-  }
-
-  Future<void> _charger() async {
-    await widget.service.chargerChiffres();
-    await widget.service.chargerTotauxPaiements();
-    await widget.service.chargerPaiementsEnAttente();
-    await widget.service.chargerEnLigne();
-    if (mounted) setState(() => _charge = true);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final service = widget.service;
-    final totaux = service.totauxPaiements;
-    return _PageAdmin(
-      titre: 'Tableau de bord',
-      enfant: !_charge
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-              children: [
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 10,
-                    crossAxisSpacing: 10,
-                    childAspectRatio: 1.7,
-                  ),
-                  itemCount: service.chiffres.length,
-                  itemBuilder: (context, index) {
-                    final c = service.chiffres[index];
-                    return Card(
-                      elevation: 0,
-                      color: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              c.valeur,
-                              style: const TextStyle(
-                                fontFamily: 'Cinzel',
-                                fontSize: 22,
-                                fontWeight: FontWeight.w700,
-                                color: PaletteNouvelle.bleuNuit,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              c.libelle,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: Colors.black54,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                const _TitreBloc('Paiements'),
-                _Ligne(
-                  titre: 'Total confirmé',
-                  sousTitre: formaterFcfa(
-                    (totaux['total_confirme'] as num?)?.toInt() ?? 0,
-                  ),
-                ),
-                _Ligne(
-                  titre: 'En attente de validation',
-                  sousTitre:
-                      '${service.paiementsEnAttente.length} paiement(s)',
-                ),
-                const _TitreBloc('En ligne'),
-                _Ligne(
-                  titre: 'Membres en ligne',
-                  sousTitre: '${service.nbEnLigne}',
-                ),
-              ],
-            ),
     );
   }
 }
@@ -1585,7 +2195,27 @@ class _PageAdministrateursState extends State<PageAdministrateurs> {
     await widget.service.chargerAdministrateurs();
     await widget.service.chargerMembresAdmin();
     await widget.service.chargerEtablissements();
+    await widget.service.chargerPersonnesExternes();
     if (mounted) setState(() => _charge = true);
+  }
+
+  Future<void> _retirerExterne(PersonneExterne p) async {
+    final ok = await _confirmer(
+      context,
+      'Retirer ce rôle',
+      '${p.nomComplet} ne gèrera plus l’application. Sa fiche reste.',
+    );
+    if (!ok) return;
+    final retire = await widget.service.modifierPersonneExterne(
+      p.id,
+      {'role_admin': null},
+    );
+    if (!mounted) return;
+    _message(
+      context,
+      retire ? 'Rôle retiré.' : 'Retrait impossible.',
+    );
+    if (retire) setState(() {});
   }
 
   String _libelleRole(String role) => _rolesAdmin
@@ -1596,8 +2226,100 @@ class _PageAdministrateursState extends State<PageAdministrateurs> {
       .$2;
 
   Future<void> _definirRole() async {
-    final membre = await _choisirMembre(context, widget.service);
+    final personne = await _choisirPersonne(
+      context,
+      widget.service,
+      avecRole: true,
+    );
+    if (personne == null) return;
+    if (personne.externe) {
+      // Personne hors système : la fiche vient d'être créée avec
+      // son rôle, ou il faut désigner le rôle d'une fiche existante.
+      if (personne.estNouvelle) {
+        if (!mounted) return;
+        _message(context, 'Administrateur désigné.');
+        setState(() {});
+        return;
+      }
+      String role = 'admin_etablissement';
+      String? etablissementId;
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setEtat) => AlertDialog(
+            title: Text('Rôle de ${personne.nom}'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: role,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Rôle',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final (valeur, libelle) in _rolesAdmin)
+                      DropdownMenuItem(
+                        value: valeur,
+                        child: Text(libelle),
+                      ),
+                  ],
+                  onChanged: (v) => setEtat(() => role = v ?? role),
+                ),
+                if (role == 'admin_etablissement') ...[
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String?>(
+                    value: etablissementId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Établissement',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      for (final e in widget.service.etablissements)
+                        DropdownMenuItem(
+                          value: e.id,
+                          child: Text(e.nom),
+                        ),
+                    ],
+                    onChanged: (v) => setEtat(() => etablissementId = v),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Annuler'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Enregistrer'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (ok != true) return;
+      final defini = await widget.service.modifierPersonneExterne(
+        personne.id,
+        {
+          'role_admin': role,
+          if (etablissementId != null) 'etablissement_id': etablissementId,
+        },
+      );
+      if (!mounted) return;
+      _message(context, defini ? 'Rôle défini.' : 'Définition impossible.');
+      if (defini) setState(() {});
+      return;
+    }
+    MembreAdmin? membre;
+    for (final m in widget.service.membresAdmin) {
+      if (m.id == personne.id) membre = m;
+    }
     if (membre == null) return;
+    final membreChoisi = membre;
     String role = 'admin_etablissement';
     String? etablissementId;
     String fonctionAdmin = '';
@@ -1605,12 +2327,13 @@ class _PageAdministrateursState extends State<PageAdministrateurs> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setEtat) => AlertDialog(
-          title: Text('Rôle de ${membre.nomComplet}'),
+          title: Text('Rôle de ${membreChoisi.nomComplet}'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<String>(
                 value: role,
+                isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Rôle',
                   border: OutlineInputBorder(),
@@ -1628,6 +2351,7 @@ class _PageAdministrateursState extends State<PageAdministrateurs> {
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String?>(
                   value: etablissementId,
+                  isExpanded: true,
                   decoration: const InputDecoration(
                     labelText: 'Établissement',
                     border: OutlineInputBorder(),
@@ -1639,8 +2363,7 @@ class _PageAdministrateursState extends State<PageAdministrateurs> {
                         child: Text(e.nom),
                       ),
                   ],
-                  onChanged: (v) =>
-                      setEtat(() => etablissementId = v),
+                  onChanged: (v) => setEtat(() => etablissementId = v),
                 ),
               ],
               const SizedBox(height: 8),
@@ -1671,8 +2394,7 @@ class _PageAdministrateursState extends State<PageAdministrateurs> {
       membre.id,
       role,
       etablissementId: etablissementId,
-      fonctionAdmin:
-          fonctionAdmin.trim().isEmpty ? null : fonctionAdmin.trim(),
+      fonctionAdmin: fonctionAdmin.trim().isEmpty ? null : fonctionAdmin.trim(),
     );
     if (!mounted) return;
     _message(context, defini ? 'Rôle défini.' : 'Définition impossible.');
@@ -1682,6 +2404,9 @@ class _PageAdministrateursState extends State<PageAdministrateurs> {
   @override
   Widget build(BuildContext context) {
     final administrateurs = widget.service.administrateurs;
+    final externes = widget.service.personnesExternes
+        .where((p) => p.roleAdmin.isNotEmpty)
+        .toList();
     return _PageAdmin(
       titre: 'Administrateurs',
       enfant: !_charge
@@ -1695,9 +2420,9 @@ class _PageAdministrateursState extends State<PageAdministrateurs> {
                   label: const Text('Définir un rôle'),
                 ),
                 const SizedBox(height: 12),
-                if (administrateurs.isEmpty)
+                if (administrateurs.isEmpty && externes.isEmpty)
                   const _Vide('Aucun administrateur désigné.')
-                else
+                else ...[
                   for (final m in administrateurs)
                     _Ligne(
                       titre: m.nomComplet,
@@ -1707,6 +2432,24 @@ class _PageAdministrateursState extends State<PageAdministrateurs> {
                         if (m.etablissement.isNotEmpty) m.etablissement,
                       ].join(' · '),
                     ),
+                  if (externes.isNotEmpty) ...[
+                    const _TitreBloc('Hors système'),
+                    for (final p in externes)
+                      _Ligne(
+                        titre: p.nomComplet,
+                        sousTitre: [
+                          p.roleAdminLibelle,
+                          if (p.fonction.isNotEmpty) p.fonction,
+                          if (p.etablissementNom.isNotEmpty) p.etablissementNom,
+                          'Hors système',
+                        ].join(' · '),
+                        trailing: TextButton(
+                          onPressed: () => _retirerExterne(p),
+                          child: const Text('Retirer'),
+                        ),
+                      ),
+                  ],
+                ],
               ],
             ),
     );
@@ -1755,8 +2498,8 @@ class _PageNominationsAdminState extends State<PageNominationsAdmin> {
   }
 
   Future<void> _creer() async {
-    final membre = await _choisirMembre(context, widget.service);
-    if (membre == null) return;
+    final personne = await _choisirPersonne(context, widget.service);
+    if (personne == null) return;
     String fonction = 'responsable';
     String portee = 'structure';
     String? etablissementId;
@@ -1765,7 +2508,7 @@ class _PageNominationsAdminState extends State<PageNominationsAdmin> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setEtat) => AlertDialog(
-          title: Text('Nommer ${membre.nomComplet}'),
+          title: Text('Nommer ${personne.nom}'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1823,8 +2566,7 @@ class _PageNominationsAdminState extends State<PageNominationsAdmin> {
                     for (final e in widget.service.etablissements)
                       DropdownMenuItem(value: e.id, child: Text(e.nom)),
                   ],
-                  onChanged: (v) =>
-                      setEtat(() => etablissementId = v),
+                  onChanged: (v) => setEtat(() => etablissementId = v),
                 ),
               ],
               if (portee == 'activite') ...[
@@ -1859,7 +2601,8 @@ class _PageNominationsAdminState extends State<PageNominationsAdmin> {
     );
     if (ok != true) return;
     final cree = await widget.service.creerNomination(
-      membreId: membre.id,
+      membreId: personne.externe ? null : personne.id,
+      personneExterneId: personne.externe ? personne.id : null,
       fonctionCode: fonction,
       portee: portee,
       etablissementId: etablissementId,
@@ -1911,7 +2654,8 @@ class _PageNominationsAdminState extends State<PageNominationsAdmin> {
                       sousTitre: [
                         n.fonctionLibelle,
                         n.porteeLibelle,
-                        n.matricule,
+                        if (n.matricule.isNotEmpty) n.matricule,
+                        if (n.estExterne) 'Hors système',
                       ].join(' · '),
                       trailing: TextButton(
                         onPressed: () => _revoquer(n),
@@ -2038,9 +2782,8 @@ class _PageElectionsAdminState extends State<PageElectionsAdmin> {
     }
     final cree = await widget.service.creerElection(
       titre: titre.text.trim(),
-      description: description.text.trim().isEmpty
-          ? null
-          : description.text.trim(),
+      description:
+          description.text.trim().isEmpty ? null : description.text.trim(),
       poste: poste.text.trim().isEmpty ? null : poste.text.trim(),
       debut: debut,
       fin: fin,
@@ -2080,8 +2823,7 @@ class _PageElectionsAdminState extends State<PageElectionsAdmin> {
                         if (e.poste.isNotEmpty) e.poste,
                         if (e.dateDebut != null)
                           'Du ${afficherDate(e.dateDebut!)}',
-                        if (e.dateFin != null)
-                          'au ${afficherDate(e.dateFin!)}',
+                        if (e.dateFin != null) 'au ${afficherDate(e.dateFin!)}',
                         e.enCours ? 'En cours' : 'Terminée',
                         '${e.nbVotes} voix',
                       ].join(' · '),
@@ -2159,7 +2901,7 @@ class _PageElectionDetailState extends State<PageElectionDetail> {
       context,
       'Voter pour ${c.nomComplet}',
       'Ton vote est enregistré par le serveur, un seul vote '
-      'par membre.',
+          'par membre.',
     );
     if (!ok) return;
     final vote = await widget.service.voterElection(
@@ -2377,8 +3119,8 @@ class _PageDepartementScolaireState extends State<PageDepartementScolaire> {
   }
 
   Future<void> _creer() async {
-    final membre = await _choisirMembre(context, widget.service);
-    if (membre == null) return;
+    final personne = await _choisirPersonne(context, widget.service);
+    if (personne == null) return;
     String classe = '6e';
     final annee = TextEditingController(
       text: '${DateTime.now().year}-${DateTime.now().year + 1}',
@@ -2393,7 +3135,7 @@ class _PageDepartementScolaireState extends State<PageDepartementScolaire> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setEtat) => AlertDialog(
-          title: Text('Suivi de ${membre.nomComplet}'),
+          title: Text('Suivi de ${personne.nom}'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -2431,8 +3173,7 @@ class _PageDepartementScolaireState extends State<PageDepartementScolaire> {
                           padding: const EdgeInsets.only(right: 6),
                           child: TextField(
                             controller: controle,
-                            keyboardType:
-                                const TextInputType.numberWithOptions(
+                            keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
                             decoration: InputDecoration(
@@ -2500,7 +3241,8 @@ class _PageDepartementScolaireState extends State<PageDepartementScolaire> {
     );
     if (ok != true) return;
     final cree = await widget.service.creerSuiviScolaire({
-      'membre_id': membre.id,
+      if (!personne.externe) 'membre_id': personne.id,
+      if (personne.externe) 'personne_externe_id': personne.id,
       'classe': classe,
       'annee_scolaire': annee.text.trim(),
       'moyenne_t1': _moyenne(t1.text),
@@ -2511,7 +3253,8 @@ class _PageDepartementScolaireState extends State<PageDepartementScolaire> {
       if (examen) 'resultat_examen': resultat,
     });
     if (!mounted) return;
-    _message(context, cree ? 'Suivi enregistré.' : 'Enregistrement impossible.');
+    _message(
+        context, cree ? 'Suivi enregistré.' : 'Enregistrement impossible.');
     if (cree) setState(() {});
   }
 
@@ -2544,6 +3287,7 @@ class _PageDepartementScolaireState extends State<PageDepartementScolaire> {
                           'Moyenne annuelle : ${s.moyenneAnnuelle}',
                         if (s.examen)
                           'Examen ${s.typeExamen} : ${s.resultatExamen}',
+                        if (s.estExterne) 'Hors système',
                       ].join(' · '),
                     ),
               ],
@@ -2750,8 +3494,8 @@ class _PagePlanningResponsablesState extends State<PagePlanningResponsables> {
       '${d.day.toString().padLeft(2, '0')}';
 
   Future<void> _creer() async {
-    final membre = await _choisirMembre(context, widget.service);
-    if (membre == null) return;
+    final personne = await _choisirPersonne(context, widget.service);
+    if (personne == null) return;
     final activite = TextEditingController();
     final heureDebut = TextEditingController();
     final heureFin = TextEditingController();
@@ -2762,7 +3506,7 @@ class _PagePlanningResponsablesState extends State<PagePlanningResponsables> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setEtat) => AlertDialog(
-          title: Text('Créneau pour ${membre.nomComplet}'),
+          title: Text('Créneau pour ${personne.nom}'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -2853,13 +3597,13 @@ class _PagePlanningResponsablesState extends State<PagePlanningResponsables> {
       return;
     }
     final cree = await widget.service.creerPlanning({
-      'membre_id': membre.id,
+      if (!personne.externe) 'membre_id': personne.id,
+      if (personne.externe) 'personne_externe_id': personne.id,
       'activite': activite.text.trim(),
       'date': _dateIso(date),
       if (heureDebut.text.trim().isNotEmpty)
         'heure_debut': heureDebut.text.trim(),
-      if (heureFin.text.trim().isNotEmpty)
-        'heure_fin': heureFin.text.trim(),
+      if (heureFin.text.trim().isNotEmpty) 'heure_fin': heureFin.text.trim(),
       if (roleService.text.trim().isNotEmpty)
         'role_service': roleService.text.trim(),
       if (evenementId != null) 'evenement_id': evenementId,
@@ -2947,13 +3691,14 @@ class _PagePlanningResponsablesState extends State<PagePlanningResponsables> {
     );
     if (ok != true) return;
     final modifie = await widget.service.modifierPlanning(p.id, {
-      'membre_id': p.membreId,
+      if (p.membreId.isNotEmpty) 'membre_id': p.membreId,
+      if (p.personneExterneId.isNotEmpty)
+        'personne_externe_id': p.personneExterneId,
       'activite': activite.text.trim(),
       'date': _dateIso(date),
       if (heureDebut.text.trim().isNotEmpty)
         'heure_debut': heureDebut.text.trim(),
-      if (heureFin.text.trim().isNotEmpty)
-        'heure_fin': heureFin.text.trim(),
+      if (heureFin.text.trim().isNotEmpty) 'heure_fin': heureFin.text.trim(),
       if (roleService.text.trim().isNotEmpty)
         'role_service': roleService.text.trim(),
     });
@@ -2993,13 +3738,15 @@ class _PagePlanningResponsablesState extends State<PagePlanningResponsables> {
                         if (p.heureDebut.isNotEmpty) p.heureDebut,
                         if (p.heureFin.isNotEmpty) '– ${p.heureFin}',
                         if (p.roleService.isNotEmpty) p.roleService,
+                        if (p.estExterne) 'Hors système',
                       ].join(' · '),
-                      trailing: p.membreId.isEmpty
-                          ? null
-                          : IconButton(
-                              icon: const Icon(Icons.edit_outlined),
-                              onPressed: () => _modifier(p),
-                            ),
+                      trailing:
+                          p.membreId.isEmpty && p.personneExterneId.isEmpty
+                              ? null
+                              : IconButton(
+                                  icon: const Icon(Icons.edit_outlined),
+                                  onPressed: () => _modifier(p),
+                                ),
                     ),
               ],
             ),
@@ -3018,8 +3765,7 @@ class PageReglagesNotifications extends StatefulWidget {
       _PageReglagesNotificationsState();
 }
 
-class _PageReglagesNotificationsState
-    extends State<PageReglagesNotifications> {
+class _PageReglagesNotificationsState extends State<PageReglagesNotifications> {
   @override
   void initState() {
     super.initState();

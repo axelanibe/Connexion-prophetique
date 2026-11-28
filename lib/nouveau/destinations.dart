@@ -27,6 +27,7 @@ enum DestinationNouvelle {
   notifications('Notifications'),
   messagerie('Messagerie'),
   structure('Structure'),
+  etablissements('Nos établissements'),
   bureau('Le Bureau'),
   cotisations('Cotisations'),
   paroleVivante('Parole vivante'),

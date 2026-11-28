@@ -97,8 +97,7 @@ class _PageConnexionState extends State<PageConnexion> {
   Future<void> _recharger() => _charger(silencieux: true);
 
   Future<void> _charger({bool silencieux = false}) async {
-    final contenuDejaLa =
-        _publications.isNotEmpty || _epinglees.isNotEmpty;
+    final contenuDejaLa = _publications.isNotEmpty || _epinglees.isNotEmpty;
     if (!silencieux || !contenuDejaLa) {
       setState(() {
         _chargement = true;
@@ -334,6 +333,29 @@ class _PageConnexionState extends State<PageConnexion> {
     }
   }
 
+  Future<void> _basculerSuivi(PublicationConnexion p) async {
+    if (p.auteurId.isEmpty) return;
+    try {
+      if (p.suiviParMoi) {
+        await widget.service.nePlusSuivre(p.auteurId);
+      } else {
+        await widget.service.suivre(p.auteurId);
+      }
+      if (!mounted) return;
+      setState(() {
+        _publications = _publications
+            .map((x) =>
+                x.auteurId == p.auteurId ? x.avecSuivi(!p.suiviParMoi) : x)
+            .toList();
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Le suivi n’a pas pu être fait.')),
+      );
+    }
+  }
+
   Future<void> _signaler(PublicationConnexion p) async {
     final motif = await showModalBottomSheet<String>(
       context: context,
@@ -529,6 +551,7 @@ class _PageConnexionState extends State<PageConnexion> {
                                 onEnregistrer: () => _basculerEnregistrement(p),
                                 onSignaler: () => _signaler(p),
                                 onSupprimer: () => _supprimer(p),
+                                onSuivre: () => _basculerSuivi(p),
                               ),
                               const SizedBox(height: 12),
                             ],
@@ -572,7 +595,8 @@ class _Bande extends StatelessWidget {
         children: [
           IconButton(
             tooltip: 'Retour',
-            icon: const Icon(LucideIcons.arrowLeft, color: PaletteNouvelle.bleuNuit),
+            icon: const Icon(LucideIcons.arrowLeft,
+                color: PaletteNouvelle.bleuNuit),
             onPressed: onRetour,
           ),
           const Expanded(
@@ -593,8 +617,7 @@ class _Bande extends StatelessWidget {
           ),
           IconButton(
             tooltip: 'Notifications',
-            icon: const Icon(LucideIcons.bell,
-                color: PaletteNouvelle.bleuNuit),
+            icon: const Icon(LucideIcons.bell, color: PaletteNouvelle.bleuNuit),
             onPressed: onNotifications,
           ),
         ],

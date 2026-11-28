@@ -10,6 +10,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../app_models.dart' show Member;
@@ -48,6 +49,7 @@ class NouvelleCoquille extends StatefulWidget {
     this.galerie,
     this.espaceStructure,
     this.structure,
+    this.etablissements,
     this.veille,
     this.boutonFlottant,
     this.notifications,
@@ -122,6 +124,7 @@ class NouvelleCoquille extends StatefulWidget {
   final Widget? galerie;
   final Widget? espaceStructure;
   final Widget? structure;
+  final Widget? etablissements;
 
   /// Destinations sans page dédiée pour l'instant, T11 :
   /// notifications, journal, méditation, à propos, présences,
@@ -253,8 +256,7 @@ class NouvelleCoquilleState extends State<NouvelleCoquille> {
       DestinationNouvelle.plus => PagePlus(onNaviguer: _ouvrir),
       DestinationNouvelle.messagerie when widget.messagerie != null =>
         widget.messagerie!,
-      DestinationNouvelle.profil when widget.profil != null =>
-        widget.profil!,
+      DestinationNouvelle.profil when widget.profil != null => widget.profil!,
       DestinationNouvelle.carte when widget.carte != null => widget.carte!,
       DestinationNouvelle.chainePriere when widget.chainePriere != null =>
         widget.chainePriere!,
@@ -275,6 +277,8 @@ class NouvelleCoquilleState extends State<NouvelleCoquille> {
         widget.espaceStructure!,
       DestinationNouvelle.structure when widget.structure != null =>
         widget.structure!,
+      DestinationNouvelle.etablissements when widget.etablissements != null =>
+        widget.etablissements!,
       DestinationNouvelle.notifications when widget.notifications != null =>
         widget.notifications!,
       DestinationNouvelle.journal when widget.journal != null =>
@@ -290,8 +294,7 @@ class NouvelleCoquilleState extends State<NouvelleCoquille> {
         widget.cotisations!,
       DestinationNouvelle.paroleVivante when widget.paroleVivante != null =>
         widget.paroleVivante!,
-      DestinationNouvelle.camps when widget.camps != null =>
-        widget.camps!,
+      DestinationNouvelle.camps when widget.camps != null => widget.camps!,
       _ => PageNeutre(destination.titre),
     };
   }
@@ -355,137 +358,145 @@ class NouvelleCoquilleState extends State<NouvelleCoquille> {
         }
       },
       child: Scaffold(
-      backgroundColor: PaletteNouvelle.papier,
-      drawer: TiroirNouveau(
-        membre: widget.membre,
-        onNaviguer: _ouvrir,
-        onDeconnexion: widget.onDeconnexion,
-        etatCarte: widget.etatCarte,
-      ),
-      appBar: pleinEcran
-          ? null
-          : AppBar(
-              backgroundColor: Colors.white,
-              elevation: 1,
-              leading: surPage
-                  ? IconButton(
-                      icon: const Icon(LucideIcons.chevronLeft,
-                          color: PaletteNouvelle.bleuNuit),
-                      onPressed: () => setState(() => _destination = null),
-                    )
-                  : Builder(
-                      builder: (ctx) => IconButton(
-                        icon: const Icon(LucideIcons.menu,
+        backgroundColor: PaletteNouvelle.papier,
+        drawer: TiroirNouveau(
+          membre: widget.membre,
+          onNaviguer: _ouvrir,
+          onDeconnexion: widget.onDeconnexion,
+          etatCarte: widget.etatCarte,
+        ),
+        appBar: pleinEcran
+            ? null
+            : AppBar(
+                backgroundColor: Colors.white,
+                elevation: 1,
+                leading: surPage
+                    ? IconButton(
+                        icon: const Icon(LucideIcons.chevronLeft,
                             color: PaletteNouvelle.bleuNuit),
-                        onPressed: () => Scaffold.of(ctx).openDrawer(),
-                      ),
-                    ),
-              title: GestureDetector(
-                onTap: _allerAccueil,
-                child: Row(
-                  children: [
-                    Container(
-                      width: 30,
-                      height: 30,
-                      alignment: Alignment.center,
-                      decoration: const BoxDecoration(
-                        color: PaletteNouvelle.bleuNuit,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Text(
-                        'CP',
-                        style: TextStyle(
-                          fontFamily: 'Cinzel',
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: PaletteNouvelle.or,
+                        onPressed: () => setState(() => _destination = null),
+                      )
+                    : Builder(
+                        builder: (ctx) => IconButton(
+                          icon: const Icon(LucideIcons.menu,
+                              color: PaletteNouvelle.bleuNuit),
+                          onPressed: () => Scaffold.of(ctx).openDrawer(),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: FittedBox(
-                        alignment: Alignment.centerLeft,
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          'CONNEXION PROPHÉTIQUE',
-                          maxLines: 1,
-                          style: const TextStyle(
+                title: GestureDetector(
+                  onTap: _allerAccueil,
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 30,
+                        height: 30,
+                        alignment: Alignment.center,
+                        decoration: const BoxDecoration(
+                          color: PaletteNouvelle.bleuNuit,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Text(
+                          'CP',
+                          style: TextStyle(
                             fontFamily: 'Cinzel',
-                            fontSize: 16,
+                            fontSize: 13,
                             fontWeight: FontWeight.w700,
-                            color: PaletteNouvelle.bleuNuit,
+                            color: PaletteNouvelle.or,
                           ),
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: FittedBox(
+                          alignment: Alignment.centerLeft,
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'CONNEXION PROPHÉTIQUE',
+                            maxLines: 1,
+                            style: const TextStyle(
+                              fontFamily: 'Cinzel',
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: PaletteNouvelle.bleuNuit,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  _BoutonMessagerie(
+                    nonLus: widget.nonLus,
+                    onTap: () {
+                      if (widget.onMessagerie != null) {
+                        widget.onMessagerie!();
+                      } else {
+                        _ouvrir(DestinationNouvelle.messagerie);
+                      }
+                    },
+                  ),
+                  IconButton(
+                    tooltip: 'Notifications',
+                    padding: const EdgeInsets.all(6),
+                    constraints:
+                        const BoxConstraints(minWidth: 36, minHeight: 36),
+                    style: IconButton.styleFrom(
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                    icon: const Icon(LucideIcons.bell,
+                        color: PaletteNouvelle.bleuNuit, size: 22),
+                    onPressed: () => _ouvrir(DestinationNouvelle.notifications),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8, left: 2),
+                    child: InkWell(
+                      key: const ValueKey('avatarEntete'),
+                      customBorder: const CircleBorder(),
+                      onTap: () => _ouvrir(DestinationNouvelle.profil),
+                      child: AvatarMembre(widget.membre),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              actions: [
-                _BoutonMessagerie(
-                  nonLus: widget.nonLus,
-                  onTap: () {
-                    if (widget.onMessagerie != null) {
-                      widget.onMessagerie!();
-                    } else {
-                      _ouvrir(DestinationNouvelle.messagerie);
-                    }
-                  },
-                ),
-                IconButton(
-                  tooltip: 'Notifications',
-                  padding: const EdgeInsets.all(6),
-                  constraints:
-                      const BoxConstraints(minWidth: 36, minHeight: 36),
-                  style: IconButton.styleFrom(
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                  icon: const Icon(LucideIcons.bell,
-                      color: PaletteNouvelle.bleuNuit, size: 22),
-                  onPressed: () => _ouvrir(DestinationNouvelle.notifications),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(right: 8, left: 2),
-                  child: InkWell(
-                    key: const ValueKey('avatarEntete'),
-                    customBorder: const CircleBorder(),
-                    onTap: () => _ouvrir(DestinationNouvelle.profil),
-                    child: AvatarMembre(widget.membre),
-                  ),
-                ),
-              ],
-            ),
-      // T17, 26 nov. 2026 : marge basse de 80 px, le bouton
-      // flottant Assistant occupe une bande de 64 px en bas
-      // du corps, les listes s'arrêtent au-dessus de lui.
-      body: Padding(padding: const EdgeInsets.only(bottom: 80), child: _corps),
-      // Sur Parole vivante le bouton flottant Assistant est
-      // masqué : il recouvrirait le mini-lecteur, tranche T13.
-      floatingActionButton:
-          _pleinEcranParole ? null : widget.boutonFlottant,
-      bottomNavigationBar: pleinEcran
-          ? null
-          : BottomNavigationBar(
-              currentIndex: _onglet,
-              onTap: _choisirOnglet,
-              type: BottomNavigationBarType.fixed,
-              backgroundColor: Colors.white,
-              selectedItemColor: PaletteNouvelle.bleuNuit,
-              unselectedItemColor: Colors.grey,
-              selectedFontSize: 11,
-              unselectedFontSize: 11,
-              items: [
-                for (var i = 0; i < _onglets.length; i++)
-                  BottomNavigationBarItem(
-                    icon: Icon(_iconesOnglets[i]),
-                    label: _onglets[i].titre,
-                  ),
-              ],
-            ),
+        // Correctif global, 27 nov. 2026 : marge basse de 120 px, la
+        // bande de 64 px du bouton flottant Assistant ne suffit pas,
+        // le bouton recouvrait le bas des listes, 80 px avant.
+        body:
+            Padding(padding: const EdgeInsets.only(bottom: 120), child: _corps),
+        // Sur Parole vivante le bouton flottant Assistant est
+        // masqué : il recouvrirait le mini-lecteur, tranche T13.
+        floatingActionButton: _pleinEcranParole ? null : widget.boutonFlottant,
+        bottomNavigationBar: pleinEcran
+            ? null
+            : BottomNavigationBar(
+                currentIndex: _onglet,
+                onTap: _choisirOnglet,
+                type: BottomNavigationBarType.fixed,
+                backgroundColor: Colors.white,
+                selectedItemColor: PaletteNouvelle.bleuNuit,
+                unselectedItemColor: Colors.grey,
+                selectedFontSize: 11,
+                unselectedFontSize: 11,
+                items: [
+                  for (var i = 0; i < _onglets.length; i++)
+                    BottomNavigationBarItem(
+                      icon: Icon(_iconesOnglets[i]),
+                      label: _onglets[i].titre,
+                    ),
+                ],
+              ),
       ),
     );
   }
 }
+
+/// Bulle Messenger exacte de la maquette, correctif global
+/// 27 nov. 2026 : bulle pleine avec éclair, récupérée telle
+/// quelle du fichier svg-exact-messagerie-maquette.svg. La
+/// tuile Témoignages garde la bulle contour Lucide, les deux
+/// icônes ne se confondent plus.
+const _svgMessagerie =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.36 2 2 6.13 2 11.7c0 2.91 1.19 5.44 3.14 7.17.16.14.25.35.25.57l.05 1.78c.02.57.61.94 1.13.71l1.98-.87c.17-.08.36-.09.54-.03.88.25 1.8.38 2.91.38 5.64 0 10-4.13 10-9.7S17.64 2 12 2Zm6.02 7.46-3.17 5.03c-.47.74-1.48.92-2.25.42l-2.36-1.9a.6.6 0 0 0-.75 0l-3.3 2.64c-.42.34-.97-.18-.71-.66l3.17-5.03c.47-.74 1.48-.92 2.25-.42l2.36 1.9c.22.18.53.18.75 0l3.3-2.64c.42-.34.97.18.71.66Z"/></svg>';
 
 /// Bulle messagerie, même logique que l'ancienne (BoutonMessagerie,
 /// home_web.dart) : le vrai nombre de non lus, pastille rouge de la
@@ -505,7 +516,15 @@ class _BoutonMessagerie extends StatelessWidget {
       style:
           IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
       iconSize: 22,
-      icon: const Icon(LucideIcons.messageCircle, color: PaletteNouvelle.bleuNuit),
+      icon: SvgPicture.string(
+        _svgMessagerie,
+        width: 22,
+        height: 22,
+        colorFilter: const ColorFilter.mode(
+          PaletteNouvelle.bleuNuit,
+          BlendMode.srcIn,
+        ),
+      ),
       onPressed: onTap,
     );
     final source = nonLus;

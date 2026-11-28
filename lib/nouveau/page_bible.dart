@@ -25,7 +25,16 @@ import 'modeles_bible.dart';
 import 'palette.dart';
 import 'service_bible.dart';
 
-enum _Vue { accueil, chapitres, lecture, recherche, dictionnaire, favoris, plan, reglages }
+enum _Vue {
+  accueil,
+  chapitres,
+  lecture,
+  recherche,
+  dictionnaire,
+  favoris,
+  plan,
+  reglages
+}
 
 class PageBibleNouvelle extends StatefulWidget {
   const PageBibleNouvelle({
@@ -98,10 +107,12 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
   Future<void> _charger() async {
     await _svc.charger();
     final reprise = await _svc.reprise(_lang);
+    final favoris = await _svc.favoris(_lang);
     if (!mounted) return;
     setState(() {
       _livres = _svc.livres(_lang);
       _reprise = reprise;
+      _favoris = favoris;
     });
   }
 
@@ -124,8 +135,8 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
   }
 
   void _ouvrirLecture(int livre, int chapitre) {
-    final ref = BibleVerseRef(livre, chapitre, 1,
-        _svc.texteVerset(_lang, livre, chapitre, 1) ?? '');
+    final ref = BibleVerseRef(
+        livre, chapitre, 1, _svc.texteVerset(_lang, livre, chapitre, 1) ?? '');
     _svc.enregistrerReprise(_lang, ref);
     setState(() {
       _livre = livre;
@@ -137,10 +148,9 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
     _chargerSurlignes();
   }
 
-  String _nomLivre(int livre) =>
-      _livres.isNotEmpty && livre < _livres.length
-          ? _livres[livre].name
-          : _svc.nomLivre(_lang, livre);
+  String _nomLivre(int livre) => _livres.isNotEmpty && livre < _livres.length
+      ? _livres[livre].name
+      : _svc.nomLivre(_lang, livre);
 
   List<String> _versets() {
     if (_livre == null || _chapitre == null) return const [];
@@ -152,8 +162,7 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
     final versets = _versets();
     final trouves = <int>{};
     for (var i = 0; i < versets.length; i++) {
-      final ref = BibleVerseRef(
-          _livre!, _chapitre!, i + 1, versets[i]);
+      final ref = BibleVerseRef(_livre!, _chapitre!, i + 1, versets[i]);
       if (await _svc.estSurligne(_lang, ref)) trouves.add(i + 1);
     }
     if (mounted) setState(() => _surlignes = trouves);
@@ -248,13 +257,12 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
                       children: [
                         for (final e in entrees) ...[
                           Text(e.word,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w700)),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w700)),
                           if (e.nature.isNotEmpty) Text(e.nature),
                           for (final d in e.definitions)
                             Padding(
-                              padding:
-                                  const EdgeInsets.only(top: 4),
+                              padding: const EdgeInsets.only(top: 4),
                               child: Text(d),
                             ),
                         ],
@@ -375,20 +383,11 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
                 ),
               ),
             ),
-            for (var i = groupe.debut; i <= groupe.fin; i++)
-              _tuileLivre(i),
+            for (var i = groupe.debut; i <= groupe.fin; i++) _tuileLivre(i),
           ],
         ],
         const SizedBox(height: 20),
-        if (_reprise != null)
-          _tuileAction(
-            icone: LucideIcons.arrowRight,
-            titre: 'Reprendre la lecture',
-            sousTitre:
-                '${_nomLivre(_reprise!.book)} ${_reprise!.chapter}:${_reprise!.verse}',
-            onTap: () =>
-                _ouvrirLecture(_reprise!.book, _reprise!.chapter),
-          ),
+        if (_reprise != null) _carteReprise(),
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
@@ -399,14 +398,19 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
           children: [
             _tuileGrille(LucideIcons.search, 'Recherche', _Vue.recherche,
                 onOuvrir: null),
-            _tuileGrille(LucideIcons.bookOpen, 'Dictionnaire',
-                _Vue.dictionnaire, onOuvrir: null),
+            _tuileGrille(
+                LucideIcons.bookOpen, 'Dictionnaire', _Vue.dictionnaire,
+                onOuvrir: null),
             _tuileGrille(LucideIcons.sparkle, 'Favoris', _Vue.favoris,
-                onOuvrir: () => _chargerFavoris()),
-            _tuileGrille(LucideIcons.calendar, 'Plan de lecture',
-                _Vue.plan, onOuvrir: () => _chargerPlan()),
-            _tuileGrille(LucideIcons.settings, 'Réglages',
-                _Vue.reglages, onOuvrir: null),
+                pastille: _favoris.length, onOuvrir: () => _chargerFavoris()),
+            _tuileGrille(LucideIcons.calendar, 'Plan de lecture', _Vue.plan,
+                onOuvrir: () => _chargerPlan()),
+            _tuileGrille(LucideIcons.settings, 'Réglages', _Vue.reglages,
+                onOuvrir: null),
+            _tuileGrille(LucideIcons.listOrdered, 'Chapitres', _Vue.chapitres,
+                onOuvrir: () {
+              if (_reprise != null) _livre = _reprise!.book;
+            }),
           ],
         ),
       ],
@@ -417,19 +421,15 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
     return FilledButton(
       onPressed: onTap,
       style: FilledButton.styleFrom(
-        backgroundColor:
-            actif ? PaletteNouvelle.bleuNuit : Colors.white,
-        foregroundColor:
-            actif ? Colors.white : PaletteNouvelle.bleuNuit,
+        backgroundColor: actif ? PaletteNouvelle.bleuNuit : Colors.white,
+        foregroundColor: actif ? Colors.white : PaletteNouvelle.bleuNuit,
         side: const BorderSide(color: PaletteNouvelle.bleuNuit),
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       child: Text(titre,
           textAlign: TextAlign.center,
-          style:
-              const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
     );
   }
 
@@ -442,9 +442,7 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
       child: ListTile(
         title: Text(_nomLivre(livre),
             style: const TextStyle(fontWeight: FontWeight.w700)),
-        subtitle: chapitres > 0
-            ? Text('$chapitres chapitres')
-            : null,
+        subtitle: chapitres > 0 ? Text('$chapitres chapitres') : null,
         trailing: const Icon(LucideIcons.chevronRight,
             color: PaletteNouvelle.bleuNuit),
         onTap: () => setState(() {
@@ -455,30 +453,61 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
     );
   }
 
-  Widget _tuileAction({
-    required IconData icone,
-    required String titre,
-    required String sousTitre,
-    required VoidCallback onTap,
-  }) {
+  /// Reprise façon maquette : le dernier chapitre lu et le
+  /// nombre total de chapitres du livre, puis le bouton
+  /// « Continuer, chapitre N » vers le chapitre suivant.
+  Widget _carteReprise() {
+    final reprise = _reprise!;
+    final livre = reprise.book;
+    final total = livre < _livres.length ? _livres[livre].chapters.length : 0;
+    final chapitreLu = reprise.chapter;
+    final suivant =
+        total > 0 && chapitreLu < total ? chapitreLu + 1 : chapitreLu;
     return Card(
       color: PaletteNouvelle.bleuNuit,
       margin: const EdgeInsets.only(bottom: 12),
-      child: ListTile(
-        leading: Icon(icone, color: PaletteNouvelle.or),
-        title: Text(titre,
-            style: const TextStyle(
-                color: Colors.white, fontWeight: FontWeight.w700)),
-        subtitle: Text(sousTitre,
-            style: const TextStyle(color: Colors.white70)),
-        trailing: const Icon(LucideIcons.chevronRight, color: Colors.white),
-        onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Reprendre la lecture',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800)),
+            const SizedBox(height: 4),
+            Text('${_nomLivre(livre)} $suivant',
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w700)),
+            if (total > 0) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Chapitre $chapitreLu sur $total · Dernier chapitre lu',
+                style: const TextStyle(color: Colors.white70),
+              ),
+            ],
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _ouvrirLecture(livre, suivant),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: PaletteNouvelle.or,
+                  side: const BorderSide(color: PaletteNouvelle.or),
+                ),
+                icon: const Icon(LucideIcons.arrowRight, size: 18),
+                label: Text('Continuer, chapitre $suivant'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _tuileGrille(IconData icone, String titre, _Vue vue,
-      {VoidCallback? onOuvrir}) {
+      {VoidCallback? onOuvrir, int? pastille}) {
     return Card(
       color: Colors.white,
       child: InkWell(
@@ -497,6 +526,20 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
                 child: Text(titre,
                     style: const TextStyle(fontWeight: FontWeight.w700)),
               ),
+              if (pastille != null && pastille > 0)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: const BoxDecoration(
+                    color: PaletteNouvelle.or,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text('$pastille',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800)),
+                ),
             ],
           ),
         ),
@@ -513,8 +556,7 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
         Expanded(
           child: GridView.builder(
             padding: const EdgeInsets.all(16),
-            gridDelegate:
-                const SliverGridDelegateWithFixedCrossAxisCount(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 5,
               mainAxisSpacing: 10,
               crossAxisSpacing: 10,
@@ -525,8 +567,7 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
               style: FilledButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: PaletteNouvelle.bleuNuit,
-                side: const BorderSide(
-                    color: PaletteNouvelle.bleuNuit),
+                side: const BorderSide(color: PaletteNouvelle.bleuNuit),
                 padding: EdgeInsets.zero,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
@@ -566,7 +607,8 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
                     if (mounted) setState(() => _enCoursAudio = false);
                   }
                 },
-                icon: Icon(_enCoursAudio ? LucideIcons.square : LucideIcons.play),
+                icon:
+                    Icon(_enCoursAudio ? LucideIcons.square : LucideIcons.play),
                 label: Text(_enCoursAudio ? 'Arrêter' : 'Écouter'),
               ),
             ],
@@ -637,23 +679,20 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
   }
 
   Widget _barreVerset(BibleVerseRef ref) {
-    final label =
-        '${_nomLivre(ref.book)} ${ref.chapter}:${ref.verse}';
+    final label = '${_nomLivre(ref.book)} ${ref.chapter}:${ref.verse}';
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label,
-              style: const TextStyle(fontWeight: FontWeight.w800)),
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 6),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _actionVerset(Icons.highlight_outlined, 'Surligner',
-                    () async {
+                _actionVerset(Icons.highlight_outlined, 'Surligner', () async {
                   await _svc.basculerSurlignage(_lang, ref);
                   await _chargerSurlignes();
                 }),
@@ -662,8 +701,7 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
                     titre: 'Note',
                     indication: 'Écrire une note…',
                     valeurInitiale: _svc.note(_lang, ref),
-                    enregistrer: (v) =>
-                        _svc.enregistrerNote(_lang, ref, v),
+                    enregistrer: (v) => _svc.enregistrerNote(_lang, ref, v),
                   );
                 }),
                 _actionVerset(Icons.label_outlined, 'Étiquette', () {
@@ -680,26 +718,21 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
                     titre: 'Lien vers un verset',
                     indication: 'Par exemple Jean 3:16',
                     valeurInitiale: _svc.lien(_lang, ref),
-                    enregistrer: (v) =>
-                        _svc.enregistrerLien(_lang, ref, v),
+                    enregistrer: (v) => _svc.enregistrerLien(_lang, ref, v),
                   );
                 }),
                 _actionVerset(Icons.share_outlined, 'Partager', () {
                   _svc.partager('$label\n${ref.text}');
                 }),
                 _actionVerset(
-                    _favoriSelectionne
-                        ? Icons.star
-                        : Icons.star_outlined,
+                    _favoriSelectionne ? Icons.star : Icons.star_outlined,
                     'Favori', () async {
                   await _svc.basculerFavori(_lang, ref);
                   if (mounted) {
-                    setState(() =>
-                        _favoriSelectionne = !_favoriSelectionne);
+                    setState(() => _favoriSelectionne = !_favoriSelectionne);
                   }
                 }),
-                _actionVerset(Icons.play_arrow_outlined, 'Écouter',
-                    () async {
+                _actionVerset(Icons.play_arrow_outlined, 'Écouter', () async {
                   await _svc.ecouterVerset(_lang, ref);
                 }),
               ],
@@ -797,8 +830,7 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
               ),
               const SizedBox(width: 8),
               FilledButton(
-                onPressed: () =>
-                    _chercherDictionnaire(_dictCtrl.text),
+                onPressed: () => _chercherDictionnaire(_dictCtrl.text),
                 child: const Text('Chercher'),
               ),
             ],
@@ -818,16 +850,15 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
                       color: Colors.white,
                       child: ListTile(
                         title: Text(e.word,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w800)),
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w800)),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (e.nature.isNotEmpty) Text(e.nature),
                             for (final d in e.definitions)
                               Padding(
-                                padding:
-                                    const EdgeInsets.only(top: 4),
+                                padding: const EdgeInsets.only(top: 4),
                                 child: Text(d),
                               ),
                           ],
@@ -860,16 +891,13 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
                       child: ListTile(
                         title: Text(
                           '${_nomLivre(ref.book)} ${ref.chapter}:${ref.verse}',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w700),
+                          style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                         subtitle: Text(ref.text,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis),
-                        trailing: const Icon(Icons.star,
-                            color: PaletteNouvelle.or),
-                        onTap: () =>
-                            _ouvrirLecture(ref.book, ref.chapter),
+                            maxLines: 2, overflow: TextOverflow.ellipsis),
+                        trailing:
+                            const Icon(Icons.star, color: PaletteNouvelle.or),
+                        onTap: () => _ouvrirLecture(ref.book, ref.chapter),
                       ),
                     );
                   },
@@ -880,8 +908,7 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
   }
 
   Widget _plan() {
-    final chapitresParLivre =
-        _livres.map((b) => b.chapters.length).toList();
+    final chapitresParLivre = _livres.map((b) => b.chapters.length).toList();
     final jours = chapitresParLivre.isEmpty
         ? <List<(int, int)>>[]
         : joursPlanAnnuel(chapitresParLivre);
@@ -911,7 +938,7 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
                 children: [
                   for (final id in idsBadgesLecture)
                     Chip(
-                      label: Text(id),
+                      label: Text(libelleBadgeLecture(id)),
                       avatar: Icon(
                         gagnes.contains(id)
                             ? Icons.check_circle_outlined
@@ -933,15 +960,13 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
               final chapitres =
                   index < jours.length ? jours[index] : const <(int, int)>[];
               final noms = _livres.map((b) => b.name).toList();
-              final libelle =
-                  libelleJourPlanAnnuel(chapitres, noms);
+              final libelle = libelleJourPlanAnnuel(chapitres, noms);
               final lu = _joursLus.contains(jour);
               return Card(
                 color: Colors.white,
                 child: ListTile(
                   title: Text('Jour $jour',
-                      style:
-                          const TextStyle(fontWeight: FontWeight.w700)),
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
                   subtitle: libelle.isEmpty ? null : Text(libelle),
                   trailing: lu
                       ? OutlinedButton(
@@ -993,10 +1018,8 @@ class _PageBibleNouvelleState extends State<PageBibleNouvelle> {
                 onChanged: (v) async {
                   setState(() => _tailleTexte = v);
                   try {
-                    final prefs =
-                        await SharedPreferences.getInstance();
-                    await prefs.setDouble(
-                        'nouveau_bible_taille_texte', v);
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setDouble('nouveau_bible_taille_texte', v);
                   } catch (_) {}
                 },
               ),
