@@ -48,7 +48,9 @@ test('Carte 126 T7, S1 directeur : son camp seulement, pas les finances ni le su
   assert.ok(!ligne.includes('finances'), 'directeur sans finances');
   assert.ok(!ligne.includes('suivi'), 'directeur sans suivi');
   assert.ok(serveur.includes("await exigerNomination(req, 'camp.inscriptions', { evenementId, obligatoire: true });"), 'liste des inscriptions gardée, nomination obligatoire');
-  assert.equal(serveur.split("await activitesPourPermission(req, 'finances.lire')").length - 1, 3, 'trois listes finances filtrées, le directeur sans finances.lire voit une portée vide');
+  // Quatre listes : comptabilité, paiements, totaux, et
+  // l'export des paiements (correctif global, phase 4).
+  assert.equal(serveur.split("await activitesPourPermission(req, 'finances.lire')").length - 1, 4, 'quatre listes finances filtrées, le directeur sans finances.lire voit une portée vide');
 });
 
 test('Carte 126 T7, S2 financier : ses finances seulement', () => {
@@ -118,16 +120,23 @@ test('Carte 126 T7, S6 expirée ou révoquée : lue en base à chaque requête, 
 test('Carte 126 T7, S7 contournement : inventaire des gardes, lectures propres, écarts connus', () => {
   // Sécurité, 22 nov. 2026 : vingt et une gardes, les dix
   // d'origine plus onze, fiches santé, détail et liste des
-  // membres, chronogramme et temps forts.
-  assert.equal(serveur.split('await exigerNomination(').length - 1, 21, 'vingt et une gardes, aucune perdue');
-  assert.equal(serveur.split('await activitesPourPermission(').length - 1, 5, 'cinq listes filtrées');
+  // membres, chronogramme et temps forts. Correctif global,
+  // 27 nov. 2026 : vingt-trois, plus l'inscription au camp
+  // par un administrateur (phase 3) et l'export des
+  // inscriptions (phase 4).
+  assert.equal(serveur.split('await exigerNomination(').length - 1, 23, 'vingt-trois gardes, aucune perdue');
+  // Sept listes filtrées : les cinq d'origine plus les trois
+  // branches de l'export (correctif global, phase 4), qui
+  // reprennent le même périmètre au lieu d'en inventer un.
+  assert.equal(serveur.split('await activitesPourPermission(').length - 1, 7, 'sept listes filtrées');
   assert.ok(serveur.includes("app.post('/admin/nominations', { preHandler: adminG }"), 'création nominations adminG');
   assert.ok(serveur.includes("app.put('/admin/nominations/:id', { preHandler: adminG }"), 'modification nominations adminG');
   assert.ok(serveur.includes("app.post('/admin/nominations/:id/revoquer', { preHandler: adminG }"), 'révocation nominations adminG');
   assert.ok(serveur.includes("app.get('/admin/nominations', { preHandler: adminG }"), 'liste nominations adminG');
   assert.ok(serveur.includes("app.get('/moi/nominations', { preHandler: membreG }"), 'Mes nominations membreG');
   assert.ok(serveur.includes('WHERE n.membre_id = $1 AND NOT n.revoque'), 'Mes nominations, ses lignes seulement, sans paramètre membre');
-  assert.ok(api.includes("fetchMesNominations() => _list('/moi/nominations')"), 'application, affichage seulement, aucune gestion côté membre');
+  assert.ok(api.includes("fetchMesNominations()"), 'application, affichage seulement, aucune gestion côté membre');
+  assert.ok(api.includes("_list('/moi/nominations')"), 'Mes nominations lues seulement');
   const santeDebut = serveur.indexOf("app.get('/admin/fiches-sante/:evenementId'");
   const santeFin = serveur.indexOf("app.post('/admin/fiches-presence/:evenementId'", santeDebut);
   assert.ok(santeDebut > 0 && santeFin > santeDebut, 'routes santé trouvées');

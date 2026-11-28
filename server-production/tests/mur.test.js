@@ -126,6 +126,7 @@ test('formaterPublicationMur : forme publique complète', () => {
     mon_type: 'jaime',
     nb_commentaires: 2,
     enregistre: true,
+    suivi_par_moi: true,
     est_auteur: false,
     cree_le: new Date('2026-11-24T10:00:00.000Z'),
   };
@@ -146,6 +147,7 @@ test('formaterPublicationMur : forme publique complète', () => {
     nb_commentaires: 2,
     aime: true,
     enregistre: true,
+    suivi_par_moi: true,
     est_auteur: false,
     cree_le: '2026-11-24T10:00:00.000Z',
   });
@@ -167,6 +169,7 @@ test('formaterPublicationMur : valeurs absentes, zéros et faux', () => {
   assert.equal(forme.nb_commentaires, 0);
   assert.equal(forme.aime, false);
   assert.equal(forme.enregistre, false);
+  assert.equal(forme.suivi_par_moi, false);
   assert.equal(forme.est_auteur, false);
   assert.equal(forme.cree_le, null);
 });

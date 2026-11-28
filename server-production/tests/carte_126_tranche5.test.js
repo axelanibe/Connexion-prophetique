@@ -56,7 +56,10 @@ test('Carte 126 T5, suivi : gardes non strictes, point ouvert', () => {
   assert.ok(gardes.every((l) => !l.includes('obligatoire')), 'aucune garde suivi obligatoire');
   // Sécurité, 22 nov. 2026 : huit, les cinq d'origine plus les
   // trois fiches santé, même exigence que les fiches de présence.
-  assert.equal(serveur.split('obligatoire: true').length - 1, 8, 'obligatoire vrai sur les routes de camp, le suivi des versements et les fiches santé');
+  // Correctif global, 27 nov. 2026 : dix, plus l'inscription
+  // au camp par un administrateur (phase 3) et l'export des
+  // inscriptions (phase 4), mêmes gardes de camp.
+  assert.equal(serveur.split('obligatoire: true').length - 1, 10, 'obligatoire vrai sur les routes de camp, le suivi des versements et les fiches santé');
 });
 
 test('Carte 126 T5, suivi : pas de règle de membre effectif, le membre est direct', () => {
